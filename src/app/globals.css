@@ -2,26 +2,337 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   CRM Platform — Design Tokens
+   Referensi: CRM_UI_KIT.html (Opsi B — Modern Warm)
+   Semua UI wajib gunakan variabel ini. Dilarang hardcode warna.
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Primary — Navy */
+  --c-primary:        #0D2B55;
+  --c-primary-dark:   #091E3D;
+  --c-primary-light:  #1A4080;
+  --c-primary-xlight: #E8EEF5;
+  --c-primary-ghost:  rgba(13,43,85,0.06);
+
+  /* Secondary — Teal */
+  --c-secondary:      #0089A8;
+  --c-secondary-dark: #006E89;
+  --c-secondary-light:#E0F4F4;
+  --c-secondary-ghost:rgba(0,137,168,0.08);
+
+  /* Accent — Gold */
+  --c-accent:         #E8A800;
+  --c-accent-dark:    #C48F00;
+  --c-accent-light:   #FDF3DC;
+
+  /* Semantic */
+  --c-success:        #278B58;
+  --c-success-light:  #E8F5E9;
+  --c-warning:        #E8A800;
+  --c-warning-light:  #FDF3DC;
+  --c-error:          #C0392B;
+  --c-error-light:    #FBECE8;
+  --c-info:           #0089A8;
+  --c-info-light:     #E0F4F4;
+
+  /* Neutral */
+  --c-bg:             #F4F7FA;
+  --c-surface:        #FFFFFF;
+  --c-surface-2:      #F8FAFC;
+  --c-border:         #E2E8F0;
+  --c-border-dark:    #CBD5E1;
+  --c-text:           #1A2740;
+  --c-text-muted:     #6B7B8D;
+  --c-text-faint:     #9CAAB8;
+  --c-text-inverse:   #FFFFFF;
+
+  /* Typography */
+  --font-size-xs:   12px;
+  --font-size-sm:   13px;
+  --font-size-base: 15px;
+  --font-size-md:   16px;
+  --font-size-lg:   18px;
+  --font-size-xl:   20px;
+  --font-size-2xl:  24px;
+  --font-size-3xl:  28px;
+  --font-size-4xl:  32px;
+
+  /* Spacing */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+  --sp-12: 48px; --sp-16: 64px;
+
+  /* Border radius */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --r-xl: 20px; --r-full: 9999px;
+
+  /* Shadow */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.10);
+
+  /* Layout */
+  --sidebar-width: 240px;
+
+  /* Transition */
+  --transition: 150ms ease;
 }
 
-@media (prefers-color-scheme: dark) {
+/* ── Kegiatan detail — desktop overrides ── */
+@media (min-width: 769px) {
+  .kg-detail-page    { padding: var(--sp-6) !important; }
+  .kg-detail-title   { font-size: var(--font-size-xl) !important; }
+  .kg-stat-strip     { display: none; }
+  .kg-detail-layout  { display: grid; grid-template-columns: 300px 1fr; gap: var(--sp-5); align-items: start; }
+  .kg-info-compact   { display: none; }
+  .kg-info-full      { display: block; }
+  .kg-peserta-cards  { display: none !important; }
+  .kg-peserta-table  { display: table !important; }
+}
+
+/* Mobile: font scale up */
+@media (max-width: 768px) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --font-size-xs:   13px;
+    --font-size-sm:   14px;
+    --font-size-base: 16px;
+    --font-size-md:   17px;
+    --font-size-lg:   19px;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Sidebar layout — CSS-driven, no JS flash ── */
+
+/* Desktop default: sticky sidebar dalam flex flow */
+.sidebar-topbar {
+  display: none;
+}
+.sidebar-close-btn {
+  display: none;
+}
+.sidebar-wrapper {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+/* Mobile: top bar + fixed drawer */
+@media (max-width: 768px) {
+  .sidebar-topbar {
+    display: flex;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    height: 56px;
+    background: var(--c-primary);
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .sidebar-close-btn {
+    display: block;
+  }
+  .sidebar-wrapper {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 300;
+    width: 280px;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .sidebar-wrapper.sidebar-open {
+    transform: translateX(0);
+  }
+}
+
+/* Base reset */
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 16px; scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--font-size-base);
+  color: var(--c-text);
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+a { color: var(--c-secondary); text-decoration: none; }
+a:hover { color: var(--c-secondary-dark); }
+
+/* ── Mobile responsive layout ── */
+@media (max-width: 768px) {
+  /* Padding untuk konten halaman biasa (bukan inbox) */
+  .tenant-main {
+    padding-top: 56px;
+  }
+
+  /* Prevent iOS zoom saat focus input */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Dashboard — grid dua kolom jadi satu kolom */
+  .dashboard-two-col {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Dashboard — padding lebih kecil di mobile */
+  .dashboard-page {
+    padding: var(--sp-3) var(--sp-4) !important;
+  }
+
+  /* Dashboard — stat cards lebih compact */
+  .dashboard-stat-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--sp-3) !important;
+  }
+
+  /* Dashboard — tabel jadi card-list di mobile */
+  .mobile-card-table thead {
+    display: none;
+  }
+  .mobile-card-table tr {
+    display: block;
+    background: var(--c-surface);
+    border-bottom: 1px solid var(--c-border);
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .mobile-card-table td {
+    display: block;
+    border: none !important;
+    padding: 2px 0 !important;
+    font-size: var(--font-size-sm);
+  }
+  .mobile-card-table td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-weight: 700;
+    color: var(--c-text-muted);
+    font-size: 11px;
+  }
+  .mobile-card-table td.td-right {
+    text-align: left !important;
+  }
+
+  /* Dashboard aksi cepat — wrap dengan full width */
+  .dashboard-quick-actions {
+    flex-direction: column !important;
+  }
+  .dashboard-quick-actions a {
+    justify-content: center;
+  }
+
+  /* Pasien detail page — padding lebih kecil */
+  .pasien-detail-page {
+    padding: var(--sp-3) var(--sp-3) var(--sp-6) !important;
+  }
+
+  /* Pasien meta row (SIMRS + actions) — stack di mobile */
+  .pasien-meta-row {
+    flex-direction: column !important;
+  }
+  .pasien-meta-row > div:first-child {
+    border-right: none !important;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .pasien-meta-row > div:last-child {
+    flex-direction: row !important;
+  }
+  .pasien-meta-row > div:last-child a {
+    flex: 1;
+  }
+
+  /* Pasien list page — padding lebih kecil */
+  .pasien-list-page {
+    padding: var(--sp-4) var(--sp-4) var(--sp-8) !important;
+  }
+
+  /* Pasien list header — stack vertikal di mobile */
+  .pasien-list-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .pasien-list-subtitle {
+    display: none;
+  }
+  .pasien-list-actions {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+  .pasien-list-actions a {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Kegiatan detail — mobile layout */
+  .kg-detail-page {
+    padding: var(--sp-4) !important;
+    flex: 1;
+  }
+  .kg-detail-title {
+    font-size: var(--font-size-lg) !important;
+  }
+  .kg-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: white;
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    margin-bottom: var(--sp-4);
+    overflow: hidden;
+  }
+  .kg-stat-cell {
+    text-align: center;
+    padding: 12px 8px;
+  }
+  .kg-stat-divider {
+    border-right: 1px solid var(--c-border);
+  }
+  .kg-detail-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+  .kg-info-compact {
+    background: white;
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-3);
+  }
+  .kg-info-full { display: none; }
+  /* Peserta: cards on mobile, table on desktop */
+  .kg-peserta-cards { display: flex !important; }
+  .kg-peserta-table { display: none !important; }
+
+  /* Kegiatan page — padding + header responsive */
+  .kegiatan-page {
+    padding: var(--sp-4) var(--sp-4) var(--sp-8) !important;
+  }
+  .kegiatan-page-subtitle {
+    display: none;
+  }
+
+  /* Pengaturan page — padding lebih kecil */
+  .pengaturan-page {
+    padding: var(--sp-4) var(--sp-4) var(--sp-8) !important;
+  }
+
+  /* Broadcast page — padding lebih kecil */
+  .broadcast-page {
+    padding: var(--sp-4) var(--sp-4) var(--sp-8) !important;
+  }
+  .broadcast-page-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    margin-bottom: var(--sp-4) !important;
+  }
+  .broadcast-page-header p {
+    display: none;
   }
 }

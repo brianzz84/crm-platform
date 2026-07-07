@@ -1,0 +1,759 @@
+// CRM Platform — Prisma Schema
+// SOURCE OF TRUTH semua nama field dan relasi database.
+// Perubahan nama field HARUS di sini dulu, baru propagate ke types/index.ts
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// MASTER DB — Tenant registry
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id            String      @id @default(uuid())
+  slug          String      @unique   // tidak bisa diubah setelah dibuat
+  name          String
+  plan          TenantPlan  @default(TRIAL)
+  database_url  String
+  custom_domain String?
+  aktif         Boolean     @default(true)
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+
+  config TenantConfig?
+
+  @@map("crm_tenants")
+}
+
+model TenantConfig {
+  id                      String   @id @default(uuid())
+  tenant_id               String   @unique
+  simrs_base_url          String?
+  simrs_api_key           String?
+  meta_access_token       String?
+  ai_enabled              Boolean  @default(false)
+  max_broadcast_per_month Int      @default(1000)
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@map("crm_tenant_configs")
+}
+
+// ICD global — di-copy ke setiap tenant DB saat provisioning
+model IcdLibraryGlobal {
+  id      String  @id @default(uuid())
+  kode    String  @unique
+  nama    String
+  nama_id String
+  bab     String?
+  versi   String  @default("ICD10")  // ICD10 | ICD11
+  aktif   Boolean @default(true)
+
+  @@index([kode])
+  @@index([nama_id])
+  @@map("crm_icd_library_global")
+}
+
+// ─────────────────────────────────────────────
+// TENANT DB MODELS (per-tenant database)
+// ─────────────────────────────────────────────
+
+model TenantProfile {
+  id          String   @id @default(uuid())
+  tenant_slug String   @unique
+  nama_klinik String
+  nama_rs     String                   // dipakai di variabel template sapaan/broadcast
+  logo_url    String?
+  alamat      String?
+  telp        String?
+  email       String?
+  website     String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("crm_tenant_profile")
+}
+
+model AppUser {
+  id                 String    @id @default(uuid())
+  tenant_slug        String
+  name               String
+  email              String
+  password_hash      String
+  roles              UserRole[]
+  aktif              Boolean   @default(false)  // false sampai user set password via invite link
+  invite_token       String?   @unique
+  invite_expires_at  DateTime?
+  reset_token        String?   @unique
+  reset_expires_at   DateTime?
+  last_login_at      DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  conversations     Conversation[]    @relation("AssignedUser")
+  sent_messages     Message[]         @relation("SentBy")
+  created_campaigns Campaign[]
+
+  @@unique([tenant_slug, email])
+  @@index([tenant_slug])
+  @@map("crm_app_users")
+}
+
+model PushSubscription {
+  id          String   @id @default(uuid())
+  user_id     String
+  tenant_slug String
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  created_at  DateTime @default(now())
+
+  @@index([tenant_slug])
+  @@index([user_id])
+  @@map("crm_push_subscriptions")
+}
+
+// Unified person: AKAR customer + SIMRS patient
+model Person {
+  id                 String    @id @default(uuid())
+  tenant_slug        String
+  no_hp              String?             // cache dari kontak primary — untuk backward compat
+  name               String
+  email              String?
+  tanggal_lahir      DateTime?
+  no_rm              String?             // nomor rekam medis dari SIMRS
+  simrs_patient_id   String?
+  last_simrs_sync_at DateTime?
+  akar_id            String?             // ID dari sistem AKAR lama
+  // Field identitas tambahan
+  nik                String?             // NIK KTP, kunci identitas utama
+  jenis_kelamin      String?             // "L" | "P"
+  alamat             String?
+  pekerjaan          String?
+  kategori           String?             // "umum" | "pasien" | "keluarga"
+  akar_kode          String?             // kode dari Akar (CST20260001, dll)
+  aktif              Boolean   @default(true)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  tags                     PersonTag[]
+  visits                   SimrsVisit[]
+  conversations            Conversation[]
+  campaign_recipients      CampaignRecipient[]
+  contacts                 PersonContact[]
+  kegiatan_diikuti         KegiatanPeserta[]
+  kontak_langsung          KontakLangsung[]
+  loyalty_transactions     LoyaltyTransaction[]
+  sapaan_logs              SapaanLog[]
+
+  @@index([tenant_slug])
+  @@index([tenant_slug, no_hp])
+  @@index([no_rm])
+  @@index([nik])
+  @@index([akar_kode])
+  @@map("crm_persons")
+}
+
+model Tag {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  name        String
+  warna       String   @default("#0089A8")
+  keterangan  String?
+  aktif       Boolean  @default(true)   // TIDAK PERNAH DELETE — aktif=false saja
+  created_at  DateTime @default(now())
+
+  person_tags PersonTag[]
+  tag_rules   TagRule[]
+
+  @@unique([tenant_slug, name])
+  @@index([tenant_slug])
+  @@map("crm_tags")
+}
+
+model PersonTag {
+  id          String    @id @default(uuid())
+  person_id   String
+  tag_id      String
+  sumber      TagSource
+  confidence  Float?    // 0-1, hanya untuk auto_ai
+  aktif       Boolean   @default(true)
+  assigned_at DateTime  @default(now())
+
+  person Person @relation(fields: [person_id], references: [id])
+  tag    Tag    @relation(fields: [tag_id], references: [id])
+
+  @@unique([person_id, tag_id])
+  @@index([person_id])
+  @@map("crm_person_tags")
+}
+
+model SimrsVisit {
+  id             String    @id @default(uuid())
+  person_id      String
+  tanggal        DateTime
+  unit           SimrsUnit
+  poli           String?
+  dokter         String?
+  diagnosa_nama  String?
+  diagnosa_icd   String?   // kode ICD-10
+  tindakan       String?   // untuk penunjang
+  simrs_visit_id String?   // ID asli dari SIMRS (untuk dedup delta sync)
+  aktif          Boolean   @default(true)   // TIDAK PERNAH DELETE
+
+  person Person @relation(fields: [person_id], references: [id])
+
+  @@unique([person_id, simrs_visit_id])
+  @@index([person_id])
+  @@index([tanggal])
+  @@map("crm_simrs_visits")
+}
+
+model SimrsLayananLibrary {
+  id          String  @id @default(uuid())
+  kode_barang String  @unique
+  nama        String
+  kelompok    String  // Rawat Inap, Rawat Jalan, Penunjang, Pondok Sehat, Home Care, One Day Care
+  jenis       String  // sub-unit: Laboratorium, Radiologi, Gigi, Anak, dll
+  aktif       Boolean @default(true)
+
+  @@index([nama])
+  @@index([kelompok])
+  @@index([jenis])
+  @@map("crm_simrs_layanan_library")
+}
+
+model IcdLibrary {
+  id      String  @id @default(uuid())
+  kode    String  @unique
+  nama    String
+  nama_id String
+  bab     String?
+  versi   String  @default("ICD10")  // ICD10 | ICD11
+  aktif   Boolean @default(true)
+
+  @@index([kode])
+  @@index([nama_id])
+  @@map("crm_icd_library")
+}
+
+model Segment {
+  id              String   @id @default(uuid())
+  tenant_slug     String
+  nama            String
+  deskripsi       String?
+  nlp_query       String?  // query natural language dari admin
+  simrs_params    Json?    // parameter yang dikirim ke SIMRS
+  last_refresh_at DateTime?
+  created_by      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  campaigns      Campaign[]
+  segment_persons SegmentPerson[]
+
+  @@index([tenant_slug])
+  @@map("crm_segments")
+}
+
+model SegmentPerson {
+  segment_id String
+  person_id  String
+  added_at   DateTime @default(now())
+
+  segment Segment @relation(fields: [segment_id], references: [id])
+
+  @@id([segment_id, person_id])
+  @@map("crm_segment_persons")
+}
+
+// Konfigurasi Wappin per-tenant (disimpan di tenant DB)
+model WappinConfig {
+  id               String   @id @default(uuid())
+  tenant_slug      String   @unique
+  api_version      String   @default("v2")    // "v1" | "v2"
+  // V1 credentials
+  client_id        String?
+  project_id       String?
+  secret_key       String?
+  // V2 credentials
+  username         String?
+  password         String?
+  base_url         String   @default("https://api.chat.wappin.app")
+  login_url        String   @default("/auth/login")
+  messages_url     String   @default("/v1/messages")
+  namespace        String?
+  // Webhook security
+  webhook_secret   String   @default(uuid())  // random secret untuk URL webhook
+  // Meta
+  aktif            Boolean  @default(true)
+  tested_at        DateTime?                  // last successful connection test
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@map("crm_wappin_configs")
+}
+
+model EflyerConfig {
+  id          String   @id @default(uuid())
+  tenant_slug String   @unique
+  aktif       Boolean  @default(false)   // toggle per tenant oleh Admin IT
+  api_url     String?                    // URL proxy PHP di Hostgator
+  api_key     String?                    // secret key untuk autentikasi proxy
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("crm_eflyer_configs")
+}
+
+// Template pesan yang sudah disetujui Wappin/Meta
+model BroadcastTemplate {
+  id                 String   @id @default(uuid())
+  tenant_slug        String
+  nama               String                   // nama lokal (untuk UI)
+  template_name      String                   // nama di Wappin (untuk API call)
+  template_namespace String?
+  template_language  String   @default("id")
+  components_schema  Json     @default("[]")  // array ComponentRequest V2
+  preview_text       String?                  // preview isi pesan (untuk UI)
+  aktif              Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  campaigns Campaign[]
+
+  @@unique([tenant_slug, template_name])
+  @@index([tenant_slug])
+  @@map("crm_broadcast_templates")
+}
+
+model Campaign {
+  id              String         @id @default(uuid())
+  tenant_slug     String
+  nama            String
+  status          CampaignStatus @default(DRAFT)
+  channel         Channel        @default(WA)
+  template_id     String?
+  // Params untuk template: { "1": "nama", "2": "tanggal" } (V1) atau diganti dari components
+  template_params Json           @default("{}")
+  segment_id      String?
+  jadwal_kirim    DateTime?
+  started_at      DateTime?
+  finished_at     DateTime?
+  // Counter (di-update secara incremental saat webhook masuk)
+  total_penerima  Int            @default(0)
+  total_terkirim  Int            @default(0)
+  total_diterima  Int            @default(0)
+  total_dibaca    Int            @default(0)
+  total_dibalas   Int            @default(0)
+  total_gagal     Int            @default(0)
+  error_summary   Json?                       // ringkasan error code dari Wappin
+  created_by      String
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  segment    Segment?            @relation(fields: [segment_id], references: [id])
+  template   BroadcastTemplate?  @relation(fields: [template_id], references: [id])
+  creator    AppUser             @relation(fields: [created_by], references: [id])
+  recipients CampaignRecipient[]
+
+  @@index([tenant_slug])
+  @@index([status])
+  @@index([jadwal_kirim])
+  @@map("crm_campaigns")
+}
+
+model CampaignRecipient {
+  id                String        @id @default(uuid())
+  campaign_id       String
+  person_id         String
+  no_hp             String        // snapshot saat campaign dibuat (immutable)
+  nama              String        // snapshot nama pasien
+  status            MessageStatus @default(PENDING)
+  wappin_message_id String?       @unique   // dari response Wappin → kunci korelasi webhook
+  error_code        String?       // kode error dari Wappin (601 = no WA, dll)
+  error_detail      String?
+  sent_at           DateTime?
+  delivered_at      DateTime?
+  read_at           DateTime?
+  replied_at        DateTime?
+
+  campaign Campaign @relation(fields: [campaign_id], references: [id])
+  person   Person   @relation(fields: [person_id], references: [id])
+
+  @@unique([campaign_id, person_id])
+  @@index([campaign_id])
+  @@index([wappin_message_id])
+  @@index([no_hp])
+  @@map("crm_campaign_recipients")
+}
+
+model Conversation {
+  id              String             @id @default(uuid())
+  tenant_slug     String
+  person_id       String?
+  channel         Channel
+  channel_user_id String             // WA number / IG user ID / FB user ID
+  status          ConversationStatus @default(OPEN)
+  assigned_to     String?
+  last_message_at DateTime           @default(now())
+  unread_count    Int                @default(0)
+  created_at      DateTime           @default(now())
+
+  person        Person?   @relation(fields: [person_id], references: [id])
+  assigned_user AppUser?  @relation("AssignedUser", fields: [assigned_to], references: [id])
+  messages      Message[]
+
+  @@unique([tenant_slug, channel, channel_user_id])
+  @@index([tenant_slug])
+  @@index([status])
+  @@index([last_message_at])
+  @@map("crm_conversations")
+}
+
+model Message {
+  id                String           @id @default(uuid())
+  conversation_id   String
+  direction         MessageDirection
+  content           String
+  media_url         String?
+  media_type        String?
+  is_internal_note  Boolean          @default(false)
+  status            MessageStatus    @default(PENDING)
+  wappin_message_id String?
+  sent_by           String?
+  ai_generated      Boolean          @default(false)
+  sent_at           DateTime?
+  delivered_at      DateTime?
+  read_at           DateTime?
+  created_at        DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id])
+  sender       AppUser?     @relation("SentBy", fields: [sent_by], references: [id])
+
+  @@index([conversation_id])
+  @@index([created_at])
+  @@map("crm_messages")
+}
+
+model SapaanConfig {
+  id          String      @id @default(uuid())
+  tenant_slug String
+  jenis       SapaanJenis
+  aktif       Boolean     @default(false)
+  template    String
+  jam_kirim   Int         @default(7)
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+
+  @@unique([tenant_slug, jenis])
+  @@map("crm_sapaan_configs")
+}
+
+model SapaanLog {
+  id          String        @id @default(uuid())
+  tenant_slug String
+  jenis       SapaanJenis
+  person_id   String
+  status      MessageStatus
+  message_id  String?
+  error_msg   String?
+  sent_at     DateTime      @default(now())
+
+  person Person? @relation(fields: [person_id], references: [id])
+
+  @@index([tenant_slug, jenis])
+  @@index([tenant_slug, person_id, jenis])
+  @@map("crm_sapaan_logs")
+}
+
+// ─────────────────────────────────────────────
+// PERSON CONTACTS
+// Nomor HP, WA, email, telepon per-person
+// ─────────────────────────────────────────────
+
+model PersonContact {
+  id          String       @id @default(uuid())
+  person_id   String
+  tenant_slug String
+  jenis       ContactJenis // HP | WA | EMAIL | TELEPON_RUMAH
+  nilai       String       // nomor atau alamat email
+  label       String?      // "HP Pribadi" | "HP Anak" | dll
+  is_primary  Boolean      @default(false)
+  is_wa_aktif Boolean      @default(false) // apakah nomor ini aktif untuk WA broadcast/sapaan
+  created_at  DateTime     @default(now())
+
+  person Person @relation(fields: [person_id], references: [id])
+
+  @@unique([person_id, nilai])
+  @@index([tenant_slug, nilai])
+  @@index([person_id])
+  @@map("crm_person_contacts")
+}
+
+// ─────────────────────────────────────────────
+// KEGIATAN
+// Seminar, pelatihan, bakti sosial, dll
+// ─────────────────────────────────────────────
+
+model Kegiatan {
+  id              String    @id @default(uuid())
+  tenant_slug     String
+  kode            String
+  nama            String
+  jenis           String    // Seminar | Pelatihan | Bakti Sosial | dll
+  tanggal_mulai   DateTime
+  tanggal_selesai DateTime?
+  lokasi          String?
+  penyelenggara   String?
+  keterangan      String?
+  poin_kegiatan   Int       @default(0)
+  status          String    @default("selesai") // aktif | selesai
+  qr_token        String    @unique @default(uuid())
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  peserta KegiatanPeserta[]
+
+  @@index([tenant_slug])
+  @@index([tanggal_mulai])
+  @@map("crm_kegiatan")
+}
+
+model KegiatanPeserta {
+  id             String   @id @default(uuid())
+  kegiatan_id    String
+  person_id      String
+  tenant_slug    String
+  hadir          Boolean  @default(true)
+  poin_diberikan Int      @default(0)
+  sumber         String   @default("admin") // admin | self | migrasi
+  catatan        String?
+  created_at     DateTime @default(now())
+
+  kegiatan Kegiatan @relation(fields: [kegiatan_id], references: [id])
+  person   Person   @relation(fields: [person_id], references: [id])
+
+  @@unique([kegiatan_id, person_id])
+  @@index([person_id])
+  @@index([tenant_slug])
+  @@map("crm_kegiatan_peserta")
+}
+
+// ─────────────────────────────────────────────
+// KONTAK LANGSUNG
+// Riwayat interaksi langsung (telepon, walk-in, dll)
+// ─────────────────────────────────────────────
+
+model KontakLangsung {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  person_id   String
+  sub_tipe    String   // telepon | walk_in | referral | medsos | lainnya
+  tanggal     DateTime
+  catatan     String?
+  operator_id String?
+  created_at  DateTime @default(now())
+
+  person Person @relation(fields: [person_id], references: [id])
+
+  @@index([person_id])
+  @@index([tenant_slug])
+  @@map("crm_kontak_langsung")
+}
+
+// ─────────────────────────────────────────────
+// LOYALTY
+// Poin loyalitas berdasarkan kunjungan dan kegiatan
+// ─────────────────────────────────────────────
+
+model LoyaltyRule {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  jenis       String   // KUNJUNGAN_RAWAT_JALAN | KUNJUNGAN_RAWAT_INAP | KUNJUNGAN_PENUNJANG | KEGIATAN | MANUAL
+  poin        Int      @default(0)
+  aktif       Boolean  @default(true)
+  keterangan  String?
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, jenis])
+  @@map("crm_loyalty_rules")
+}
+
+model LoyaltyTransaction {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  person_id   String
+  jenis       String   // KUNJUNGAN_RAWAT_JALAN | KUNJUNGAN_RAWAT_INAP | KUNJUNGAN_PENUNJANG | KEGIATAN | MANUAL | REDEEM
+  poin        Int      // bisa negatif untuk redeem
+  ref_id      String?  // id kegiatan atau id simrs_visit
+  keterangan  String?
+  created_at  DateTime @default(now())
+
+  person Person @relation(fields: [person_id], references: [id])
+
+  @@index([person_id])
+  @@index([tenant_slug])
+  @@map("crm_loyalty_transactions")
+}
+
+// ─────────────────────────────────────────────
+// TAG RULE LIBRARY
+// Panduan untuk AI auto-tag. Dikelola admin operasional.
+// Dibaca oleh Haiku setiap kali melakukan auto-tagging.
+// ─────────────────────────────────────────────
+
+model TagRule {
+  id               String   @id @default(uuid())
+  tenant_slug      String
+  tag_id           String
+  aktif            Boolean  @default(true)
+  // Trigger: kondisi yang memicu tag ini
+  icd_codes        String[] // kode ICD-10 yang menjadi trigger (e.g. ["E10","E11"])
+  icd_exclude      String[] // kode ICD yang dikecualikan
+  keyword_include  String[] // kata kunci dalam diagnosa/tindakan
+  keyword_exclude  String[] // kata kunci yang dikecualikan
+  // Panduan natural language untuk Haiku
+  instruksi_ai     String   // instruksi eksplisit untuk AI
+  contoh_positif   String[] // contoh diagnosa yang HARUS dapat tag ini
+  contoh_negatif   String[] // contoh diagnosa yang TIDAK boleh dapat tag ini
+  // Meta
+  confidence_min   Float    @default(0.80) // threshold minimum untuk auto-apply
+  created_by       String
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  tag Tag @relation(fields: [tag_id], references: [id])
+
+  @@unique([tenant_slug, tag_id])
+  @@index([tenant_slug])
+  @@map("crm_tag_rules")
+}
+
+// ─────────────────────────────────────────────
+// IMPORT LOG
+// Riwayat setiap import Excel pasien.
+// ─────────────────────────────────────────────
+
+model ImportLog {
+  id               String       @id @default(uuid())
+  tenant_slug      String
+  sumber           ImportSumber @default(EXCEL)
+  status           ImportStatus @default(PENDING)
+  filename         String?
+  total_rows       Int          @default(0)
+  processed_rows   Int          @default(0)
+  new_persons      Int          @default(0)   // pasien baru yang dibuat
+  updated_persons  Int          @default(0)   // pasien existing yang diupdate
+  new_visits       Int          @default(0)   // kunjungan baru
+  skipped_rows     Int          @default(0)   // baris yang dilewati (duplikat/error)
+  error_detail     Json?        // array error per baris
+  started_at       DateTime     @default(now())
+  finished_at      DateTime?
+  created_by       String
+
+  @@index([tenant_slug])
+  @@index([status])
+  @@map("crm_import_logs")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum TenantPlan {
+  TRIAL
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN_IT
+  ADMIN_OPS
+  SUPERVISOR
+  AGEN
+}
+
+enum TagSource {
+  manual
+  auto_ai
+  kegiatan
+  broadcast
+  simrs_sync
+  akar_migrasi
+}
+
+enum Channel {
+  WA
+  IG
+  FB
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageDirection {
+  incoming
+  outgoing
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+}
+
+enum SimrsUnit {
+  RAWAT_JALAN
+  RAWAT_INAP
+  PENUNJANG
+}
+
+enum SapaanJenis {
+  ULTAH
+  HARI_RAYA
+  KONTROL_REMINDER
+}
+
+enum ImportSumber {
+  EXCEL
+  SIMRS_API   // placeholder untuk integrasi API SIMRS di masa depan
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum ContactJenis {
+  HP
+  WA
+  EMAIL
+  TELEPON_RUMAH
+}

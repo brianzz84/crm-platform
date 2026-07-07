@@ -1,0 +1,204 @@
+/**
+ * Sapaan Worker — proses job pengiriman sapaan otomatis via BullMQ.
+ *
+ * Job types:
+ *  - ULTAH:            kirim ucapan ulang tahun ke pasien yang berulang tahun hari ini
+ *  - KONTROL_REMINDER: kirim pengingat kontrol H-3 dan H-1 (butuh data jadwal dari SIMRS)
+ *  - HARI_RAYA:        kirim ucapan hari raya ke semua pasien aktif (trigger manual admin)
+ */
+
+import { Job } from 'bullmq'
+import { QUEUE_SAPAAN } from '@/lib/queue'
+import { getTenantDb, masterDb } from '@/lib/tenant'
+import { getWappinToken, sendWaMessage } from '@/lib/wappin-client'
+
+const DRY_RUN = process.env.SAPAAN_DRY_RUN === 'true'
+
+export interface SapaanJobData {
+  type:       'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER'
+  tenantSlug: string
+  // Untuk HARI_RAYA: nama hari raya (contoh: 'Idul Fitri 1447 H')
+  hariRaya?:  string
+  // Untuk KONTROL_REMINDER: 'H-3' atau 'H-1'
+  horizon?:   'H-3' | 'H-1'
+}
+
+export interface SapaanJobResult {
+  sent:   number
+  failed: number
+  skipped: number
+}
+
+// ──────────────────────────────────────────────
+// Template renderer — substitusi variabel ke teks
+// ──────────────────────────────────────────────
+function renderTemplate(template: string, vars: Record<string, string>): string {
+  let result = template
+  for (const [key, val] of Object.entries(vars)) {
+    result = result.replaceAll(`{{${key}}}`, val)
+  }
+  return result
+}
+
+function today(): string {
+  return new Date().toLocaleDateString('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
+}
+
+// ──────────────────────────────────────────────
+// Job processor
+// ──────────────────────────────────────────────
+async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResult> {
+  const { type, tenantSlug, hariRaya, horizon } = job.data
+
+  const db  = await getTenantDb(tenantSlug)
+  const now = new Date()
+
+  // Ambil konfigurasi sapaan jenis ini
+  const cfg = await db.sapaanConfig.findUnique({
+    where: { tenant_slug_jenis: { tenant_slug: tenantSlug, jenis: type } },
+  })
+
+  if (!cfg || !cfg.aktif) {
+    job.log(`[${type}] Config tidak aktif atau tidak ditemukan — skip`)
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+
+  // Ambil config Wappin (skip jika dry-run)
+  let wappinCfg: any = null
+  let token: string | null = null
+
+  if (!DRY_RUN) {
+    wappinCfg = await db.wappinConfig.findUnique({ where: { tenant_slug: tenantSlug } })
+    if (!wappinCfg?.aktif) {
+      job.log(`[${type}] Wappin tidak aktif — skip`)
+      return { sent: 0, failed: 0, skipped: 0 }
+    }
+    token = await getWappinToken(wappinCfg as any)
+    if (!token) {
+      job.log(`[${type}] Gagal login ke Wappin — abort`)
+      throw new Error('Gagal mendapatkan token Wappin')
+    }
+  } else {
+    job.log(`[${type}] DRY-RUN mode aktif — pesan tidak dikirim ke Wappin`)
+  }
+
+  // Ambil profil klinik untuk variabel {{nama_rs}}
+  const profile = await db.tenantProfile.findUnique({ where: { tenant_slug: tenantSlug } })
+  const namaRs  = profile?.nama_rs ?? tenantSlug
+
+  let targets: { id: string; name: string; no_hp: string; meta?: Record<string, string> }[] = []
+
+  // ── Kumpulkan target berdasarkan jenis ──
+  if (type === 'ULTAH') {
+    const todayMd = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    // Cari pasien yang tanggal lahirnya bulan-tanggal hari ini
+    const persons = await db.person.findMany({
+      where: {
+        tenant_slug:   tenantSlug,
+        aktif:         true,
+        tanggal_lahir: { not: null },
+      },
+      include: {
+        contacts: { where: { is_wa_aktif: true, is_primary: true } },
+      },
+    })
+    targets = persons
+      .filter(p => {
+        if (!p.tanggal_lahir) return false
+        if (p.contacts.length === 0) return false
+        const d  = new Date(p.tanggal_lahir)
+        const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        return md === todayMd
+      })
+      .map(p => ({ id: p.id, name: p.name, no_hp: p.contacts[0].nilai }))
+
+    job.log(`[ULTAH] Ditemukan ${targets.length} pasien berulang tahun hari ini`)
+
+  } else if (type === 'HARI_RAYA') {
+    // Semua pasien aktif yang punya kontak WA aktif
+    const persons = await db.person.findMany({
+      where:   { tenant_slug: tenantSlug, aktif: true },
+      include: { contacts: { where: { is_wa_aktif: true, is_primary: true } } },
+    })
+    targets = persons
+      .filter(p => p.contacts.length > 0)
+      .map(p => ({
+        id:    p.id,
+        name:  p.name,
+        no_hp: p.contacts[0].nilai,
+        meta:  { hari_raya: hariRaya || 'Hari Raya' },
+      }))
+    job.log(`[HARI_RAYA] Kirim ke ${targets.length} pasien`)
+
+  } else if (type === 'KONTROL_REMINDER') {
+    // PENDING: Fitur ini membutuhkan field `jadwal_kontrol` dari integrasi SIMRS.
+    // Tanpa data jadwal kontrol yang akurat (bukan tanggal kunjungan lalu),
+    // pengiriman H-3/H-1 tidak bisa ditentukan dengan benar.
+    // Akan diaktifkan setelah modul SIMRS selesai dikerjakan.
+    job.log(`[KONTROL_REMINDER] PENDING — menunggu integrasi SIMRS (field jadwal_kontrol). Job diabaikan.`)
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+
+  if (targets.length === 0) {
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+
+  // ── Kirim ke semua target ──
+  let sent = 0, failed = 0, skipped = 0
+
+  for (const target of targets) {
+    // Cek sudah dikirim hari ini untuk jenis ini (idempotent)
+    const alreadySent = await db.sapaanLog.findFirst({
+      where: {
+        tenant_slug: tenantSlug,
+        person_id:   target.id,
+        jenis:       type,
+        sent_at:     { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) },
+      },
+    })
+    if (alreadySent) { skipped++; continue }
+
+    // Render template
+    const vars: Record<string, string> = {
+      nama:     target.name,
+      nama_rs:  namaRs,
+      hari_ini: today(),
+      ...target.meta,
+    }
+    const pesan = renderTemplate(cfg.template, vars)
+
+    // Kirim via Wappin atau dry-run
+    const result = DRY_RUN
+      ? (() => { job.log(`[DRY-RUN] → ${target.no_hp}: ${pesan.slice(0, 80)}…`); return { ok: true, message_id: `dry-${Date.now()}` } })()
+      : await sendWaMessage(wappinCfg!, token!, target.no_hp, pesan)
+
+    // Log hasil
+    await db.sapaanLog.create({
+      data: {
+        tenant_slug: tenantSlug,
+        person_id:   target.id,
+        jenis:       type,
+        status:      result.ok ? 'SENT' : 'FAILED',
+        message_id:  result.message_id,
+        error_msg:   result.error ?? null,
+        sent_at:     now,
+      },
+    })
+
+    if (result.ok) { sent++ } else { failed++ }
+
+    // Rate limit: jeda kecil antar pesan
+    await new Promise(r => setTimeout(r, 200))
+
+    // Report progress ke BullMQ
+    await job.updateProgress(Math.round(((sent + failed + skipped) / targets.length) * 100))
+  }
+
+  job.log(`[${type}] Selesai: ${sent} terkirim, ${failed} gagal, ${skipped} dilewati`)
+  return { sent, failed, skipped }
+}
+
+// Export processor untuk dipakai oleh worker index
+export { processSapaanJob }

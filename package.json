@@ -3,24 +3,47 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev -p 3002",
+    "build": "next build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "tsx --tsconfig tsconfig.json src/workers/index.ts",
+    "worker:dev": "tsx watch --tsconfig tsconfig.json src/workers/index.ts",
+    "worker:start": "node --import tsx/esm src/workers/index.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^5.79.2",
+    "ioredis": "^5.11.1",
+    "jose": "^6.2.3",
+    "next": "14.2.35",
+    "pg": "^8.22.0",
+    "prisma": "^7.8.0",
     "react": "^18",
     "react-dom": "^18",
-    "next": "14.2.35"
+    "react-icons": "^5.7.0",
+    "resend": "^6.16.0",
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5",
+    "tsx": "^4.23.0",
+    "zod": "^4.4.3"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35"
+    "typescript": "^5"
   }
 }
