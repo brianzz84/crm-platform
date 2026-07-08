@@ -1,11 +1,15 @@
 import webpush from 'web-push'
 import { getTenantDb } from './tenant'
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!,
-)
+function initVapid() {
+  if (process.env.VAPID_SUBJECT && process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT,
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY,
+    )
+  }
+}
 
 interface PushPayload {
   title: string
@@ -15,6 +19,7 @@ interface PushPayload {
 }
 
 export async function sendPushToTenant(tenantSlug: string, payload: PushPayload) {
+  initVapid()
   const db      = await getTenantDb(tenantSlug)
   const profile = await db.tenantProfile.findUnique({ where: { tenant_slug: tenantSlug }, select: { logo_url: true } })
   const icon    = profile?.logo_url || '/icons/icon-192x192.png'
