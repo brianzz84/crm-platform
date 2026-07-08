@@ -2,7 +2,7 @@
 buildCommand = "npm install && npx prisma generate && npm run build"
 
 [deploy]
-startCommand = "node .next/standalone/server.js"
+startCommand = "node server.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
