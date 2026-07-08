@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { Suspense } from 'react'
 import LoginForm from './LoginForm'
 
 export const metadata: Metadata = { title: 'Login' }
@@ -41,7 +42,9 @@ export default function LoginPage() {
           padding: 'var(--sp-6)',
           boxShadow: 'var(--shadow-md)',
         }}>
-          <LoginForm />
+          <Suspense fallback={null}>
+            <LoginForm />
+          </Suspense>
         </div>
 
         <p style={{ textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', marginTop: 'var(--sp-6)' }}>
