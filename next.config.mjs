@@ -2,8 +2,11 @@ process.env.TZ = 'Asia/Jakarta'
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Output standalone untuk deployment yang lebih efisien
   output: 'standalone',
+
+  // ESLint dan TypeScript strict check dijalankan terpisah via CI, bukan saat build
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
 
   // Izinkan gambar dari domain eksternal yang dipakai (logo tenant, dll)
   images: {
