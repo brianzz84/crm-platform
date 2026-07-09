@@ -117,6 +117,7 @@ export default function InboxShell({
   const [flyers, setFlyers]         = useState<FlyerItem[]>([])
   const [flyersLoading, setFlyersLoading] = useState(false)
   const [flyerQ, setFlyerQ]         = useState('')
+  const [unreadSummary, setUnreadSummary] = useState<Record<string, number>>({ OPEN: 0, PENDING: 0, RESOLVED: 0 })
   const fileInputRef                = useRef<HTMLInputElement>(null)
   const messagesEndRef              = useRef<HTMLDivElement>(null)
   const textareaRef                 = useRef<HTMLTextAreaElement>(null)
@@ -235,6 +236,20 @@ export default function InboxShell({
     const t = setInterval(() => pollMsgs(activeId), 5000)
     return () => clearInterval(t)
   }, [activeId, pollMsgs])
+
+  // Poll unread summary lintas tab setiap 5 detik
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res  = await fetch(`/api/${slug}/inbox/unread-summary`)
+        const json = await res.json()
+        if (json.success) setUnreadSummary(json.data)
+      } catch { /* abaikan */ }
+    }
+    poll()
+    const t = setInterval(poll, 5000)
+    return () => clearInterval(t)
+  }, [slug])
 
   function selectConv(id: string) {
     setActiveId(id)
@@ -483,17 +498,11 @@ export default function InboxShell({
 
         {/* Status tabs */}
         {(() => {
-          const unreadPerStatus: Record<string, number> = {}
-          convs.forEach(c => {
-            if (c.unread_count > 0) {
-              unreadPerStatus[c.status] = (unreadPerStatus[c.status] || 0) + c.unread_count
-            }
-          })
           return (
             <div style={{ display: 'flex', borderBottom: '1px solid #E9EDEF', background: 'white' }}>
               {(['OPEN', 'PENDING', 'RESOLVED'] as const).map((s) => {
                 const label   = s === 'OPEN' ? 'Terbuka' : s === 'PENDING' ? 'Menunggu' : 'Selesai'
-                const unread  = unreadPerStatus[s] || 0
+                const unread  = unreadSummary[s] || 0
                 const active  = statusFilter === s
                 return (
                   <button key={s} onClick={() => setStatusFilter(s)} style={{
