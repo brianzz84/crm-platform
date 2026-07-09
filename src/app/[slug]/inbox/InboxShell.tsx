@@ -212,11 +212,22 @@ export default function InboxShell({
     if (activeId) loadDetail(activeId)
   }, [activeId, loadDetail])
 
-  // Scroll ke bawah hanya saat ada pesan baru (bukan setiap render)
+  // Scroll ke bawah: instant saat pertama load, smooth saat pesan baru masuk
   const lastMsgId = msgs[msgs.length - 1]?.id
+  const prevLoadingRef = useRef(false)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [lastMsgId])
+    // Selesai loading → scroll instant ke bawah
+    if (prevLoadingRef.current && !loadingMsgs) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    }
+    prevLoadingRef.current = loadingMsgs
+  }, [loadingMsgs])
+  useEffect(() => {
+    // Pesan baru masuk (poll) → scroll smooth
+    if (!loadingMsgs && lastMsgId) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [lastMsgId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Polling setiap 5 detik — pakai pollMsgs yang ringan, bukan loadDetail
   useEffect(() => {

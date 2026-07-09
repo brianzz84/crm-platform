@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         conversation_id: params.id,
         ...(before ? { created_at: { lt: new Date(before) } } : {}),
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: limit,
       select: {
         id: true, direction: true, content: true,
