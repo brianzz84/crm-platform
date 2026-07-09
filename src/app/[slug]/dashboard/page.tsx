@@ -34,11 +34,12 @@ function StatCard({ label, value, sub, badge, accentColor = 'var(--c-secondary)'
       <div style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 800, color: 'var(--c-primary)', lineHeight: 1, marginBottom: 'var(--sp-1)' }}>
         {value}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {sub && <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>{sub}</div>}
+      <div style={{ marginTop: 'var(--sp-1)' }}>
+        {sub && <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', marginBottom: badge ? 6 : 0 }}>{sub}</div>}
         {badge && (
           <span style={{
-            fontSize: 11, fontWeight: 700, padding: '1px 7px',
+            display: 'inline-block',
+            fontSize: 11, fontWeight: 700, padding: '2px 9px',
             borderRadius: 99, background: badge.color + '22', color: badge.color,
           }}>
             {badge.text}
