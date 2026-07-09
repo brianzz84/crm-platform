@@ -482,19 +482,44 @@ export default function InboxShell({
         })()}
 
         {/* Status tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #E9EDEF', background: 'white' }}>
-          {(['OPEN', 'PENDING', 'RESOLVED'] as const).map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)} style={{
-              flex: 1, padding: '9px 4px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              border: 'none', background: 'transparent', fontFamily: 'inherit',
-              color: statusFilter === s ? WA_GREEN : '#667781',
-              borderBottom: statusFilter === s ? `2px solid ${WA_GREEN}` : '2px solid transparent',
-              transition: 'all 0.15s',
-            }}>
-              {s === 'OPEN' ? 'Terbuka' : s === 'PENDING' ? 'Menunggu' : 'Selesai'}
-            </button>
-          ))}
-        </div>
+        {(() => {
+          const unreadPerStatus: Record<string, number> = {}
+          convs.forEach(c => {
+            if (c.unread_count > 0) {
+              unreadPerStatus[c.status] = (unreadPerStatus[c.status] || 0) + c.unread_count
+            }
+          })
+          return (
+            <div style={{ display: 'flex', borderBottom: '1px solid #E9EDEF', background: 'white' }}>
+              {(['OPEN', 'PENDING', 'RESOLVED'] as const).map((s) => {
+                const label   = s === 'OPEN' ? 'Terbuka' : s === 'PENDING' ? 'Menunggu' : 'Selesai'
+                const unread  = unreadPerStatus[s] || 0
+                const active  = statusFilter === s
+                return (
+                  <button key={s} onClick={() => setStatusFilter(s)} style={{
+                    flex: 1, padding: '9px 4px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    border: 'none', background: 'transparent', fontFamily: 'inherit',
+                    color: active ? WA_GREEN : '#667781',
+                    borderBottom: active ? `2px solid ${WA_GREEN}` : '2px solid transparent',
+                    transition: 'all 0.15s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  }}>
+                    {label}
+                    {unread > 0 && (
+                      <span style={{
+                        background: '#EF4444', color: 'white',
+                        borderRadius: 99, fontSize: 10, fontWeight: 700,
+                        padding: '1px 5px', minWidth: 16, textAlign: 'center', lineHeight: '16px',
+                      }}>
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {/* Conversation list */}
         <div style={{ flex: 1, overflowY: 'auto', background: 'white' }}>
