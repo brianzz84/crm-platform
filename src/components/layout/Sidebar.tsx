@@ -231,19 +231,36 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         }}>
           ☰
         </button>
-        <div style={{
-          width: 28, height: 28, background: 'var(--c-secondary)',
-          borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, fontWeight: 800, color: 'white', flexShrink: 0,
+        <Link href={`/${tenantSlug}/dashboard`} style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          flex: 1, minWidth: 0, textDecoration: 'none',
         }}>
-          {tenantName.slice(0, 1).toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {tenantName}
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={tenantName}
+              style={{
+                width: 28, height: 28, borderRadius: 6,
+                objectFit: 'contain', flexShrink: 0,
+                background: 'rgba(255,255,255,0.15)',
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 28, height: 28, background: 'var(--c-secondary)',
+              borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, fontWeight: 800, color: 'white', flexShrink: 0,
+            }}>
+              {tenantName.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {tenantName}
+            </div>
           </div>
-        </div>
-        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.12)', padding: '2px 8px', borderRadius: 99 }}>
+        </Link>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.12)', padding: '2px 8px', borderRadius: 99, flexShrink: 0 }}>
           CRM 360°
         </div>
       </div>
