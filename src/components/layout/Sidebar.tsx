@@ -16,11 +16,12 @@ interface NavItem {
 interface SidebarProps {
   tenantSlug: string
   tenantName: string
+  logoUrl?:   string | null
   userName:   string
   userRoles:  string[]
 }
 
-export default function Sidebar({ tenantSlug, tenantName, userName, userRoles }: SidebarProps) {
+export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, userRoles }: SidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
   const base     = `/${tenantSlug}`
@@ -90,18 +91,33 @@ export default function Sidebar({ tenantSlug, tenantName, userName, userRoles }:
         borderBottom: '1px solid rgba(255,255,255,0.1)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 0 }}>
-          <div style={{
-            width: 36, height: 36,
-            background: 'var(--c-secondary)',
-            borderRadius: 'var(--r-sm)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <span style={{ color: 'white', fontWeight: 800, fontSize: 15 }}>
-              {tenantName.slice(0, 1).toUpperCase()}
-            </span>
-          </div>
+        <Link href={`/${tenantSlug}/dashboard`} style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+          minWidth: 0, textDecoration: 'none', flex: 1,
+        }}>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={tenantName}
+              style={{
+                width: 36, height: 36, borderRadius: 'var(--r-sm)',
+                objectFit: 'contain', flexShrink: 0,
+                background: 'rgba(255,255,255,0.15)',
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 36, height: 36,
+              background: 'var(--c-secondary)',
+              borderRadius: 'var(--r-sm)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <span style={{ color: 'white', fontWeight: 800, fontSize: 15 }}>
+                {tenantName.slice(0, 1).toUpperCase()}
+              </span>
+            </div>
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'white', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {tenantName}
@@ -115,7 +131,7 @@ export default function Sidebar({ tenantSlug, tenantName, userName, userRoles }:
               CRM 360°
             </div>
           </div>
-        </div>
+        </Link>
         {/* Tombol tutup — hanya tampil di mobile via CSS */}
         <button
           className="sidebar-close-btn"

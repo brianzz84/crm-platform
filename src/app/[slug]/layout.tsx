@@ -40,6 +40,7 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
         <Sidebar
           tenantSlug={params.slug}
           tenantName={tenantName}
+          logoUrl={logoUrl}
           userName={session.name}
           userRoles={session.roles}
         />
