@@ -2,12 +2,11 @@ import webpush from 'web-push'
 import { getTenantDb } from './tenant'
 
 function initVapid() {
-  if (process.env.VAPID_SUBJECT && process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT,
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-      process.env.VAPID_PRIVATE_KEY,
-    )
+  const mailto  = process.env.VAPID_MAILTO
+  const pubKey  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const privKey = process.env.VAPID_PRIVATE_KEY
+  if (mailto && pubKey && privKey) {
+    webpush.setVapidDetails(mailto, pubKey, privKey)
   }
 }
 
