@@ -327,7 +327,59 @@ const recipients = await db.campaignRecipient.findMany({
 
 ---
 
-## 9. KEPUTUSAN ARSITEKTUR FINAL — TIDAK BISA DIUBAH TANPA DISKUSI
+## 9. PRINSIP SAAS-FIRST — WAJIB DIPATUHI
+
+> Setiap fitur yang dibangun harus dirancang untuk **banyak tenant**, bukan satu tenant.
+> Jika ada cara yang lebih mudah tapi hanya bekerja untuk satu tenant, pilih cara yang benar.
+
+```
+❌ DILARANG: hardcode slug / tenant ID di dalam kode
+❌ DILARANG: satu URL webhook per tenant jika bisa dijadikan satu URL bersama
+❌ DILARANG: env variable per-tenant (semua config tenant wajib di DB)
+❌ DILARANG: asumsi "hanya satu tenant yang pakai fitur ini"
+
+✅ WAJIB: semua config channel (Meta, Wappin, dll) disimpan di DB per-tenant
+✅ WAJIB: webhook external (Meta, Wappin) pakai satu URL → routing by identifier di payload
+✅ WAJIB: routing webhook Meta pakai metadata.phone_number_id → lookup masterDb.tenantConfig
+✅ WAJIB: fitur baru diuji mental: "kalau ada 50 tenant, apakah ini masih benar?"
+✅ WAJIB: master DB hanya untuk lookup tenant & config global — data bisnis tetap di tenant DB
+```
+
+### 9.1 Pola Webhook SaaS
+
+Setiap integrasi pihak ketiga (Meta, Wappin, payment gateway, dll) wajib menggunakan
+**satu URL webhook bersama** dengan routing internal berdasarkan identifier di payload:
+
+```
+# Meta Cloud API
+GET/POST /api/webhook/meta         ← satu URL, route by metadata.phone_number_id
+
+# Wappin (per-tenant karena Wappin tidak ada shared identifier)
+POST /api/webhook/wappin/[slug]/[secret]  ← exception: Wappin tidak ada metadata tenant
+```
+
+Lookup chain untuk Meta:
+```
+payload.entry.changes.value.metadata.phone_number_id
+  → masterDb.tenantConfig.meta_phone_number_id
+  → tenant.slug
+  → getTenantDb(slug)
+  → handleIncomingMessage(db, slug, ...)
+```
+
+### 9.2 Pola Config Per-Tenant
+
+Semua credential / setting integrasi disimpan di **tenant DB**, bukan env variable:
+
+| Integrasi | Model DB | Lookup di master |
+|-----------|----------|-----------------|
+| Meta Cloud API | `MetaConfig` (tenant DB) | `TenantConfig.meta_phone_number_id` |
+| Wappin | `WappinConfig` (tenant DB) | — (pakai URL secret) |
+| SIMRS | `TenantConfig.simrs_*` (master DB) | `TenantConfig.tenant_id` |
+
+---
+
+## 11. KEPUTUSAN ARSITEKTUR FINAL — TIDAK BISA DIUBAH TANPA DISKUSI
 
 1. **Satu DB per tenant** — tidak ada shared schema
 2. **`no_hp` sebagai matching key** antara AKAR customer + SIMRS patient
@@ -342,7 +394,7 @@ const recipients = await db.campaignRecipient.findMany({
 
 ---
 
-## 10. YANG PERLU DIKONFIRMASI (pending eksternal)
+## 12. YANG PERLU DIKONFIRMASI (pending eksternal)
 
 > Jangan assume sudah resolved. Tanya user jika relevan dengan task.
 

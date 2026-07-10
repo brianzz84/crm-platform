@@ -39,6 +39,7 @@ model TenantConfig {
   simrs_base_url          String?
   simrs_api_key           String?
   meta_access_token       String?
+  meta_phone_number_id    String?  // lookup key untuk routing webhook Meta SaaS
   ai_enabled              Boolean  @default(false)
   max_broadcast_per_month Int      @default(1000)
   created_at              DateTime @default(now())

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
-import { getTenantDb } from '@/lib/tenant'
+import { getTenantDb, masterDb } from '@/lib/tenant'
 import { z } from 'zod'
-import { sendMetaTextMessage } from '@/lib/meta-client'
 
 type Ctx = { params: { slug: string } }
 
@@ -45,6 +44,19 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const cfg = existing
       ? await db.metaConfig.update({ where: { tenant_slug: params.slug }, data })
       : await db.metaConfig.create({ data: { ...data, tenant_slug: params.slug } })
+
+    // Sync phone_number_id ke master DB — dipakai untuk routing SaaS webhook
+    const tenant = await masterDb.tenant.findUnique({
+      where:   { slug: params.slug },
+      select:  { id: true },
+    })
+    if (tenant) {
+      await masterDb.tenantConfig.upsert({
+        where:  { tenant_id: tenant.id },
+        update: { meta_phone_number_id: parsed.data.phone_number_id },
+        create: { tenant_id: tenant.id, meta_phone_number_id: parsed.data.phone_number_id },
+      })
+    }
 
     const { access_token, ...safe } = cfg as any
     return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token } })
