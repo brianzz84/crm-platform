@@ -304,6 +304,21 @@ model WappinConfig {
   @@map("crm_wappin_configs")
 }
 
+// Konfigurasi Meta Cloud API per-tenant (disimpan di tenant DB)
+model MetaConfig {
+  id               String   @id @default(uuid())
+  tenant_slug      String   @unique
+  phone_number_id  String                         // Meta Phone Number ID
+  access_token     String                         // System User permanent token
+  waba_id          String?                        // WhatsApp Business Account ID
+  aktif            Boolean  @default(true)
+  tested_at        DateTime?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@map("crm_meta_configs")
+}
+
 model EflyerConfig {
   id          String   @id @default(uuid())
   tenant_slug String   @unique

@@ -3,6 +3,7 @@ import { getTenantDb } from '@/lib/tenant'
 import { requireTenantPermission } from "@/lib/auth"
 import { z } from 'zod'
 import { getWappinToken, sendWaMessage, sendWaMedia } from '@/lib/wappin-client'
+import { sendMetaTextMessage, sendMetaMediaMessage } from '@/lib/meta-client'
 
 const SendSchema = z.object({
   content:          z.string().default(''),
@@ -68,25 +69,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ success: false, error: 'Pesan tidak boleh kosong' }, { status: 400 })
     }
 
-    // ── Kirim ke Wappin jika bukan internal note ──────────────────
-    let wappinMsgId: string | null = null
-
-    if (!is_internal_note) {
-      const wCfg = await db.wappinConfig.findUnique({ where: { tenant_slug: params.slug } })
-      if (wCfg?.aktif) {
-        const noHp = conv.person?.no_hp ?? null
-        if (noHp) {
-          const token = await getWappinToken(wCfg as any)
-          if (token) {
-            const result = media_url && media_type
-              ? await sendWaMedia(wCfg as any, token, noHp, media_type, media_url, content || undefined, media_filename)
-              : await sendWaMessage(wCfg as any, token, noHp, content)
-            wappinMsgId = result.message_id
-          }
-        }
-      }
-    }
-
+    // ── Simpan pesan ke DB dulu ──────────────────────────────────
     const msg = await db.message.create({
       data: {
         conversation_id:  params.id,
@@ -98,7 +81,6 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         status:           'SENT',
         sent_by:          session!.userId,
         sent_at:          new Date(),
-        ...(wappinMsgId ? { wappin_message_id: wappinMsgId } : {}),
       },
       select: {
         id: true, direction: true, content: true,
@@ -113,8 +95,58 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       data: { last_message_at: new Date(), status: 'OPEN' },
     })
 
+    // ── Kirim ke channel (best-effort, tidak gagalkan response) ──
+    if (!is_internal_note) {
+      const noHp = conv.person?.no_hp ?? null
+      if (noHp) {
+        sendToChannel(db, params.slug, noHp, msg.id, content, media_url, media_type, media_filename).catch(e =>
+          console.error(`[inbox/messages] send failed conv=${params.id}:`, e)
+        )
+      }
+    }
+
     return NextResponse.json({ success: true, data: msg }, { status: 201 })
   } catch (e) {
     return NextResponse.json({ success: false, error: String(e) }, { status: 500 })
+  }
+}
+
+// Kirim via Meta jika ada MetaConfig aktif, fallback ke Wappin
+async function sendToChannel(
+  db:           any,
+  slug:         string,
+  noHp:         string,
+  msgId:        string,
+  content:      string,
+  media_url?:   string,
+  media_type?:  string,
+  media_filename?: string,
+) {
+  // Coba Meta dulu
+  const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: slug } })
+  if (metaCfg?.aktif) {
+    const extMsgId = media_url && media_type
+      ? await sendMetaMediaMessage(metaCfg, noHp, media_type as any, media_url, content || undefined, media_filename)
+      : await sendMetaTextMessage(metaCfg, noHp, content)
+
+    if (extMsgId) {
+      await db.message.update({ where: { id: msgId }, data: { wappin_message_id: extMsgId } })
+    }
+    return
+  }
+
+  // Fallback: Wappin
+  const wCfg = await db.wappinConfig.findUnique({ where: { tenant_slug: slug } })
+  if (!wCfg?.aktif) return
+
+  const token = await getWappinToken(wCfg)
+  if (!token) return
+
+  const result = media_url && media_type
+    ? await sendWaMedia(wCfg, token, noHp, media_type as any, media_url, content || undefined, media_filename)
+    : await sendWaMessage(wCfg, token, noHp, content)
+
+  if (result?.message_id) {
+    await db.message.update({ where: { id: msgId }, data: { wappin_message_id: result.message_id } })
   }
 }
