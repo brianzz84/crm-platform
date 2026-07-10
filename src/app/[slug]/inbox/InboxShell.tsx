@@ -277,7 +277,7 @@ export default function InboxShell({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, is_internal_note: isNote }),
       })
-      await loadDetail(activeId)
+      await pollMsgs(activeId)
       loadConvs()
     } finally { setSending(false) }
   }
@@ -305,7 +305,7 @@ export default function InboxShell({
           media_filename: filename,
         }),
       })
-      await loadDetail(activeId)
+      await pollMsgs(activeId)
       loadConvs()
     } finally { setSending(false) }
   }
