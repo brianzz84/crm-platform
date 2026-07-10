@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/tenant'
-import { sendPushToTenant } from '@/lib/push'
+import { handleIncomingMessage } from '@/lib/inbox-handler'
 
 type Ctx = { params: { slug: string; secret: string } }
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const callbackType = (body.callback_type || '').toLowerCase()
 
     if (callbackType === 'incoming_message' || callbackType === 'inbound') {
-      await handleIncomingMessage(db, params.slug, body)
+      await processIncomingMessage(db, params.slug, body)
     } else {
       // delivery report / message status update
       await handleDeliveryReport(db, params.slug, body)
@@ -99,87 +99,16 @@ async function handleDeliveryReport(db: any, slug: string, body: WappinCallback)
 // Handler: Incoming Message (balasan dari pasien)
 // ─────────────────────────────────────────────
 
-async function handleIncomingMessage(db: any, slug: string, body: WappinCallback) {
+async function processIncomingMessage(db: any, slug: string, body: WappinCallback) {
   const senderNumber = body.sender_number
   if (!senderNumber) return
 
-  // Cari pasien berdasarkan nomor HP
-  const person = await db.person.findFirst({
-    where: { tenant_slug: slug, no_hp: senderNumber },
+  await handleIncomingMessage(db, slug, {
+    senderNumber,
+    content:    body.message_content || '',
+    externalId: body.message_id || undefined,
+    timestamp:  body.timestamp ? new Date(body.timestamp) : undefined,
   })
-
-  // Cari atau buat Conversation
-  let conversation = await db.conversation.findUnique({
-    where: {
-      tenant_slug_channel_channel_user_id: {
-        tenant_slug:     slug,
-        channel:         'WA',
-        channel_user_id: senderNumber,
-      },
-    },
-  })
-
-  if (!conversation) {
-    conversation = await db.conversation.create({
-      data: {
-        tenant_slug:     slug,
-        person_id:       person?.id ?? null,
-        channel:         'WA',
-        channel_user_id: senderNumber,
-        status:          'OPEN',
-        last_message_at: new Date(),
-        unread_count:    1,
-      },
-    })
-  } else {
-    await db.conversation.update({
-      where: { id: conversation.id },
-      data:  {
-        status:          'OPEN',
-        last_message_at: new Date(),
-        unread_count:    { increment: 1 },
-        ...(person && !conversation.person_id ? { person_id: person.id } : {}),
-      },
-    })
-  }
-
-  // Simpan pesan masuk
-  await db.message.create({
-    data: {
-      conversation_id:   conversation.id,
-      direction:         'incoming',
-      content:           body.message_content || '',
-      status:            'DELIVERED',
-      wappin_message_id: body.message_id || null,
-      sent_at:           body.timestamp ? new Date(body.timestamp) : new Date(),
-    },
-  })
-
-  // Kirim push notification ke semua agent/supervisor
-  sendPushToTenant(slug, {
-    title: `Pesan dari ${senderNumber}`,
-    body:  body.message_content?.slice(0, 100) || 'Pesan baru masuk',
-    url:   `/${slug}/inbox`,
-    tag:   `inbox-${conversation.id}`,
-  }).catch(() => null)
-
-  // Jika ini balasan dari campaign — update replied_at
-  if (body.message_id) {
-    const recipient = await db.campaignRecipient.findFirst({
-      where: { no_hp: senderNumber, status: { in: ['SENT', 'DELIVERED', 'READ'] } },
-      orderBy: { sent_at: 'desc' },
-    })
-    if (recipient) {
-      await db.campaignRecipient.update({
-        where: { id: recipient.id },
-        data:  { replied_at: new Date() },
-      })
-      await db.campaign.update({
-        where: { id: recipient.campaign_id },
-        data:  { total_dibalas: { increment: 1 } },
-      })
-    }
-  }
 }
 
 function mapWappinStatus(statusMessages?: string): 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' {
