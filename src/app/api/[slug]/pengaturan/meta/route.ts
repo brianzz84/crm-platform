@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
-import { getTenantDb, masterDb } from '@/lib/tenant'
+import { getTenantDb } from '@/lib/tenant'
 import { z } from 'zod'
 
 type Ctx = { params: { slug: string } }
@@ -14,7 +14,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   if (!cfg) return NextResponse.json({ success: true, data: null })
 
-  // Jangan kirim access_token penuh ke client — hanya tanda ada/tidak
   const { access_token, ...safe } = cfg as any
   return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token } })
 }
@@ -39,24 +38,11 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const existing = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
 
     const data: any = { ...parsed.data }
-    if (!data.access_token) delete data.access_token  // jangan overwrite token lama jika kosong
+    if (!data.access_token) delete data.access_token
 
     const cfg = existing
       ? await db.metaConfig.update({ where: { tenant_slug: params.slug }, data })
       : await db.metaConfig.create({ data: { ...data, tenant_slug: params.slug } })
-
-    // Sync phone_number_id ke master DB — dipakai untuk routing SaaS webhook
-    const tenant = await masterDb.tenant.findUnique({
-      where:   { slug: params.slug },
-      select:  { id: true },
-    })
-    if (tenant) {
-      await masterDb.tenantConfig.upsert({
-        where:  { tenant_id: tenant.id },
-        update: { meta_phone_number_id: parsed.data.phone_number_id },
-        create: { tenant_id: tenant.id, meta_phone_number_id: parsed.data.phone_number_id },
-      })
-    }
 
     const { access_token, ...safe } = cfg as any
     return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token } })
@@ -65,7 +51,6 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   }
 }
 
-// POST — test koneksi dengan kirim request ke Meta Graph API
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'configSystem')
   if (error) return error
@@ -75,7 +60,6 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (!cfg) return NextResponse.json({ success: false, error: 'Konfigurasi belum ada' }, { status: 400 })
 
   try {
-    // Cek token dengan fetch info phone number
     const res  = await fetch(
       `https://graph.facebook.com/v22.0/${cfg.phone_number_id}?fields=display_phone_number,verified_name`,
       { headers: { Authorization: `Bearer ${cfg.access_token}` }, signal: AbortSignal.timeout(10_000) },
@@ -88,9 +72,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         success: true,
         message: `Koneksi berhasil! Nomor: ${json.display_phone_number} (${json.verified_name})`,
       })
-    } else {
-      return NextResponse.json({ success: false, error: json.error?.message ?? 'Token tidak valid' })
     }
+    return NextResponse.json({ success: false, error: json.error?.message ?? 'Token tidak valid' })
   } catch (e: any) {
     return NextResponse.json({ success: false, error: `Timeout / network error: ${e.message}` })
   }

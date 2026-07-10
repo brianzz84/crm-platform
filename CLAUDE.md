@@ -334,48 +334,54 @@ const recipients = await db.campaignRecipient.findMany({
 
 ```
 ❌ DILARANG: hardcode slug / tenant ID di dalam kode
-❌ DILARANG: satu URL webhook per tenant jika bisa dijadikan satu URL bersama
 ❌ DILARANG: env variable per-tenant (semua config tenant wajib di DB)
 ❌ DILARANG: asumsi "hanya satu tenant yang pakai fitur ini"
+❌ DILARANG: satu akun Meta/Wappin platform untuk semua tenant
 
+✅ WAJIB: setiap tenant punya akun Meta App / WABA / nomor WA sendiri
 ✅ WAJIB: semua config channel (Meta, Wappin, dll) disimpan di DB per-tenant
-✅ WAJIB: webhook external (Meta, Wappin) pakai satu URL → routing by identifier di payload
-✅ WAJIB: routing webhook Meta pakai metadata.phone_number_id → lookup masterDb.tenantConfig
 ✅ WAJIB: fitur baru diuji mental: "kalau ada 50 tenant, apakah ini masih benar?"
 ✅ WAJIB: master DB hanya untuk lookup tenant & config global — data bisnis tetap di tenant DB
 ```
 
-### 9.1 Pola Webhook SaaS
+### 9.1 Model Integrasi: Tenant-Owned Accounts
 
-Setiap integrasi pihak ketiga (Meta, Wappin, payment gateway, dll) wajib menggunakan
-**satu URL webhook bersama** dengan routing internal berdasarkan identifier di payload:
+Platform ini menggunakan model **tenant-owned** — setiap tenant memiliki dan mengelola
+akun integrasi mereka sendiri secara independen:
+
+| Integrasi | Pemilik akun | Konfigurasi |
+|-----------|-------------|-------------|
+| Meta Cloud API | Tenant (Meta App + WABA sendiri) | `MetaConfig` di tenant DB |
+| Wappin | Tenant (akun Wappin sendiri) | `WappinConfig` di tenant DB |
+| SIMRS | Tenant (endpoint SIMRS RS masing-masing) | `TenantConfig.simrs_*` di master DB |
+
+### 9.2 Pola Webhook Per-Tenant
+
+Karena setiap tenant punya Meta App sendiri, setiap tenant mendaftarkan
+webhook URL mereka sendiri di Meta Developers:
 
 ```
-# Meta Cloud API
-GET/POST /api/webhook/meta         ← satu URL, route by metadata.phone_number_id
+# Meta — per tenant, didaftarkan di Meta App milik tenant
+GET/POST /api/webhook/meta/[slug]
 
-# Wappin (per-tenant karena Wappin tidak ada shared identifier)
-POST /api/webhook/wappin/[slug]/[secret]  ← exception: Wappin tidak ada metadata tenant
+# Wappin — per tenant, URL mengandung secret unik
+POST /api/webhook/wappin/[slug]/[secret]
 ```
 
-Lookup chain untuk Meta:
-```
-payload.entry.changes.value.metadata.phone_number_id
-  → masterDb.tenantConfig.meta_phone_number_id
-  → tenant.slug
-  → getTenantDb(slug)
-  → handleIncomingMessage(db, slug, ...)
-```
+Tenant mengisi webhook URL mereka sendiri di halaman Pengaturan → Integrasi Meta,
+lalu mendaftarkannya ke Meta Developers account mereka.
 
-### 9.2 Pola Config Per-Tenant
+### 9.3 Pola Config Per-Tenant
 
 Semua credential / setting integrasi disimpan di **tenant DB**, bukan env variable:
 
-| Integrasi | Model DB | Lookup di master |
-|-----------|----------|-----------------|
-| Meta Cloud API | `MetaConfig` (tenant DB) | `TenantConfig.meta_phone_number_id` |
-| Wappin | `WappinConfig` (tenant DB) | — (pakai URL secret) |
-| SIMRS | `TenantConfig.simrs_*` (master DB) | `TenantConfig.tenant_id` |
+```typescript
+// ✅ BENAR — config dibaca dari DB tenant
+const cfg = await db.metaConfig.findUnique({ where: { tenant_slug: slug } })
+
+// ❌ SALAH — jangan taruh credential tenant di env variable
+const token = process.env.META_ACCESS_TOKEN
+```
 
 ---
 
