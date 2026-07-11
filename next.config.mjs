@@ -18,9 +18,9 @@ const nextConfig = {
   // Matikan powered-by header
   poweredByHeader: false,
 
-  // VAPID public key harus tersedia di build time untuk Web Push
+  // VAPID public key di-hardcode karena Railway tidak inject env saat build time
   env: {
-    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'BGQKiAIcCA4kEst0IIOLCACmMOiEz2rcFeVOE04I9PBCddTJfJWeZvmbunHqR9GO6UrbZZbh9gmQzbjZONSCfP8',
   },
 }
 
