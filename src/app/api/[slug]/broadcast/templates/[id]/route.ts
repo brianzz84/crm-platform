@@ -77,8 +77,9 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       },
     })
     return NextResponse.json({ success: true, data: updated, meta_status })
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  } catch (e: any) {
+    console.error('[broadcast/templates PUT]', e?.message)
+    return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 })
   }
 }
 
