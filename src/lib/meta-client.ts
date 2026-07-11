@@ -114,12 +114,48 @@ export async function sendMetaTemplateMessage(
 
 export async function fetchMetaTemplates(cfg: MetaCfg, wabaId: string): Promise<any[]> {
   const res = await fetch(
-    `${META_API_BASE}/${wabaId}/message_templates?fields=name,status,language,components&limit=100`,
+    `${META_API_BASE}/${wabaId}/message_templates?fields=id,name,status,language,category,components&limit=100`,
     { headers: { 'Authorization': `Bearer ${cfg.access_token}` } }
   )
   const json = await res.json()
   if (!res.ok) throw new Error(json.error?.message ?? `Meta API ${res.status}`)
   return json.data ?? []
+}
+
+export interface MetaTemplateComponent {
+  type:     'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS'
+  format?:  'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+  text?:    string
+  buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }>
+  example?: { body_text?: string[][]; header_text?: string[] }
+}
+
+export interface CreateMetaTemplateInput {
+  name:       string
+  category:   'MARKETING' | 'UTILITY' | 'AUTHENTICATION'
+  language:   string
+  components: MetaTemplateComponent[]
+}
+
+export async function createMetaTemplate(
+  cfg:    MetaCfg,
+  wabaId: string,
+  input:  CreateMetaTemplateInput,
+): Promise<{ id: string; status: string }> {
+  const res = await fetch(`${META_API_BASE}/${wabaId}/message_templates`, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${cfg.access_token}`,
+    },
+    body: JSON.stringify(input),
+  })
+  const json = await res.json()
+  if (!res.ok) {
+    console.error('[meta-client] createTemplate failed:', JSON.stringify(json))
+    throw new Error(json.error?.error_user_msg || json.error?.message || `Meta API ${res.status}`)
+  }
+  return { id: json.id, status: json.status }
 }
 
 // 08xxxxxxxxx → 628xxxxxxxxx

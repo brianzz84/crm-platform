@@ -342,6 +342,9 @@ model BroadcastTemplate {
   template_language  String   @default("id")
   components_schema  Json     @default("[]")  // array ComponentRequest V2
   preview_text       String?                  // preview isi pesan (untuk UI)
+  meta_template_id   String?                  // ID template di Meta
+  meta_status        String?                  // PENDING | APPROVED | REJECTED | PAUSED
+  meta_category      String?                  // MARKETING | UTILITY | AUTHENTICATION
   aktif              Boolean  @default(true)
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt

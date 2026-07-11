@@ -15,12 +15,16 @@ interface Component {
   parameters: ComponentParam[]
 }
 
+type MetaStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED' | null
+
 interface Template {
   id:                 string
   nama:               string
   template_name:      string
-  template_namespace: string
   template_language:  string
+  meta_category:      string | null
+  meta_status:        MetaStatus
+  meta_template_id:   string | null
   components_schema:  Component[]
   preview_text:       string
   aktif:              boolean
@@ -183,6 +187,19 @@ function ComponentEditor({
   )
 }
 
+const CATEGORY_OPTIONS = [
+  { value: 'MARKETING',      label: 'Marketing',       desc: 'Promo, broadcast umum, ucapan' },
+  { value: 'UTILITY',        label: 'Utility',         desc: 'Reminder, konfirmasi, notifikasi' },
+  { value: 'AUTHENTICATION', label: 'Authentication',  desc: 'OTP, verifikasi' },
+]
+
+const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  APPROVED: { label: 'Approved',  bg: '#F0FDF4', color: '#16A34A' },
+  PENDING:  { label: 'Pending',   bg: '#FFFBEB', color: '#D97706' },
+  REJECTED: { label: 'Rejected',  bg: '#FEF2F2', color: '#DC2626' },
+  PAUSED:   { label: 'Paused',    bg: '#F1F5F9', color: '#64748B' },
+}
+
 function TemplateModal({
   slug, template, onClose, onSaved,
 }: {
@@ -190,31 +207,56 @@ function TemplateModal({
 }) {
   const isEdit = !!template
 
-  const [nama,           setNama]      = useState(template?.nama               ?? '')
-  const [tmplName,       setTmplName]  = useState(template?.template_name      ?? '')
-  const [tmplNs,         setTmplNs]    = useState(template?.template_namespace ?? '')
-  const [lang,           setLang]      = useState(template?.template_language  ?? 'id')
-  const [components,     setComps]     = useState<Component[]>(template?.components_schema ?? [])
-  const [previewText,    setPv]        = useState(template?.preview_text       ?? '')
-  const [saving,         setSaving]    = useState(false)
-  const [error,          setError]     = useState('')
+  const [nama,       setNama]   = useState(template?.nama               ?? '')
+  const [tmplName,   setTmplName] = useState(template?.template_name    ?? '')
+  const [lang,       setLang]   = useState(template?.template_language  ?? 'id')
+  const [category,   setCategory] = useState<string>(template?.meta_category ?? 'MARKETING')
+  const [components, setComps]  = useState<Component[]>(template?.components_schema ?? [
+    { type: 'header', text: '', parameters: [] },
+    { type: 'body',   text: '', parameters: [] },
+    { type: 'footer', text: '', parameters: [] },
+  ])
+  const [previewText, setPv]    = useState(template?.preview_text ?? '')
+  const [saving,      setSaving] = useState(false)
+  const [submitting,  setSubmitting] = useState(false)
+  const [error,       setError]  = useState('')
+  const [metaResult,  setMetaResult] = useState<string>('')
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true); setError('')
+  // Auto-generate template_name dari nama
+  function handleNamaChange(val: string) {
+    setNama(val)
+    if (!isEdit) setTmplName(val.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''))
+  }
+
+  async function save(submitToMeta: boolean) {
+    submitToMeta ? setSubmitting(true) : setSaving(true)
+    setError(''); setMetaResult('')
     try {
       const url    = isEdit ? `/api/${slug}/broadcast/templates/${template!.id}` : `/api/${slug}/broadcast/templates`
       const method = isEdit ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nama, template_name: tmplName, template_namespace: tmplNs, template_language: lang, components_schema: components, preview_text: previewText }),
+        body: JSON.stringify({
+          nama, template_name: tmplName, template_language: lang,
+          meta_category: category, components_schema: components,
+          preview_text: previewText, submit_to_meta: submitToMeta,
+        }),
       })
       const json = await res.json()
-      if (!res.ok) { setError(json.error || 'Gagal menyimpan'); return }
-      onSaved(json.data)
-    } finally { setSaving(false) }
+      if (!res.ok) { setError(typeof json.error === 'string' ? json.error : JSON.stringify(json.error)); return }
+      if (submitToMeta && json.meta_status) {
+        setMetaResult(json.meta_status === 'APPROVED'
+          ? '✅ Langsung disetujui Meta!'
+          : `⏳ Tersubmit ke Meta — status: ${json.meta_status}. Tunggu review Meta.`)
+        setTimeout(() => onSaved(json.data), 1500)
+      } else {
+        onSaved(json.data)
+      }
+    } finally { setSaving(false); setSubmitting(false) }
   }
+
+  async function handleSubmit(e: React.FormEvent) { e.preventDefault(); await save(false) }
 
   const inp: React.CSSProperties = {
     width: '100%', padding: '9px 12px', border: '1.5px solid var(--c-border)',
@@ -260,13 +302,15 @@ function TemplateModal({
             <div style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--c-text-faint)', textTransform: 'uppercase', marginBottom: 'var(--sp-3)' }}>
               Identitas Template
             </div>
+
+            {/* Nama & Bahasa */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
                   Nama Lokal (UI) *
                 </label>
-                <input required value={nama} onChange={e => setNama(e.target.value)}
-                  placeholder="cth: Promo Lebaran 2025" style={inp} />
+                <input required value={nama} onChange={e => handleNamaChange(e.target.value)}
+                  placeholder="cth: Ucapan Ulang Tahun" style={inp} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
@@ -277,45 +321,53 @@ function TemplateModal({
                 </select>
               </div>
             </div>
+
+            {/* template_name & Kategori */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
-                  Nama di Wappin (template_name) *
+                  Nama Template (Meta) *
                 </label>
                 <input required value={tmplName} onChange={e => setTmplName(e.target.value)}
-                  placeholder="cth: promo_lebaran_2025" style={{ ...inp, fontFamily: 'monospace' }} />
+                  placeholder="ucapan_ulang_tahun" style={{ ...inp, fontFamily: 'monospace' }} />
                 <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 3 }}>
-                  Sama persis dengan template_name di dashboard Wappin
+                  Huruf kecil, angka, underscore — otomatis dari nama
                 </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
-                  Namespace (opsional)
+                  Kategori Meta *
                 </label>
-                <input value={tmplNs} onChange={e => setTmplNs(e.target.value)}
-                  placeholder="cth: whatsapp_business_account_id" style={{ ...inp, fontFamily: 'monospace' }} />
+                <select value={category} onChange={e => setCategory(e.target.value)} style={inp}>
+                  {CATEGORY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label} — {o.desc}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
 
-          {/* Components */}
+          {/* Konten Template */}
           <div style={{
             background: 'var(--c-bg)', border: '1px solid var(--c-border)',
             borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', marginBottom: 'var(--sp-4)',
           }}>
+            <div style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--c-text-faint)', textTransform: 'uppercase', marginBottom: 'var(--sp-3)' }}>
+              Konten Pesan
+            </div>
             <ComponentEditor components={components} onChange={setComps} />
             <div style={{ marginTop: 8, padding: 'var(--sp-3)', background: '#EFF9FB', borderRadius: 'var(--r-sm)', fontSize: 11, color: '#0089A8' }}>
-              <strong>Tip:</strong> param_key adalah nama variabel yang diisi saat buat campaign (misal: <code>nama</code>, <code>kode_promo</code>). Contoh nilai dipakai untuk preview.
+              <strong>Tip:</strong> Gunakan <code>{'{{1}}'}</code> <code>{'{{2}}'}</code> dst di teks, lalu tambahkan param dengan nama dan contoh nilainya. Contoh nilai wajib diisi agar Meta bisa mereview template.
             </div>
           </div>
 
           {/* Preview text */}
           <div style={{ marginBottom: 'var(--sp-4)' }}>
             <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
-              Preview Teks (untuk tampilan di daftar campaign)
+              Catatan Internal (opsional)
             </label>
             <textarea value={previewText} onChange={e => setPv(e.target.value)}
-              rows={3} placeholder="Tulis ringkasan isi pesan template ini..."
+              rows={2} placeholder="Keterangan penggunaan template ini..."
               style={{ ...inp, resize: 'vertical' }} />
           </div>
 
@@ -329,7 +381,17 @@ function TemplateModal({
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-3)' }}>
+          {metaResult && (
+            <div style={{
+              background: '#F0FDF4', color: '#15803D', padding: 'var(--sp-3) var(--sp-4)',
+              borderRadius: 'var(--r-sm)', fontSize: 'var(--font-size-sm)',
+              marginBottom: 'var(--sp-4)', borderLeft: '3px solid #22C55E',
+            }}>
+              {metaResult}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
             <button type="button" onClick={onClose} style={{
               padding: '9px 20px', border: '1.5px solid var(--c-border)',
               borderRadius: 'var(--r-md)', background: 'var(--c-bg)',
@@ -338,13 +400,23 @@ function TemplateModal({
             }}>
               Batal
             </button>
-            <button type="submit" disabled={saving} style={{
+            {!isEdit && (
+              <button type="button" onClick={() => save(true)} disabled={submitting || saving} style={{
+                padding: '9px 20px', border: 'none', borderRadius: 'var(--r-md)',
+                background: submitting ? '#94A3B8' : '#0EA5E9', color: 'white',
+                fontFamily: 'inherit', fontSize: 'var(--font-size-sm)', fontWeight: 700,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+              }}>
+                {submitting ? '⏳ Mengirim ke Meta…' : '🚀 Submit ke Meta'}
+              </button>
+            )}
+            <button type="submit" disabled={saving || submitting} style={{
               padding: '9px 24px', background: saving ? '#94A3B8' : 'var(--c-secondary)',
               border: 'none', borderRadius: 'var(--r-md)', color: 'white',
               fontFamily: 'inherit', fontSize: 'var(--font-size-sm)', fontWeight: 700,
               cursor: saving ? 'not-allowed' : 'pointer',
             }}>
-              {saving ? 'Menyimpan…' : isEdit ? 'Simpan Perubahan' : 'Tambah Template'}
+              {saving ? 'Menyimpan…' : isEdit ? 'Simpan Perubahan' : 'Simpan Draft'}
             </button>
           </div>
         </form>
@@ -388,6 +460,20 @@ function TemplateCard({
             }}>
               {template.aktif ? 'Aktif' : 'Nonaktif'}
             </span>
+            {template.meta_status && STATUS_BADGE[template.meta_status] && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
+                background: STATUS_BADGE[template.meta_status]!.bg,
+                color: STATUS_BADGE[template.meta_status]!.color,
+              }}>
+                Meta: {STATUS_BADGE[template.meta_status]!.label}
+              </span>
+            )}
+            {template.meta_category && (
+              <span style={{ fontSize: 11, color: 'var(--c-text-faint)', padding: '2px 8px', borderRadius: 99, background: 'var(--c-bg)', border: '1px solid var(--c-border)' }}>
+                {template.meta_category}
+              </span>
+            )}
           </div>
           <div style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--c-text-muted)', marginTop: 3 }}>
             {template.template_name}
