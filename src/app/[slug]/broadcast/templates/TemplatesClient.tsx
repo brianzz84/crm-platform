@@ -8,11 +8,13 @@ interface ComponentParam {
 }
 
 interface Component {
-  type:       'header' | 'body' | 'button'
-  sub_type?:  string
-  text?:      string
-  index?:     number
-  parameters: ComponentParam[]
+  type:        'header' | 'body' | 'footer' | 'button'
+  format?:     'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+  sub_type?:   string
+  text?:       string
+  media_url?:  string
+  index?:      number
+  parameters:  ComponentParam[]
 }
 
 type MetaStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED' | null
@@ -114,7 +116,7 @@ function ComponentEditor({
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <label style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)' }}>
-          Components (struktur pesan Wappin)
+          Struktur Pesan
         </label>
         <button type="button" onClick={addComp} style={{
           fontSize: 11, padding: '4px 10px', border: '1px solid var(--c-border)',
@@ -127,7 +129,7 @@ function ComponentEditor({
 
       {components.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--c-text-faint)', padding: '8px 0' }}>
-          Minimal satu component type=body diperlukan untuk pengiriman via Wappin V2.
+          Minimal satu component Body diperlukan. Header dan Footer bersifat opsional.
         </div>
       )}
 
@@ -158,8 +160,33 @@ function ComponentEditor({
             }}>×</button>
           </div>
 
-          {(comp.type === 'header' || comp.type === 'body') && (
-            <input placeholder="text (opsional — untuk referensi)" value={comp.text ?? ''}
+          {comp.type === 'header' && (
+            <div style={{ marginBottom: 8 }}>
+              <select
+                value={comp.format ?? 'TEXT'}
+                onChange={e => updateComp(ci, { format: e.target.value as any, text: '', media_url: '' })}
+                style={{ ...inp, marginBottom: 6 }}
+              >
+                <option value="TEXT">Teks</option>
+                <option value="IMAGE">Gambar (IMAGE)</option>
+                <option value="VIDEO">Video (VIDEO)</option>
+                <option value="DOCUMENT">Dokumen (DOCUMENT)</option>
+              </select>
+              {(!comp.format || comp.format === 'TEXT') ? (
+                <input placeholder="Teks header" value={comp.text ?? ''}
+                  onChange={e => updateComp(ci, { text: e.target.value })}
+                  style={inp} />
+              ) : (
+                <input placeholder={`URL ${comp.format === 'IMAGE' ? 'gambar' : comp.format === 'VIDEO' ? 'video' : 'dokumen'} (https://...)`}
+                  value={comp.media_url ?? ''}
+                  onChange={e => updateComp(ci, { media_url: e.target.value })}
+                  style={inp} />
+              )}
+            </div>
+          )}
+
+          {comp.type === 'body' && (
+            <input placeholder="Isi pesan (gunakan {{1}} {{2}} untuk variabel)" value={comp.text ?? ''}
               onChange={e => updateComp(ci, { text: e.target.value })}
               style={{ ...inp, marginBottom: 8 }} />
           )}

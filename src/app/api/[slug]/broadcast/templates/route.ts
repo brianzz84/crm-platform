@@ -19,10 +19,12 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 }
 
 const ComponentSchema = z.object({
-  type:     z.enum(['header', 'body', 'footer', 'button']),
-  text:     z.string().optional(),
-  sub_type: z.string().optional(),
-  index:    z.number().optional(),
+  type:      z.enum(['header', 'body', 'footer', 'button']),
+  format:    z.enum(['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT']).optional(),
+  text:      z.string().optional(),
+  media_url: z.string().optional(),
+  sub_type:  z.string().optional(),
+  index:     z.number().optional(),
   parameters: z.array(z.object({
     param_key: z.string(),
     example:   z.string().optional(),
@@ -100,16 +102,36 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 function buildMetaComponents(schema: any[]): any[] {
   const result: any[] = []
   for (const comp of schema) {
-    if (!comp.text && comp.type !== 'button') continue
     const metaComp: any = { type: comp.type.toUpperCase() }
-    if (comp.text) metaComp.text = comp.text
 
-    // Tambah example untuk variabel {{1}} {{2}} dst
-    if (comp.parameters?.length > 0) {
-      const examples = comp.parameters.map((p: any) => p.example || `[${p.param_key}]`)
-      if (comp.type === 'body')   metaComp.example = { body_text: [examples] }
-      if (comp.type === 'header') metaComp.example = { header_text: examples }
+    if (comp.type === 'header') {
+      const format = comp.format || 'TEXT'
+      metaComp.format = format
+      if (format === 'TEXT') {
+        if (comp.text) metaComp.text = comp.text
+        if (comp.parameters?.length > 0) {
+          metaComp.example = { header_text: comp.parameters.map((p: any) => p.example || `[${p.param_key}]`) }
+        }
+      } else {
+        // IMAGE / VIDEO / DOCUMENT — gunakan link
+        if (comp.media_url) metaComp.example = { header_handle: [comp.media_url] }
+      }
+    } else if (comp.type === 'body') {
+      if (!comp.text) continue
+      metaComp.text = comp.text
+      if (comp.parameters?.length > 0) {
+        metaComp.example = { body_text: [comp.parameters.map((p: any) => p.example || `[${p.param_key}]`)] }
+      }
+    } else if (comp.type === 'footer') {
+      if (!comp.text) continue
+      metaComp.text = comp.text
+    } else if (comp.type === 'button') {
+      // button handling — skip for now if no text
+      if (!comp.text) continue
+    } else {
+      continue
     }
+
     result.push(metaComp)
   }
   return result
