@@ -440,7 +440,7 @@ function TemplateModal({
             }}>
               Batal
             </button>
-            {!isEdit && (
+            {(!isEdit || !template?.meta_status) && (
               <button type="button" onClick={() => save(true)} disabled={submitting || saving} style={{
                 padding: '9px 20px', border: 'none', borderRadius: 'var(--r-md)',
                 background: submitting ? '#94A3B8' : '#0EA5E9', color: 'white',
