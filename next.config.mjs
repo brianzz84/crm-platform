@@ -17,6 +17,11 @@ const nextConfig = {
 
   // Matikan powered-by header
   poweredByHeader: false,
+
+  // VAPID public key harus tersedia di build time untuk Web Push
+  env: {
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
+  },
 }
 
 export default nextConfig
