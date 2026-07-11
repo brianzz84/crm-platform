@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 
-const POLL_INTERVAL = 30_000 // 30 detik
+const POLL_INTERVAL = 5_000 // 5 detik, konsisten dengan InboxShell
 
 interface Props {
   slug:        string
