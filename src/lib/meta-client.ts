@@ -70,6 +70,58 @@ export async function sendMetaMediaMessage(
   return json.messages?.[0]?.id ?? null
 }
 
+export interface TemplateComponent {
+  type:        'header' | 'body' | 'button'
+  sub_type?:   string
+  index?:      number
+  parameters:  Array<{ type: string; text?: string; [key: string]: any }>
+}
+
+export async function sendMetaTemplateMessage(
+  cfg:        MetaCfg,
+  toPhone:    string,
+  templateName:     string,
+  templateLanguage: string,
+  components: TemplateComponent[],
+): Promise<string | null> {
+  const to = localToMeta(toPhone)
+  const res = await fetch(`${META_API_BASE}/${cfg.phone_number_id}/messages`, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${cfg.access_token}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name:       templateName,
+        language:   { code: templateLanguage || 'id' },
+        components: components.filter(c => c.parameters.length > 0),
+      },
+    }),
+  })
+
+  const json = await res.json()
+  if (!res.ok) {
+    console.error('[meta-client] sendTemplate failed:', JSON.stringify(json))
+    throw new Error(json.error?.message ?? `Meta API ${res.status}`)
+  }
+
+  return json.messages?.[0]?.id ?? null
+}
+
+export async function fetchMetaTemplates(cfg: MetaCfg, wabaId: string): Promise<any[]> {
+  const res = await fetch(
+    `${META_API_BASE}/${wabaId}/message_templates?fields=name,status,language,components&limit=100`,
+    { headers: { 'Authorization': `Bearer ${cfg.access_token}` } }
+  )
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error?.message ?? `Meta API ${res.status}`)
+  return json.data ?? []
+}
+
 // 08xxxxxxxxx → 628xxxxxxxxx
 function localToMeta(phone: string): string {
   if (phone.startsWith('08')) return '62' + phone.slice(1)

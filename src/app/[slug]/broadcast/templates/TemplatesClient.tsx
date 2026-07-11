@@ -242,7 +242,7 @@ function TemplateModal({
               {isEdit ? 'Edit Template' : 'Tambah Template'}
             </h2>
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-faint)', margin: '4px 0 0' }}>
-              Template harus sesuai dengan yang sudah disetujui di dashboard Wappin
+              Template harus sesuai dengan yang sudah disetujui di Meta Business Suite
             </p>
           </div>
           <button onClick={onClose} style={{
@@ -468,12 +468,29 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
   const [editTarget, setEditTarget] = useState<Template | null>(null)
   const [deleting,   setDeleting]   = useState<string | null>(null)
   const [showAll,    setShowAll]    = useState(false)
+  const [syncing,    setSyncing]    = useState(false)
+  const [syncMsg,    setSyncMsg]    = useState('')
 
   const active   = templates.filter(t => t.aktif)
   const inactive = templates.filter(t => !t.aktif)
 
   function openAdd()  { setEditTarget(null); setModalOpen(true) }
   function openEdit(t: Template) { setEditTarget(t); setModalOpen(true) }
+
+  async function handleSync() {
+    setSyncing(true); setSyncMsg('')
+    try {
+      const res  = await fetch(`/api/${slug}/broadcast/templates`, { method: 'PUT' })
+      const json = await res.json()
+      if (!res.ok) { setSyncMsg('❌ ' + (json.error || 'Gagal sync')); return }
+      setSyncMsg(`✅ ${json.synced} template baru, ${json.skipped} sudah ada`)
+      if (json.synced > 0) {
+        const listRes = await fetch(`/api/${slug}/broadcast/templates`)
+        const list    = await listRes.json()
+        if (list.success) setTemplates(list.data)
+      }
+    } finally { setSyncing(false) }
+  }
 
   function handleSaved(t: Template) {
     setTemplates(prev => {
@@ -514,9 +531,9 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
         marginBottom: 'var(--sp-5)',
       }}>
         {[
-          { icon: '1️⃣', title: 'Daftarkan di Wappin', desc: 'Buat dan tunggu approval template di dashboard Wappin terlebih dahulu.' },
-          { icon: '2️⃣', title: 'Tambah ke sini', desc: 'Daftarkan template_name yang sama persis agar sistem bisa mengirim via API.' },
-          { icon: '3️⃣', title: 'Pakai di Campaign', desc: 'Pilih template saat membuat campaign broadcast. Variabel diisi per campaign.' },
+          { icon: '1️⃣', title: 'Buat di Meta', desc: 'Buat template di Meta Business Suite dan tunggu status Approved.' },
+          { icon: '2️⃣', title: 'Sync ke sini', desc: 'Klik "Sync dari Meta" untuk tarik semua template yang sudah approved otomatis.' },
+          { icon: '3️⃣', title: 'Pakai di Campaign', desc: 'Pilih template saat membuat campaign broadcast. Isi variabel per penerima.' },
         ].map(s => (
           <div key={s.title} style={{
             background: 'var(--c-surface)', border: '1px solid var(--c-border)',
@@ -537,13 +554,25 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
         <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)' }}>
           {active.length} aktif · {inactive.length} nonaktif
         </div>
-        <button onClick={openAdd} style={{
-          padding: '9px 20px', background: 'var(--c-secondary)', border: 'none',
-          borderRadius: 'var(--r-md)', color: 'white', fontFamily: 'inherit',
-          fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: 'pointer',
-        }}>
-          + Tambah Template
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+          {syncMsg && (
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>{syncMsg}</span>
+          )}
+          <button onClick={handleSync} disabled={syncing} style={{
+            padding: '9px 16px', background: 'var(--c-bg)', border: '1.5px solid var(--c-border)',
+            borderRadius: 'var(--r-md)', color: 'var(--c-text)', fontFamily: 'inherit',
+            fontSize: 'var(--font-size-sm)', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer',
+          }}>
+            {syncing ? '⏳ Sync…' : '🔄 Sync dari Meta'}
+          </button>
+          <button onClick={openAdd} style={{
+            padding: '9px 20px', background: 'var(--c-secondary)', border: 'none',
+            borderRadius: 'var(--r-md)', color: 'white', fontFamily: 'inherit',
+            fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: 'pointer',
+          }}>
+            + Tambah Manual
+          </button>
+        </div>
       </div>
 
       {/* List */}
