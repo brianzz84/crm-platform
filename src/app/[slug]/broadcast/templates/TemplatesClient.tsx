@@ -500,13 +500,21 @@ function TemplateCard({
             }}>
               {template.aktif ? 'Aktif' : 'Nonaktif'}
             </span>
-            {template.meta_status && STATUS_BADGE[template.meta_status] && (
+            {template.meta_status && STATUS_BADGE[template.meta_status] ? (
               <span style={{
                 fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
                 background: STATUS_BADGE[template.meta_status]!.bg,
                 color: STATUS_BADGE[template.meta_status]!.color,
               }}>
                 Meta: {STATUS_BADGE[template.meta_status]!.label}
+              </span>
+            ) : (
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99,
+                background: '#F8FAFC', color: '#94A3B8',
+                border: '1px dashed #CBD5E1',
+              }}>
+                Belum disubmit ke Meta
               </span>
             )}
             {template.meta_category && (
@@ -608,7 +616,14 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
     try {
       const res  = await fetch(`/api/${slug}/broadcast/templates`, { method: 'PUT' })
       const json = await res.json()
-      if (!res.ok) { setSyncMsg('❌ ' + (json.error || 'Gagal sync')); return }
+      if (!res.ok) {
+        const msg = json.error || 'Gagal sync'
+        const isConfigErr = msg.includes('WABA') || msg.includes('config')
+        setSyncMsg(isConfigErr
+          ? `❌ WABA ID belum diisi — atur di Pengaturan › Integrasi Meta`
+          : `❌ ${msg}`)
+        return
+      }
       setSyncMsg(`✅ ${json.synced} template baru, ${json.skipped} sudah ada`)
       if (json.synced > 0) {
         const listRes = await fetch(`/api/${slug}/broadcast/templates`)
