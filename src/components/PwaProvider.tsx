@@ -31,13 +31,32 @@ export default function PwaProvider({ slug }: { slug: string; logoUrl?: string |
           if (perm !== 'granted') { setStatus('denied'); return }
         }
 
-        // Unsubscribe dulu jika sudah ada (bisa dari VAPID key lama)
+        const newKey = urlBase64ToUint8Array(vapidKey)
         const existing = await reg.pushManager.getSubscription()
-        if (existing) await existing.unsubscribe()
 
-        const sub = await reg.pushManager.subscribe({
+        let sub = existing
+        if (existing) {
+          // Cek apakah VAPID key masih sama
+          const existingKey = existing.options?.applicationServerKey
+          const keysMatch = existingKey &&
+            new Uint8Array(existingKey as ArrayBuffer).join(',') === newKey.join(',')
+
+          if (keysMatch) {
+            // Key sama — cukup upsert ke DB tanpa subscribe ulang
+            const res = await fetch('/api/push/subscribe', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify(existing.toJSON()),
+            })
+            if (res.ok) { setStatus('subscribed'); return }
+            // Server tolak (misal endpoint expired) — unsubscribe lalu buat baru
+          }
+          await existing.unsubscribe()
+        }
+
+        sub = await reg.pushManager.subscribe({
           userVisibleOnly:      true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          applicationServerKey: newKey,
         })
 
         const res = await fetch('/api/push/subscribe', {
