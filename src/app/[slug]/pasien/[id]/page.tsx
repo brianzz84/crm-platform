@@ -62,7 +62,6 @@ export default async function PasienDetailPage({ params }: Props) {
       kegiatan_diikuti: {
         orderBy: { created_at: 'desc' },
         take: 30,
-        where: { kegiatan_id: { not: null } },
         include: {
           kegiatan: {
             select: { id: true, kode: true, nama: true, jenis: true, tanggal_mulai: true, lokasi: true, poin_kegiatan: true },
