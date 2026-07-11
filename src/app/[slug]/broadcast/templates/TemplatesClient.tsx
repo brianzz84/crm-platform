@@ -49,21 +49,30 @@ const COMP_TYPES: Array<{ value: Component['type']; label: string; desc: string 
   { value: 'button', label: 'Button',  desc: 'Tombol quick reply atau URL' },
 ]
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({ onAdd, onSync, syncing }: { onAdd: () => void; onSync: () => void; syncing: boolean }) {
   return (
     <div style={{ textAlign: 'center', padding: 'var(--sp-6) var(--sp-4)', color: 'var(--c-text-muted)' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
       <h3 style={{ fontWeight: 700, color: 'var(--c-text)', marginBottom: 8 }}>Belum ada template</h3>
-      <p style={{ fontSize: 'var(--font-size-sm)', marginBottom: 20, maxWidth: 400, margin: '0 auto 20px' }}>
-        Template memetakan struktur pesan Wappin ke campaign. Tambahkan template sesuai yang sudah didaftarkan di dashboard Wappin.
+      <p style={{ fontSize: 'var(--font-size-sm)', marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
+        Buat template pertama langsung dari CRM, atau sync jika sudah ada template approved di Meta.
       </p>
-      <button onClick={onAdd} style={{
-        padding: '10px 24px', background: 'var(--c-secondary)', color: 'white',
-        border: 'none', borderRadius: 'var(--r-md)', fontFamily: 'inherit',
-        fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: 'pointer',
-      }}>
-        + Tambah Template Pertama
-      </button>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <button onClick={onAdd} style={{
+          padding: '10px 24px', background: 'var(--c-secondary)', color: 'white',
+          border: 'none', borderRadius: 'var(--r-md)', fontFamily: 'inherit',
+          fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: 'pointer',
+        }}>
+          + Buat Template Baru
+        </button>
+        <button onClick={onSync} disabled={syncing} style={{
+          padding: '10px 24px', background: 'var(--c-bg)', color: 'var(--c-text)',
+          border: '1.5px solid var(--c-border)', borderRadius: 'var(--r-md)', fontFamily: 'inherit',
+          fontSize: 'var(--font-size-sm)', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer',
+        }}>
+          {syncing ? '⏳ Sync…' : '🔄 Sync dari Meta'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -611,25 +620,57 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
 
   return (
     <div>
-      {/* Info banner */}
+      {/* Jalur pembuatan template */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-3)',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)',
         marginBottom: 'var(--sp-5)',
       }}>
-        {[
-          { icon: '1️⃣', title: 'Buat di Meta', desc: 'Buat template di Meta Business Suite dan tunggu status Approved.' },
-          { icon: '2️⃣', title: 'Sync ke sini', desc: 'Klik "Sync dari Meta" untuk tarik semua template yang sudah approved otomatis.' },
-          { icon: '3️⃣', title: 'Pakai di Campaign', desc: 'Pilih template saat membuat campaign broadcast. Isi variabel per penerima.' },
-        ].map(s => (
-          <div key={s.title} style={{
-            background: 'var(--c-surface)', border: '1px solid var(--c-border)',
-            borderRadius: 'var(--r-lg)', padding: 'var(--sp-4)',
+        {/* Jalur A — CRM (direkomendasikan) */}
+        <div style={{
+          background: 'var(--c-surface)', border: '2px solid var(--c-secondary)',
+          borderRadius: 'var(--r-lg)', padding: 'var(--sp-4)', position: 'relative',
+        }}>
+          <div style={{
+            position: 'absolute', top: -12, left: 16,
+            background: 'var(--c-secondary)', color: 'white',
+            fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 99,
           }}>
-            <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
-            <div style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--c-text)', marginBottom: 4 }}>{s.title}</div>
-            <div style={{ fontSize: 11, color: 'var(--c-text-muted)', lineHeight: 1.5 }}>{s.desc}</div>
+            ⭐ Direkomendasikan
           </div>
-        ))}
+          <div style={{ fontWeight: 800, fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)', marginBottom: 8, marginTop: 4 }}>
+            Buat Template dari CRM
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--c-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
+            Isi form langsung di sini → klik <strong>Submit ke Meta</strong> → tunggu approved → langsung aktif untuk campaign.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {['Isi konten & variabel di form', 'Submit ke Meta dengan 1 klik', 'Pantau status approval di CRM'].map(s => (
+              <div key={s} style={{ fontSize: 11, color: 'var(--c-text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--c-secondary)', fontWeight: 700 }}>✓</span> {s}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Jalur B — Dari Meta */}
+        <div style={{
+          background: 'var(--c-surface)', border: '1px solid var(--c-border)',
+          borderRadius: 'var(--r-lg)', padding: 'var(--sp-4)',
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)', marginBottom: 8 }}>
+            Sudah Punya Template di Meta?
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--c-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
+            Jika template sudah dibuat & approved langsung di Meta Business Suite, tarik ke sini dengan tombol Sync.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {['Buat template di Meta Business Suite', 'Tunggu status Approved', 'Klik Sync dari Meta di bawah'].map(s => (
+              <div key={s} style={{ fontSize: 11, color: 'var(--c-text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--c-text-faint)', fontWeight: 700 }}>→</span> {s}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -656,7 +697,7 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
             borderRadius: 'var(--r-md)', color: 'white', fontFamily: 'inherit',
             fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: 'pointer',
           }}>
-            + Tambah Manual
+            + Buat Template Baru
           </button>
         </div>
       </div>
@@ -664,7 +705,7 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
       {/* List */}
       {templates.length === 0 ? (
         <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)', padding: 'var(--sp-6)' }}>
-          <EmptyState onAdd={openAdd} />
+          <EmptyState onAdd={openAdd} onSync={handleSync} syncing={syncing} />
         </div>
       ) : (
         <div>

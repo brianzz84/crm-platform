@@ -23,8 +23,10 @@ export default async function TemplatesPage({ params }: { params: { slug: string
     id:                 t.id,
     nama:               t.nama,
     template_name:      t.template_name,
-    template_namespace: t.template_namespace ?? '',
     template_language:  t.template_language,
+    meta_category:      (t as any).meta_category ?? null,
+    meta_status:        (t as any).meta_status ?? null,
+    meta_template_id:   (t as any).meta_template_id ?? null,
     components_schema:  t.components_schema as any[],
     preview_text:       t.preview_text ?? '',
     aktif:              t.aktif,
@@ -45,7 +47,7 @@ export default async function TemplatesPage({ params }: { params: { slug: string
             Template Broadcast
           </h1>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', marginTop: 4 }}>
-            Kelola template pesan WhatsApp yang terdaftar di Wappin untuk digunakan dalam campaign.
+            Buat dan kelola template pesan WhatsApp untuk campaign broadcast.
           </p>
         </div>
       </div>
