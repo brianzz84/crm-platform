@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionFromRequest } from '@/lib/auth'
+import { getSession } from '@/lib/session'
 import { getTenantDb } from '@/lib/tenant'
 
 export async function POST(req: NextRequest) {
-  const session = getSessionFromRequest(req)
+  const session = await getSession()
   console.log('[push/subscribe] session:', session?.userId, session?.tenantSlug)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -25,17 +25,18 @@ export async function POST(req: NextRequest) {
       auth:   keys.auth,
     },
     update: {
-      p256dh: keys.p256dh,
-      auth:   keys.auth,
+      p256dh:  keys.p256dh,
+      auth:    keys.auth,
       user_id: session.userId,
     },
   })
 
+  console.log('[push/subscribe] saved OK for', session.tenantSlug)
   return NextResponse.json({ success: true })
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = getSessionFromRequest(req)
+  const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { endpoint } = await req.json()
