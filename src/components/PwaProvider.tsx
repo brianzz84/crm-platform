@@ -20,7 +20,9 @@ export default function PwaProvider({ slug }: { slug: string; logoUrl?: string |
         const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
         if (!vapidKey) { setStatus('no-vapid'); return }
 
-        const reg = await navigator.serviceWorker.register('/sw.js')
+        // Register SW, lalu tunggu sampai benar-benar active
+        await navigator.serviceWorker.register('/sw.js')
+        const reg = await navigator.serviceWorker.ready
 
         if (Notification.permission === 'denied') { setStatus('denied'); return }
 
