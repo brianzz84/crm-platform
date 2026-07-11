@@ -67,8 +67,17 @@ async function runTest(){
     log('2. PushManager: '+('PushManager' in window))
     log('3. Notification.permission: '+Notification.permission)
     const reg=await navigator.serviceWorker.register('/sw.js')
-    log('4. SW registered')
-    const ready=await navigator.serviceWorker.ready
+    log('4. SW registered, active='+!!reg.active+' waiting='+!!reg.waiting+' installing='+!!reg.installing)
+
+    // Paksa SW waiting untuk skip waiting jika ada
+    if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});log('4b. Kirim SKIP_WAITING ke SW waiting')}
+    if(reg.installing){log('4c. SW masih installing, tunggu...')}
+
+    // Tunggu ready dengan timeout 8 detik
+    const ready = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('serviceWorker.ready timeout 8s — coba reload halaman')),8000))
+    ])
     log('5. SW ready: '+ready.scope)
     if(Notification.permission!=='granted'){
       const p=await Notification.requestPermission()
