@@ -82,8 +82,13 @@ function EmptyState({ onAdd, onSync, syncing }: { onAdd: () => void; onSync: () 
 function ComponentEditor({
   components, onChange,
 }: { components: Component[]; onChange: (c: Component[]) => void }) {
+  const usedTypes = new Set(components.map(c => c.type))
+  const allTypes: Component['type'][] = ['header', 'body', 'footer', 'button']
+  const availableTypes = allTypes.filter(t => !usedTypes.has(t))
+
   function addComp() {
-    onChange([...components, { type: 'body', parameters: [] }])
+    if (availableTypes.length === 0) return
+    onChange([...components, { type: availableTypes[0], parameters: [] }])
   }
   function removeComp(i: number) {
     onChange(components.filter((_, idx) => idx !== i))
@@ -118,10 +123,10 @@ function ComponentEditor({
         <label style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)' }}>
           Struktur Pesan
         </label>
-        <button type="button" onClick={addComp} style={{
+        <button type="button" onClick={addComp} disabled={availableTypes.length === 0} style={{
           fontSize: 11, padding: '4px 10px', border: '1px solid var(--c-border)',
-          borderRadius: 'var(--r-sm)', background: 'var(--c-bg)', cursor: 'pointer',
-          fontFamily: 'inherit', color: 'var(--c-text)',
+          borderRadius: 'var(--r-sm)', background: 'var(--c-bg)', cursor: availableTypes.length === 0 ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit', color: availableTypes.length === 0 ? 'var(--c-text-faint)' : 'var(--c-text)',
         }}>
           + Component
         </button>
@@ -142,7 +147,12 @@ function ComponentEditor({
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <select value={comp.type} onChange={e => updateComp(ci, { type: e.target.value as any })}
               style={{ ...inp, width: 100, flexShrink: 0 }}>
-              {COMP_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {COMP_TYPES.map(t => (
+                <option key={t.value} value={t.value}
+                  disabled={t.value !== comp.type && usedTypes.has(t.value)}>
+                  {t.label}
+                </option>
+              ))}
             </select>
             {comp.type === 'button' && (
               <input placeholder="sub_type (e.g. quick_reply)" value={comp.sub_type ?? ''}

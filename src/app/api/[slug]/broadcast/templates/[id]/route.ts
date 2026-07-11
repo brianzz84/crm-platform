@@ -84,8 +84,12 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 }
 
 function buildMetaComponents(schema: any[]): any[] {
+  // Meta tidak izinkan tipe duplikat — ambil yang pertama dari tiap tipe
+  const seen = new Set<string>()
+  const deduped = schema.filter(c => { if (seen.has(c.type)) return false; seen.add(c.type); return true })
+
   const result: any[] = []
-  for (const comp of schema) {
+  for (const comp of deduped) {
     const metaComp: any = { type: comp.type.toUpperCase() }
     if (comp.type === 'header') {
       const format = comp.format || 'TEXT'
