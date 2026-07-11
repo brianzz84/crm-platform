@@ -62,6 +62,7 @@ export default async function PasienDetailPage({ params }: Props) {
       kegiatan_diikuti: {
         orderBy: { created_at: 'desc' },
         take: 30,
+        where: { kegiatan_id: { not: null } },
         include: {
           kegiatan: {
             select: { id: true, kode: true, nama: true, jenis: true, tanggal_mulai: true, lokasi: true, poin_kegiatan: true },
@@ -154,6 +155,7 @@ export default async function PasienDetailPage({ params }: Props) {
             </div>
             {[
               { key: 'No. RM',   val: person.no_rm },
+              { key: 'Agama',    val: (person as any).agama },
               { key: 'Poli',     val: lastVisit?.poli },
               { key: 'Diagnosa', val: lastVisit?.diagnosa_nama },
               { key: 'Terakhir', val: lastVisit ? fmtDateShort(lastVisit.tanggal.toISOString()) : null },
@@ -230,20 +232,20 @@ export default async function PasienDetailPage({ params }: Props) {
           read_at: r.read_at?.toISOString() ?? null,
           replied_at: r.replied_at?.toISOString() ?? null,
         }))}
-        kegiatanPeserta={person.kegiatan_diikuti.map(kp => ({
+        kegiatanPeserta={person.kegiatan_diikuti.filter(kp => kp.kegiatan).map(kp => ({
           id: kp.id,
           hadir: kp.hadir,
           poin_diberikan: kp.poin_diberikan,
           catatan: kp.catatan,
           created_at: kp.created_at.toISOString(),
           kegiatan: {
-            id: kp.kegiatan.id,
-            kode: kp.kegiatan.kode,
-            nama: kp.kegiatan.nama,
-            jenis: kp.kegiatan.jenis,
-            tanggal_mulai: kp.kegiatan.tanggal_mulai.toISOString(),
-            lokasi: kp.kegiatan.lokasi,
-            poin_kegiatan: kp.kegiatan.poin_kegiatan,
+            id: kp.kegiatan!.id,
+            kode: kp.kegiatan!.kode,
+            nama: kp.kegiatan!.nama,
+            jenis: kp.kegiatan!.jenis,
+            tanggal_mulai: kp.kegiatan!.tanggal_mulai.toISOString(),
+            lokasi: kp.kegiatan!.lokasi,
+            poin_kegiatan: kp.kegiatan!.poin_kegiatan,
           },
         }))}
         slug={params.slug}

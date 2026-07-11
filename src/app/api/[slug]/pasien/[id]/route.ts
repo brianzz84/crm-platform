@@ -59,7 +59,7 @@ export async function PATCH(
     const body = await req.json()
 
     // Hanya field yang boleh diedit manual oleh admin
-    const allowed = ['name', 'email', 'tanggal_lahir', 'no_hp']
+    const allowed = ['name', 'email', 'tanggal_lahir', 'no_hp', 'agama', 'jenis_kelamin', 'alamat', 'nik', 'no_rm', 'kategori']
     const data: Record<string, unknown> = {}
     for (const key of allowed) {
       if (key in body) data[key] = body[key]

@@ -140,6 +140,7 @@ model Person {
   jenis_kelamin      String?             // "L" | "P"
   alamat             String?
   pekerjaan          String?
+  agama              String?             // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
   kategori           String?             // "umum" | "pasien" | "keluarga"
   akar_kode          String?             // kode dari Akar (CST20260001, dll)
   aktif              Boolean   @default(true)

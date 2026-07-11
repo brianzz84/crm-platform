@@ -1,0 +1,1 @@
+ALTER TABLE "crm_persons" ADD COLUMN IF NOT EXISTS "agama" TEXT;

@@ -14,7 +14,7 @@ export async function POST(
     const db   = await getTenantDb(params.slug)
     const body = await req.json()
 
-    const { name, no_hp, email, tanggal_lahir, jenis_kelamin, nik, alamat, no_rm, kategori } = body
+    const { name, no_hp, email, tanggal_lahir, jenis_kelamin, nik, alamat, no_rm, kategori, agama } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ success: false, error: 'Nama wajib diisi' }, { status: 400 })
@@ -30,6 +30,7 @@ export async function POST(
         alamat:         alamat?.trim()  || null,
         no_rm:          no_rm?.trim()   || null,
         jenis_kelamin:  jenis_kelamin   || null,
+        agama:          agama?.trim()   || null,
         kategori:       kategori        || 'pasien',
         tanggal_lahir:  tanggal_lahir   ? new Date(tanggal_lahir) : null,
         aktif: true,

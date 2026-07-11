@@ -20,6 +20,7 @@ export default function TambahPasienPage({ params }: { params: { slug: string } 
     alamat:         '',
     no_rm:          '',
     kategori:       'pasien',
+    agama:          '',
   })
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
@@ -169,13 +170,27 @@ export default function TambahPasienPage({ params }: { params: { slug: string } 
             />
           </div>
 
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Kategori</label>
-            <select style={inputStyle} value={form.kategori} onChange={e => set('kategori', e.target.value)}>
-              <option value="pasien">Pasien</option>
-              <option value="keluarga">Keluarga Pasien</option>
-              <option value="umum">Umum</option>
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, ...fieldStyle }}>
+            <div>
+              <label style={labelStyle}>Agama</label>
+              <select style={inputStyle} value={form.agama} onChange={e => set('agama', e.target.value)}>
+                <option value="">— Pilih —</option>
+                <option value="Islam">Islam</option>
+                <option value="Kristen">Kristen</option>
+                <option value="Katolik">Katolik</option>
+                <option value="Hindu">Hindu</option>
+                <option value="Buddha">Buddha</option>
+                <option value="Konghucu">Konghucu</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Kategori</label>
+              <select style={inputStyle} value={form.kategori} onChange={e => set('kategori', e.target.value)}>
+                <option value="pasien">Pasien</option>
+                <option value="keluarga">Keluarga Pasien</option>
+                <option value="umum">Umum</option>
+              </select>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
