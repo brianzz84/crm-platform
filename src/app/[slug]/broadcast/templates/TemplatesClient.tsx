@@ -186,9 +186,13 @@ function ComponentEditor({
           )}
 
           {comp.type === 'body' && (
-            <input placeholder="Isi pesan (gunakan {{1}} {{2}} untuk variabel)" value={comp.text ?? ''}
+            <textarea
+              placeholder={'Isi pesan (gunakan {{1}} {{2}} untuk variabel)\n\nContoh:\nHalo {{1}}, terima kasih telah bergabung!'}
+              value={comp.text ?? ''}
               onChange={e => updateComp(ci, { text: e.target.value })}
-              style={{ ...inp, marginBottom: 8 }} />
+              rows={6}
+              style={{ ...inp, marginBottom: 8, resize: 'vertical', lineHeight: 1.6 }}
+            />
           )}
 
           {/* Parameters */}
