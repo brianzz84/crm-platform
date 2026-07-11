@@ -31,19 +31,21 @@ export default function PwaProvider({ slug }: { slug: string; logoUrl?: string |
           if (perm !== 'granted') { setStatus('denied'); return }
         }
 
-        let sub = await reg.pushManager.getSubscription()
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly:      true,
-            applicationServerKey: urlBase64ToUint8Array(vapidKey),
-          })
-        }
+        // Unsubscribe dulu jika sudah ada (bisa dari VAPID key lama)
+        const existing = await reg.pushManager.getSubscription()
+        if (existing) await existing.unsubscribe()
 
-        await fetch('/api/push/subscribe', {
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        })
+
+        const res = await fetch('/api/push/subscribe', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(sub.toJSON()),
         })
+        if (!res.ok) throw new Error(`Gagal simpan subscription: HTTP ${res.status}`)
 
         setStatus('subscribed')
         // Broadcast ke komponen lain

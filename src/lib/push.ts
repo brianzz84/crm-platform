@@ -24,6 +24,11 @@ export async function sendPushToTenant(tenantSlug: string, payload: PushPayload)
   const profile = await db.tenantProfile.findUnique({ where: { tenant_slug: tenantSlug }, select: { logo_url: true } })
   const icon    = profile?.logo_url || '/icons/icon-192x192.png'
   const subs    = await db.pushSubscription.findMany({ where: { tenant_slug: tenantSlug } })
+
+  console.log(`[push] ${tenantSlug}: ${subs.length} subscription(s), payload="${payload.title}"`)
+
+  if (subs.length === 0) return { sent: 0, failed: 0 }
+
   const fullPayload = { ...payload, icon, badge: icon }
 
   const results = await Promise.allSettled(
@@ -35,6 +40,12 @@ export async function sendPushToTenant(tenantSlug: string, payload: PushPayload)
       )
     )
   )
+
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`[push] failed sub[${i}]:`, (r.reason as any)?.statusCode, (r.reason as any)?.body?.slice?.(0, 100))
+    }
+  })
 
   // Hapus subscription yang sudah expired/invalid (410 Gone)
   const expired = subs.filter((_, i) => {
