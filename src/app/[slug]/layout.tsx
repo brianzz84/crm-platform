@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/layout/Sidebar'
 import PwaProvider from '@/components/PwaProvider'
+import InboxNotifier from '@/components/InboxNotifier'
 import { getSessionFromHeaders } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
+import { canDo } from '@/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +52,7 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
           {children}
         </main>
         <PwaProvider slug={params.slug} logoUrl={logoUrl} />
+        <InboxNotifier slug={params.slug} canViewInbox={canDo(session.roles, 'replyChat')} />
       </div>
     </>
   )

@@ -26,10 +26,18 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
   const router   = useRouter()
   const base     = `/${tenantSlug}`
 
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileOpen,   setMobileOpen]   = useState(false)
+  const [inboxUnread,  setInboxUnread]  = useState(0)
 
   // Tutup drawer saat navigasi
   useEffect(() => { setMobileOpen(false) }, [pathname])
+
+  // Listen unread count dari InboxNotifier
+  useEffect(() => {
+    const handler = (e: Event) => setInboxUnread((e as CustomEvent).detail.total)
+    window.addEventListener('inbox:unread', handler)
+    return () => window.removeEventListener('inbox:unread', handler)
+  }, [])
 
   const navGroups: { title: string; items: NavItem[] }[] = [
     {
@@ -39,7 +47,7 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         { href: `${base}/pasien`,    label: 'Data Pasien', icon: '👥' },
         { href: `${base}/segmen`,    label: 'Segmentasi',  icon: '🎯', feature: 'manageSegments' },
         { href: `${base}/broadcast`, label: 'Broadcast',   icon: '📢', feature: 'manageBroadcast' },
-        { href: `${base}/inbox`,     label: 'Inbox',       icon: '💬', feature: 'replyChat' },
+        { href: `${base}/inbox`,     label: 'Inbox',       icon: '💬', feature: 'replyChat', badge: inboxUnread || undefined },
       ],
     },
     {
