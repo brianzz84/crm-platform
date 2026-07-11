@@ -1,12 +1,13 @@
 import webpush from 'web-push'
 import { getTenantDb } from './tenant'
 
+const VAPID_PUBLIC  = 'BGQKiAIcCA4kEst0IIOLCACmMOiEz2rcFeVOE04I9PBCddTJfJWeZvmbunHqR9GO6UrbZZbh9gmQzbjZONSCfP8'
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:brianzz84@gmail.com'
+
 function initVapid() {
-  const mailto  = process.env.VAPID_MAILTO
-  const pubKey  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   const privKey = process.env.VAPID_PRIVATE_KEY
-  if (mailto && pubKey && privKey) {
-    webpush.setVapidDetails(mailto, pubKey, privKey)
+  if (privKey) {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, privKey)
   }
 }
 
