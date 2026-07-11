@@ -4,10 +4,13 @@ import { getTenantDb } from '@/lib/tenant'
 
 export async function POST(req: NextRequest) {
   const session = getSessionFromRequest(req)
+  console.log('[push/subscribe] session:', session?.userId, session?.tenantSlug)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { endpoint, keys } = await req.json()
+  console.log('[push/subscribe] endpoint:', endpoint?.slice(0, 60))
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
+    console.log('[push/subscribe] invalid payload')
     return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 })
   }
 
