@@ -2,10 +2,8 @@ const CACHE_NAME = 'crm360-v2'
 const OFFLINE_URL = '/offline'
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(['/offline', '/icons/icon-192x192.png']))
-  )
-  self.skipWaiting()
+  // Langsung skipWaiting tanpa cache — resource /offline redirect (307) menyebabkan install gagal
+  e.waitUntil(self.skipWaiting())
 })
 
 self.addEventListener('activate', (e) => {
