@@ -15,7 +15,7 @@ export default async function BroadcastPage({ params }: { params: { slug: string
 
   const db = await getTenantDb(params.slug)
 
-  const [campaigns, wappinCfg, templates, segments] = await Promise.all([
+  const [campaigns, metaCfg, templates, segments] = await Promise.all([
     db.campaign.findMany({
       where:   { tenant_slug: params.slug },
       orderBy: { created_at: 'desc' },
@@ -26,7 +26,7 @@ export default async function BroadcastPage({ params }: { params: { slug: string
         creator:  { select: { name: true } },
       },
     }),
-    db.wappinConfig.findUnique({ where: { tenant_slug: params.slug } }),
+    db.metaConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.broadcastTemplate.findMany({ where: { tenant_slug: params.slug, aktif: true }, orderBy: { nama: 'asc' } }),
     db.segment.findMany({
       where:   { tenant_slug: params.slug },
@@ -43,16 +43,16 @@ export default async function BroadcastPage({ params }: { params: { slug: string
             Broadcast
           </h1>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)' }}>
-            Kirim pesan WhatsApp massal ke segmen pasien via Wappin.
+            Kirim pesan WhatsApp massal ke segmen pasien via Meta Cloud API.
           </p>
         </div>
-        {!wappinCfg?.aktif && (
+        {!metaCfg?.aktif && (
           <Link href={`/${params.slug}/pengaturan/integrasi`} style={{
             display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px',
             borderRadius: 'var(--r-sm)', background: '#FEF3C7', border: '1px solid #F59E0B',
             color: '#92400E', fontSize: 'var(--font-size-sm)', fontWeight: 600, textDecoration: 'none',
           }}>
-            ⚠ Konfigurasi Wappin belum diatur
+            ⚠ Konfigurasi Meta WhatsApp belum diatur
           </Link>
         )}
       </div>
@@ -83,7 +83,7 @@ export default async function BroadcastPage({ params }: { params: { slug: string
           preview_text:  t.preview_text ?? '',
         }))}
         segments={segments.map(s => ({ id: s.id, nama: s.nama, total: s._count.segment_persons }))}
-        wappinAktif={!!wappinCfg?.aktif}
+        wappinAktif={!!metaCfg?.aktif}
       />
     </div>
   )
