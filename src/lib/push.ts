@@ -36,7 +36,7 @@ export async function sendPushToTenant(tenantSlug: string, payload: PushPayload)
       webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         JSON.stringify(fullPayload),
-        { TTL: 60 }
+        { TTL: 86400, urgency: 'high' }
       )
     )
   )
