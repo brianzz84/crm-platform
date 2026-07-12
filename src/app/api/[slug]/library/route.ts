@@ -24,19 +24,21 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     if (tab === 'layanan') {
       const where: any = { aktif: true }
       if (q) where.OR = [
-        { kode_barang: { contains: q, mode: 'insensitive' } },
-        { nama:        { contains: q, mode: 'insensitive' } },
+        { kode_barang:  { contains: q, mode: 'insensitive' } },
+        { nama:         { contains: q, mode: 'insensitive' } },
+        { nama_generik: { contains: q, mode: 'insensitive' } },
       ]
       const kelompok = url.searchParams.get('kelompok')
       if (kelompok) where.kelompok = kelompok
       const jenis = url.searchParams.get('jenis')
       if (jenis) where.jenis = jenis
+      if (url.searchParams.get('belum_diisi') === '1') where.nama_generik = null
 
       const [total, data] = await Promise.all([
         db.simrsLayananLibrary.count({ where }),
         db.simrsLayananLibrary.findMany({
           where,
-          select: { id: true, kode_barang: true, nama: true, kelompok: true, jenis: true, aktif: true },
+          select: { id: true, kode_barang: true, nama: true, nama_generik: true, kelompok: true, jenis: true, aktif: true },
           orderBy: [{ kelompok: 'asc' }, { nama: 'asc' }],
           skip, take: limit,
         }),
@@ -71,6 +73,29 @@ const [total, data] = await Promise.all([
     return NextResponse.json({ data, total, page, limit })
   } catch (e) {
     console.error('[GET /api/library]', e)
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+
+// PATCH /api/[slug]/library — update nama_generik layanan
+export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const { error, session } = await requireAuth(req, 'icdLibrary')
+  if (error) return error
+  if (session!.tenantSlug !== params.slug && !session!.roles.includes('SUPER_ADMIN'))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id, nama_generik } = await req.json()
+  if (!id) return NextResponse.json({ error: 'id wajib diisi' }, { status: 400 })
+
+  try {
+    const db = await getTenantDb(params.slug)
+    await db.simrsLayananLibrary.update({
+      where: { id },
+      data:  { nama_generik: nama_generik?.trim() || null },
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('[PATCH /api/library]', e)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

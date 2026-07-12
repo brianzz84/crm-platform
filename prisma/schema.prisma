@@ -221,14 +221,16 @@ model SimrsVisit {
 }
 
 model SimrsLayananLibrary {
-  id          String  @id @default(uuid())
-  kode_barang String  @unique
-  nama        String
-  kelompok    String  // Rawat Inap, Rawat Jalan, Penunjang, Pondok Sehat, Home Care, One Day Care
-  jenis       String  // sub-unit: Laboratorium, Radiologi, Gigi, Anak, dll
-  aktif       Boolean @default(true)
+  id           String  @id @default(uuid())
+  kode_barang  String  @unique
+  nama         String
+  nama_generik String? // nama medis umum hasil AI enrichment, bisa diedit admin
+  kelompok     String  // Rawat Inap, Rawat Jalan, Penunjang, Pondok Sehat, Home Care, One Day Care
+  jenis        String  // sub-unit: Laboratorium, Radiologi, Gigi, Anak, dll
+  aktif        Boolean @default(true)
 
   @@index([nama])
+  @@index([nama_generik])
   @@index([kelompok])
   @@index([jenis])
   @@map("crm_simrs_layanan_library")

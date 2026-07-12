@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useTransition } from 'react'
 
 interface Stats {
   icdTotal: number
@@ -24,6 +24,7 @@ interface LayananRow {
   id: string
   kode_barang: string
   nama: string
+  nama_generik: string | null
   kelompok: string
   jenis: string
   aktif: boolean
@@ -54,10 +55,16 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
   const [layQ,       setLayQ]       = useState('')
   const [layKelompok, setLayKelompok] = useState('')
   const [layJenis,   setLayJenis]   = useState('')
+  const [layBelumDiisi, setLayBelumDiisi] = useState(false)
   const [layPage,    setLayPage]    = useState(1)
   const [layData, setLayData] = useState<LayananRow[]>([])
   const [layTotal, setLayTotal] = useState(0)
   const [layLoading, setLayLoading] = useState(false)
+
+  // Inline edit state
+  const [editingId,  setEditingId]  = useState<string | null>(null)
+  const [editVal,    setEditVal]    = useState('')
+  const [, startTransition] = useTransition()
 
   const icdTimer  = useRef<ReturnType<typeof setTimeout>>()
   const layTimer  = useRef<ReturnType<typeof setTimeout>>()
@@ -78,13 +85,14 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
     }
   }, [slug])
 
-  const fetchLayanan = useCallback(async (q: string, kelompok: string, jenis: string, page: number) => {
+  const fetchLayanan = useCallback(async (q: string, kelompok: string, jenis: string, belumDiisi: boolean, page: number) => {
     setLayLoading(true)
     try {
       const params = new URLSearchParams({ tab: 'layanan', page: String(page) })
-      if (q)        params.set('q', q)
-      if (kelompok) params.set('kelompok', kelompok)
-      if (jenis)    params.set('jenis', jenis)
+      if (q)          params.set('q', q)
+      if (kelompok)   params.set('kelompok', kelompok)
+      if (jenis)      params.set('jenis', jenis)
+      if (belumDiisi) params.set('belum_diisi', '1')
       const res  = await fetch(`/api/${slug}/library?${params}`)
       const json = await res.json()
       setLayData(json.data ?? [])
@@ -94,6 +102,18 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
     }
   }, [slug])
 
+  const saveNamaGenerik = useCallback(async (id: string, value: string) => {
+    const res = await fetch(`/api/${slug}/library`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, nama_generik: value }),
+    })
+    if (res.ok) {
+      setLayData(prev => prev.map(r => r.id === id ? { ...r, nama_generik: value.trim() || null } : r))
+    }
+    setEditingId(null)
+  }, [slug])
+
   useEffect(() => {
     clearTimeout(icdTimer.current)
     icdTimer.current = setTimeout(() => fetchIcd(icdQ, icdVersi, icdBab, icdPage), 300)
@@ -101,12 +121,12 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
 
   useEffect(() => {
     clearTimeout(layTimer.current)
-    layTimer.current = setTimeout(() => fetchLayanan(layQ, layKelompok, layJenis, layPage), 300)
-  }, [layQ, layKelompok, layJenis, layPage, fetchLayanan])
+    layTimer.current = setTimeout(() => fetchLayanan(layQ, layKelompok, layJenis, layBelumDiisi, layPage), 300)
+  }, [layQ, layKelompok, layJenis, layBelumDiisi, layPage, fetchLayanan])
 
   // Reset page on filter change
   useEffect(() => { setIcdPage(1) }, [icdQ, icdVersi, icdBab])
-  useEffect(() => { setLayPage(1) }, [layQ, layKelompok, layJenis])
+  useEffect(() => { setLayPage(1) }, [layQ, layKelompok, layJenis, layBelumDiisi])
 
   // Reset jenis saat kelompok berubah
   useEffect(() => { setLayJenis('') }, [layKelompok])
@@ -259,9 +279,9 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
       ) : (
         <>
           {/* Layanan filters */}
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', marginBottom: 'var(--sp-3)' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', marginBottom: 'var(--sp-3)', alignItems: 'center' }}>
             <input
-              type="text" placeholder="Cari kode atau nama layanan..."
+              type="text" placeholder="Cari kode, nama, atau nama generik..."
               value={layQ} onChange={e => setLayQ(e.target.value)}
               style={{ flex: 1, minWidth: 200, maxWidth: 320, padding: '8px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)' }}
             />
@@ -277,6 +297,10 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
                 {JENIS_OPTIONS[layKelompok].map(j => <option key={j} value={j}>{j}</option>)}
               </select>
             )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-sm)', color: 'var(--c-text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={layBelumDiisi} onChange={e => setLayBelumDiisi(e.target.checked)} />
+              Belum ada nama generik
+            </label>
           </div>
 
           <div style={{ border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
@@ -284,17 +308,18 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
               <thead>
                 <tr style={{ background: 'var(--c-bg-alt)' }}>
                   <Th style={{ width: 100 }}>Kode</Th>
-                  <Th>Nama Layanan</Th>
-                  <Th style={{ width: 150 }}>Kelompok</Th>
-                  <Th style={{ width: 160 }}>Jenis</Th>
+                  <Th style={{ width: '25%' }}>Nama SIMRS</Th>
+                  <Th>Nama Generik <span style={{ fontWeight: 400, color: 'var(--c-text-faint)' }}>(klik untuk edit)</span></Th>
+                  <Th style={{ width: 140 }}>Kelompok</Th>
+                  <Th style={{ width: 150 }}>Jenis</Th>
                 </tr>
               </thead>
               <tbody>
                 {layLoading ? (
-                  <tr><td colSpan={4} style={{ padding: 24, textAlign: 'center', color: 'var(--c-text-faint)' }}>Memuat...</td></tr>
+                  <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--c-text-faint)' }}>Memuat...</td></tr>
                 ) : layData.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-faint)' }}>
+                    <td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-faint)' }}>
                       <div style={{ fontSize: 32, marginBottom: 8 }}>🏥</div>
                       <div style={{ fontWeight: 500, marginBottom: 4 }}>Tidak ada data</div>
                     </td>
@@ -308,8 +333,41 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
                         padding: '2px 7px', borderRadius: 4,
                       }}>{row.kode_barang}</span>
                     </td>
-                    <td style={{ padding: '9px 12px', fontWeight: 500, color: 'var(--c-text)' }}>
+                    <td style={{ padding: '9px 12px', color: 'var(--c-text-secondary)', fontSize: 12 }}>
                       {row.nama}
+                    </td>
+                    <td style={{ padding: '6px 12px' }}>
+                      {editingId === row.id ? (
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            autoFocus
+                            value={editVal}
+                            onChange={e => setEditVal(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveNamaGenerik(row.id, editVal)
+                              if (e.key === 'Escape') setEditingId(null)
+                            }}
+                            style={{ flex: 1, padding: '5px 8px', borderRadius: 'var(--r-sm)', border: '1.5px solid var(--c-secondary)', fontSize: 'var(--font-size-sm)', outline: 'none' }}
+                          />
+                          <button onClick={() => saveNamaGenerik(row.id, editVal)} style={{ padding: '5px 12px', background: 'var(--c-secondary)', color: 'white', border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Simpan</button>
+                          <button onClick={() => setEditingId(null)} style={{ padding: '5px 10px', background: 'none', border: '1px solid var(--c-border)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 12, color: 'var(--c-text-faint)' }}>Batal</button>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => { setEditingId(row.id); setEditVal(row.nama_generik ?? '') }}
+                          title="Klik untuk edit"
+                          style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 'var(--r-sm)', minHeight: 28, display: 'flex', alignItems: 'center', gap: 6 }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--c-bg-alt)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          {row.nama_generik ? (
+                            <span style={{ fontWeight: 500, color: 'var(--c-text)' }}>{row.nama_generik}</span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--c-warning, #d97706)', background: '#fef3c7', padding: '2px 8px', borderRadius: 99, fontWeight: 500 }}>Belum diisi</span>
+                          )}
+                          <span style={{ fontSize: 11, color: 'var(--c-text-faint)', opacity: 0 }} className="edit-hint">✏️</span>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '9px 12px' }}>
                       <KelompokBadge kelompok={row.kelompok} />
