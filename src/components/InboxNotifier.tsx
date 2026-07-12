@@ -20,10 +20,15 @@ export default function InboxNotifier({ slug, canViewInbox }: Props) {
   const audioRef     = useRef<AudioContext | null>(null)
   const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const playDing = useCallback(() => {
+  const playDing = useCallback(async () => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-      // 3 dering: tinggi → rendah, jeda, ulangi — total ~1.8 detik
+      if (!audioRef.current) {
+        audioRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      }
+      const ctx = audioRef.current
+      if (ctx.state === 'suspended') await ctx.resume()
+
+      // 3 dering: tinggi → rendah → tinggi, total ~1.8 detik
       const beeps = [
         { freq: 1046, start: 0.0,  dur: 0.35 },
         { freq: 880,  start: 0.45, dur: 0.35 },
