@@ -23,16 +23,26 @@ export default function InboxNotifier({ slug, canViewInbox }: Props) {
   const playDing = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.frequency.setValueAtTime(880, ctx.currentTime)
-      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15)
-      gain.gain.setValueAtTime(0.4, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
-      osc.start(ctx.currentTime)
-      osc.stop(ctx.currentTime + 0.4)
+      // 3 dering: tinggi → rendah, jeda, ulangi — total ~1.8 detik
+      const beeps = [
+        { freq: 1046, start: 0.0,  dur: 0.35 },
+        { freq: 880,  start: 0.45, dur: 0.35 },
+        { freq: 1046, start: 0.90, dur: 0.55 },
+      ]
+      beeps.forEach(({ freq, start, dur }) => {
+        const osc  = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start)
+        gain.gain.setValueAtTime(0, ctx.currentTime + start)
+        gain.gain.linearRampToValueAtTime(1.0, ctx.currentTime + start + 0.02)
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + start + dur - 0.05)
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur)
+        osc.start(ctx.currentTime + start)
+        osc.stop(ctx.currentTime + start + dur)
+      })
     } catch {
       // Browser memblokir AudioContext — tidak apa-apa
     }
