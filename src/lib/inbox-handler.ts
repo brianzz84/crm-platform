@@ -90,6 +90,6 @@ export async function handleIncomingMessage(
     title: `💬 Pesan dari ${senderName}`,
     body:  content.slice(0, 100),
     url:   `/${slug}/inbox`,
-    tag:   `inbox-${conversation.id}`,
+    tag:   `inbox-${conversation.id}-${Date.now()}`,
   }).catch(() => null)
 }
