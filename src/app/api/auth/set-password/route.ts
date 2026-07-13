@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Auto-login: buat session langsung → user tak perlu login manual
-    const token = await createSession({
+    const sessionToken = await createSession({
       userId:     foundUser.id,
       tenantSlug: foundSlug,
       name:       foundUser.name,
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       email:      foundUser.email,
       redirect:   `/${foundSlug}`,
     })
-    res.cookies.set(sessionCookieOptions(token))
+    res.cookies.set(sessionCookieOptions(sessionToken))
     return res
   } catch (e) {
     console.error('[POST /api/auth/set-password]', e)
