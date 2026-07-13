@@ -44,8 +44,8 @@ export async function sendMetaMediaMessage(
 ): Promise<string | null> {
   const to = localToMeta(toPhone)
   const mediaPayload: Record<string, string> = { link: mediaUrl }
-  if (caption)  mediaPayload.caption  = caption
-  if (filename) mediaPayload.filename = filename
+  if (caption)                              mediaPayload.caption  = caption
+  if (filename && mediaType === 'document') mediaPayload.filename = filename  // filename HANYA valid utk document
 
   const res = await fetch(`${META_API_BASE}/${cfg.phone_number_id}/messages`, {
     method:  'POST',
