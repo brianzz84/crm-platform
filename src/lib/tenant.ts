@@ -10,7 +10,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 const connectionCache = new Map<string, PrismaClient>()
 
 function createClient(connectionString: string): PrismaClient {
-  const adapter = new PrismaPg({ connectionString })
+  const adapter = new PrismaPg({ connectionString, max: 2, idleTimeoutMillis: 10_000 })
   return new PrismaClient({ adapter })
 }
 
