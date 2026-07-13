@@ -158,6 +158,21 @@ export async function createMetaTemplate(
   return { id: json.id, status: json.status }
 }
 
+// Ambil URL sementara + mime sebuah media dari Meta (via media id)
+export async function fetchMetaMediaInfo(cfg: MetaCfg, mediaId: string): Promise<{ url: string; mime: string } | null> {
+  const res = await fetch(`${META_API_BASE}/${mediaId}`, { headers: { Authorization: `Bearer ${cfg.access_token}` } })
+  const json = await res.json()
+  if (!res.ok || !json.url) { console.error('[meta-client] fetchMediaInfo failed:', JSON.stringify(json)); return null }
+  return { url: json.url, mime: json.mime_type || 'application/octet-stream' }
+}
+
+// Unduh byte media (URL Meta butuh Authorization header)
+export async function downloadMetaMedia(cfg: MetaCfg, url: string): Promise<Buffer> {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${cfg.access_token}` } })
+  if (!res.ok) throw new Error(`Download media gagal (HTTP ${res.status})`)
+  return Buffer.from(await res.arrayBuffer())
+}
+
 // 08xxxxxxxxx → 628xxxxxxxxx
 function localToMeta(phone: string): string {
   if (phone.startsWith('08')) return '62' + phone.slice(1)

@@ -8,6 +8,8 @@ interface IncomingMessage {
   content:      string
   externalId?:  string
   timestamp?:   Date
+  mediaUrl?:    string
+  mediaType?:   string   // image | document | video | audio
 }
 
 export async function handleIncomingMessage(
@@ -15,7 +17,7 @@ export async function handleIncomingMessage(
   slug: string,
   msg:  IncomingMessage,
 ) {
-  const { senderNumber, content, externalId, timestamp } = msg
+  const { senderNumber, content, externalId, timestamp, mediaUrl, mediaType } = msg
 
   const person = await db.person.findFirst({
     where: { tenant_slug: slug, no_hp: senderNumber },
@@ -60,6 +62,8 @@ export async function handleIncomingMessage(
       conversation_id:   conversation.id,
       direction:         'incoming',
       content:           content || '',
+      media_url:         mediaUrl ?? null,
+      media_type:        mediaType ?? null,
       status:            'DELIVERED',
       wappin_message_id: externalId ?? null,
       sent_at:           timestamp ?? new Date(),

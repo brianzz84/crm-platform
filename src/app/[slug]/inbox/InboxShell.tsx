@@ -267,7 +267,7 @@ export default function InboxShell({
     setDraft('')
     const optimistic: MsgRow = {
       id: 'opt-' + Date.now(), direction: 'outgoing', content,
-      is_internal_note: isNote, status: 'SENT', ai_generated: false,
+      is_internal_note: isNote, status: isNote ? 'SENT' : 'PENDING', ai_generated: false,
       created_at: new Date().toISOString(),
     }
     setMsgs(m => [...m, optimistic])
@@ -290,7 +290,7 @@ export default function InboxShell({
       id: 'opt-' + Date.now(), direction: 'outgoing',
       content: caption || filename || 'Lampiran',
       media_url: mediaUrl, media_type: mediaType,
-      is_internal_note: false, status: 'SENT', ai_generated: false,
+      is_internal_note: false, status: 'PENDING', ai_generated: false,
       created_at: new Date().toISOString(),
     }
     setMsgs(m => [...m, optimistic])
@@ -957,11 +957,16 @@ export default function InboxShell({
                           {m.ai_generated && (
                             <div style={{ fontSize: 10, color: '#667781', marginBottom: 2 }}>🤖 AI</div>
                           )}
+                          {m.media_url && m.media_type === 'image' && (
+                            <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: 'block', marginBottom: m.content ? 6 : 2 }}>
+                              <img src={m.media_url} alt="lampiran" style={{ maxWidth: 240, maxHeight: 280, borderRadius: 8, display: 'block' }} />
+                            </a>
+                          )}
                           {m.content}
-                          {m.media_url && (
+                          {m.media_url && m.media_type !== 'image' && (
                             <a href={m.media_url} target="_blank" rel="noreferrer" style={{
                               display: 'block', marginTop: 4, fontSize: 11, color: WA_GREEN_DARK,
-                            }}>📎 Lampiran</a>
+                            }}>{m.media_type === 'video' ? '🎬 Video' : '📎 Dokumen'}</a>
                           )}
                           {/* Timestamp + centang — inline di kanan bawah teks */}
                           <span style={{
@@ -971,10 +976,14 @@ export default function InboxShell({
                             position: 'relative', bottom: -1,
                           }}>
                             {fmtBubble(m.created_at)}
-                            {isOut && (
-                              <span style={{ color: m.status === 'READ' ? '#53BDEB' : '#8696a0', fontSize: 13 }}>
-                                {m.status === 'SENT' ? ' ✓' : ' ✓✓'}
-                              </span>
+                            {isOut && !m.is_internal_note && (
+                              m.status === 'FAILED'
+                                ? <span title="Gagal terkirim" style={{ color: '#EF4444', fontSize: 12, fontWeight: 700 }}> ⚠</span>
+                                : m.status === 'PENDING'
+                                ? <span title="Mengirim…" style={{ color: '#8696a0', fontSize: 12 }}> 🕐</span>
+                                : <span style={{ color: m.status === 'READ' ? '#53BDEB' : '#8696a0', fontSize: 13 }}>
+                                    {m.status === 'SENT' ? ' ✓' : ' ✓✓'}
+                                  </span>
                             )}
                           </span>
                           <div style={{ clear: 'both' }} />

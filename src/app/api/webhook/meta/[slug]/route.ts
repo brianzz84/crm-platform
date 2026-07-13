@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/tenant'
 import { handleIncomingMessage } from '@/lib/inbox-handler'
 import { recomputeCampaignCounters } from '@/lib/campaign'
+import { fetchMetaMediaInfo, downloadMetaMedia } from '@/lib/meta-client'
+import { uploadPublic, isStorageConfigured } from '@/lib/storage'
+
+const MEDIA_TYPES = ['image', 'document', 'video', 'audio', 'sticker']
+function mimeExt(mime: string): string {
+  const map: Record<string, string> = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+    'application/pdf': 'pdf', 'video/mp4': 'mp4', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3',
+  }
+  return map[mime] || (mime.split('/')[1] || 'bin')
+}
 
 type Ctx = { params: { slug: string } }
 
@@ -51,21 +62,48 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         const value = change.value
         if (!value) continue
 
-        // Proses pesan masuk
+        // Proses pesan masuk (teks + media)
         for (const msg of value.messages ?? []) {
-          if (msg.type !== 'text') continue // skip non-text untuk sekarang
-
           const senderNumber = normalizePhone(msg.from)
-          const content      = msg.text?.body ?? ''
-          if (!senderNumber || !content) continue
+          if (!senderNumber) continue
 
-          console.log(`[webhook/meta/${params.slug}] incoming from ${senderNumber}`)
+          let content = ''
+          let mediaUrl: string | undefined
+          let mediaType: string | undefined
+
+          if (msg.type === 'text') {
+            content = msg.text?.body ?? ''
+          } else if (MEDIA_TYPES.includes(msg.type)) {
+            const mediaObj = (msg as any)[msg.type]
+            content = mediaObj?.caption ?? ''
+            // Unduh media dari Meta lalu re-host ke storage publik agar bisa ditampilkan
+            try {
+              const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
+              if (metaCfg?.access_token && mediaObj?.id && isStorageConfigured()) {
+                const info = await fetchMetaMediaInfo(metaCfg, mediaObj.id)
+                if (info) {
+                  const bytes = await downloadMetaMedia(metaCfg, info.url)
+                  mediaUrl  = await uploadPublic({ data: bytes, filename: `${msg.id}.${mimeExt(info.mime)}`, contentType: info.mime, tenant: params.slug })
+                  mediaType = msg.type === 'sticker' ? 'image' : msg.type
+                }
+              }
+            } catch (e) {
+              console.error(`[webhook/meta/${params.slug}] media download failed:`, e)
+            }
+          } else {
+            continue // location/contacts/dll — skip
+          }
+
+          if (!content && !mediaUrl) continue
+          console.log(`[webhook/meta/${params.slug}] incoming ${msg.type} from ${senderNumber}`)
 
           await handleIncomingMessage(db, params.slug, {
             senderNumber,
             content,
             externalId: msg.id,
             timestamp:  msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : undefined,
+            mediaUrl,
+            mediaType,
           })
         }
 
@@ -87,41 +125,45 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 // ─── Status update ────────────────────────────────────────────────────────────
 
 async function handleStatusUpdate(db: any, status: MetaStatus) {
-  const metaStatus = status.status // sent | delivered | read | failed
+  const map: Record<string, string> = { sent: 'SENT', delivered: 'DELIVERED', read: 'READ', failed: 'FAILED' }
+  const mapped = map[status.status]
+  if (!mapped) return
 
+  const failMeta = () => {
+    const err = status.errors?.[0]
+    if (!err) return { error_code: 'meta_delivery' as string, error_detail: undefined as string | undefined }
+    return {
+      error_code:   String(err.code ?? 'meta_delivery'),
+      error_detail: [err.title, err.error_data?.details || err.message].filter(Boolean).join(' — ').slice(0, 300),
+    }
+  }
+
+  // 1) Pesan broadcast (campaign)
   const recipient = await db.campaignRecipient.findFirst({
     where:   { wappin_message_id: status.id },
     orderBy: { sent_at: 'desc' },
   })
-  if (!recipient) return
-
-  const map: Record<string, string> = {
-    sent:      'SENT',
-    delivered: 'DELIVERED',
-    read:      'READ',
-    failed:    'FAILED',
+  if (recipient) {
+    const data: any = { status: mapped }
+    if (mapped === 'DELIVERED') data.delivered_at = new Date()
+    if (mapped === 'READ')      data.read_at       = new Date()
+    if (mapped === 'FAILED')    Object.assign(data, failMeta())
+    await db.campaignRecipient.update({ where: { id: recipient.id }, data })
+    await recomputeCampaignCounters(db, recipient.campaign_id)
   }
-  const mapped = map[metaStatus]
-  if (!mapped) return
 
-  const data: any = { status: mapped }
-  if (mapped === 'DELIVERED') data.delivered_at = new Date()
-  if (mapped === 'READ')      data.read_at       = new Date()
-  if (mapped === 'FAILED') {
-    // Simpan alasan gagal dari Meta agar bisa didiagnosis
-    const err = status.errors?.[0]
-    if (err) {
-      data.error_code   = String(err.code ?? 'meta_delivery')
-      data.error_detail = [err.title, err.error_data?.details || err.message].filter(Boolean).join(' — ').slice(0, 300)
-    } else {
-      data.error_code = 'meta_delivery'
+  // 2) Pesan chat inbox (centang delivered/read)
+  const message = await db.message.findFirst({ where: { wappin_message_id: status.id } })
+  if (message) {
+    const mdata: any = { status: mapped }
+    if (mapped === 'SENT'      && !message.sent_at)      mdata.sent_at      = new Date()
+    if (mapped === 'DELIVERED' && !message.delivered_at) mdata.delivered_at = new Date()
+    if (mapped === 'READ') {
+      mdata.read_at = new Date()
+      if (!message.delivered_at) mdata.delivered_at = new Date()
     }
+    await db.message.update({ where: { id: message.id }, data: mdata })
   }
-
-  await db.campaignRecipient.update({ where: { id: recipient.id }, data })
-
-  // Hitung ulang counter dari status recipient sebenarnya (konsisten, tanpa double-count)
-  await recomputeCampaignCounters(db, recipient.campaign_id)
 }
 
 // ─── Update status template ─────────────────────────────────────────────────────

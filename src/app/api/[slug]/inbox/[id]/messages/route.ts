@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         media_url,
         media_type,
         is_internal_note,
-        status:           'SENT',
+        status:           is_internal_note ? 'SENT' : 'PENDING',
         sent_by:          session!.userId,
         sent_at:          new Date(),
       },
@@ -99,9 +99,14 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     if (!is_internal_note) {
       const noHp = conv.person?.no_hp ?? null
       if (noHp) {
-        sendToChannel(db, params.slug, noHp, msg.id, content, media_url, media_type, media_filename).catch(e =>
+        sendToChannel(db, params.slug, noHp, msg.id, content, media_url, media_type, media_filename).catch(async e => {
           console.error(`[inbox/messages] send failed conv=${params.id}:`, e)
-        )
+          await db.message.update({ where: { id: msg.id }, data: { status: 'FAILED' } }).catch(() => null)
+        })
+      } else {
+        // Tak ada nomor tujuan → tandai gagal, jangan biarkan PENDING selamanya
+        await db.message.update({ where: { id: msg.id }, data: { status: 'FAILED' } })
+        msg.status = 'FAILED'
       }
     }
 
@@ -129,9 +134,12 @@ async function sendToChannel(
       ? await sendMetaMediaMessage(metaCfg, noHp, media_type as any, media_url, content || undefined, media_filename)
       : await sendMetaTextMessage(metaCfg, noHp, content)
 
-    if (extMsgId) {
-      await db.message.update({ where: { id: msgId }, data: { wappin_message_id: extMsgId } })
-    }
+    await db.message.update({
+      where: { id: msgId },
+      data: extMsgId
+        ? { status: 'SENT', sent_at: new Date(), wappin_message_id: extMsgId }
+        : { status: 'FAILED' },
+    })
     return
   }
 
@@ -146,7 +154,10 @@ async function sendToChannel(
     ? await sendWaMedia(wCfg, token, noHp, media_type as any, media_url, content || undefined, media_filename)
     : await sendWaMessage(wCfg, token, noHp, content)
 
-  if (result?.message_id) {
-    await db.message.update({ where: { id: msgId }, data: { wappin_message_id: result.message_id } })
-  }
+  await db.message.update({
+    where: { id: msgId },
+    data: result?.message_id
+      ? { status: 'SENT', sent_at: new Date(), wappin_message_id: result.message_id }
+      : { status: 'FAILED' },
+  })
 }
