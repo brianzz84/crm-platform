@@ -22,6 +22,18 @@ export default function CampaignActions({ slug, campaignId, status }: Props) {
     finally { setBusy(false) }
   }
 
+  async function send() {
+    if (!confirm('Mulai kirim campaign ini sekarang?')) return
+    setBusy(true)
+    try {
+      const res  = await fetch(`/api/${slug}/broadcast/${campaignId}/send`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || json.success === false) alert('Gagal: ' + (json.error ? JSON.stringify(json.error) : 'tidak diketahui'))
+      else router.refresh()
+    } catch { alert('Terjadi kesalahan') }
+    finally { setBusy(false) }
+  }
+
   async function del() {
     if (!confirm('Hapus campaign ini?')) return
     setBusy(true)
@@ -52,7 +64,7 @@ export default function CampaignActions({ slug, campaignId, status }: Props) {
     <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
       {status === 'DRAFT' && (
         <>
-          {btn('▶ Kirim Sekarang', () => patch({ status: 'RUNNING' }), true)}
+          {btn('▶ Kirim Sekarang', send, true)}
           {btn('🗑 Hapus', del)}
         </>
       )}

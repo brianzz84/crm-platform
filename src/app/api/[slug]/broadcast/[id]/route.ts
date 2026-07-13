@@ -45,6 +45,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { slug: stri
     if (['RUNNING', 'DONE'].includes(campaign.status)) {
       return NextResponse.json({ success: false, error: 'Campaign tidak dapat diubah' }, { status: 409 })
     }
+    // Status hanya boleh diubah antara DRAFT/SCHEDULED via PATCH.
+    // Transisi ke RUNNING/DONE WAJIB lewat endpoint /send agar recipient dibuat & pesan dikirim.
+    if (body.status !== undefined && !['DRAFT', 'SCHEDULED'].includes(body.status)) {
+      return NextResponse.json({ success: false, error: 'Gunakan tombol Kirim (endpoint /send) untuk menjalankan campaign' }, { status: 400 })
+    }
 
     const updated = await db.campaign.update({
       where: { id: params.id },
