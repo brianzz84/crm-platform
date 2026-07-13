@@ -22,6 +22,7 @@ export interface SimrsKunjungan {
   tanggal_lahir:    string | null  // YYYY-MM-DD
   jenis_kelamin:    'L' | 'P' | null
   no_hp:            string | null
+  no_hp_alternatif: string | null
   agama:            string | null
   alamat:           string | null
   tanggal:          string       // YYYY-MM-DD tanggal kunjungan
@@ -34,16 +35,24 @@ export interface SimrsKunjungan {
   tindakan_kode:    string | null
   jadwal_kontrol:   string | null   // YYYY-MM-DD
   status_kunjungan: string | null   // SELESAI | BATAL | dll
+  jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI"
+  nama_instansi:    string | null   // nama penjamin
+  kode_instansi:    string | null   // kode master instansi dari SIMRS
 }
 
 export interface SimrsPasien {
-  no_rm:         string
-  nama:          string
-  tanggal_lahir: string | null
-  jenis_kelamin: 'L' | 'P' | null
-  no_hp:         string | null
-  agama:         string | null
-  alamat:        string | null
+  no_rm:            string
+  nama:             string
+  tanggal_lahir:    string | null
+  jenis_kelamin:    'L' | 'P' | null
+  no_hp:            string | null
+  no_hp_alternatif: string | null
+  agama:            string | null
+  alamat:           string | null
+  jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI"
+  nama_instansi:    string | null
+  kode_instansi:    string | null
+  no_bpjs:          string | null
 }
 
 export interface SimrsClientConfig {
@@ -82,6 +91,10 @@ function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
       tindakan_kode:    null,
       jadwal_kontrol:   i % 5 === 0 ? tanggal : null,
       status_kunjungan: 'SELESAI',
+      no_hp_alternatif: i % 4 === 0 ? `0813${String(20000000 + i).slice(0, 8)}` : null,
+      jenis_pembayaran: i % 3 === 0 ? 'TUNAI' : 'NON_TUNAI',
+      nama_instansi:    i % 3 === 0 ? null : ['BPJS Kesehatan', 'PT Prudential', 'PT Allianz'][i % 3 === 1 ? 0 : 1],
+      kode_instansi:    i % 3 === 0 ? null : ['BPJS-001', 'PRU-001', 'ALZ-001'][i % 3 === 1 ? 0 : 1],
     }
   })
 }

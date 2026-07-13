@@ -98,34 +98,58 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
         await db.person.update({
           where: { id: existingPerson.id },
           data: {
-            name:          k.nama_pasien,
-            tanggal_lahir: k.tanggal_lahir ? new Date(k.tanggal_lahir) : undefined,
-            jenis_kelamin: k.jenis_kelamin ?? undefined,
-            agama:         k.agama ?? undefined,
-            is_pasien_simrs: true,
-            sumber:        'SIMRS',
+            name:             k.nama_pasien,
+            tanggal_lahir:    k.tanggal_lahir ? new Date(k.tanggal_lahir) : undefined,
+            jenis_kelamin:    k.jenis_kelamin ?? undefined,
+            agama:            k.agama ?? undefined,
+            is_pasien_simrs:  true,
+            sumber:           'SIMRS',
+            jenis_pembayaran: k.jenis_pembayaran ?? undefined,
+            nama_instansi:    k.nama_instansi ?? undefined,
+            kode_instansi:    k.kode_instansi ?? undefined,
           },
         })
         personId = existingPerson.id
+
+        // Upsert no_hp_alternatif untuk person yang sudah ada
+        if (k.no_hp_alternatif && k.no_hp_alternatif !== k.no_hp) {
+          const altExists = await db.personContact.findFirst({
+            where: { person_id: personId, nilai: k.no_hp_alternatif },
+          })
+          if (!altExists) {
+            await db.personContact.create({
+              data: {
+                id:         randomUUID(),
+                person_id:  personId,
+                jenis:      'WA',
+                nilai:      k.no_hp_alternatif,
+                is_primary: false,
+              },
+            }).catch(() => {})
+          }
+        }
       } else {
         // Buat person baru dari data SIMRS
         const newPerson = await db.person.create({
           data: {
-            id:              randomUUID(),
-            tenant_slug:     tenantSlug,
-            no_rm:           k.no_rm,
-            name:            k.nama_pasien,
-            tanggal_lahir:   k.tanggal_lahir ? new Date(k.tanggal_lahir) : null,
-            jenis_kelamin:   k.jenis_kelamin ?? null,
-            agama:           k.agama ?? null,
-            sumber:          'SIMRS',
-            is_pasien_simrs: true,
-            aktif:           true,
+            id:               randomUUID(),
+            tenant_slug:      tenantSlug,
+            no_rm:            k.no_rm,
+            name:             k.nama_pasien,
+            tanggal_lahir:    k.tanggal_lahir ? new Date(k.tanggal_lahir) : null,
+            jenis_kelamin:    k.jenis_kelamin ?? null,
+            agama:            k.agama ?? null,
+            sumber:           'SIMRS',
+            is_pasien_simrs:  true,
+            aktif:            true,
+            jenis_pembayaran: k.jenis_pembayaran ?? null,
+            nama_instansi:    k.nama_instansi ?? null,
+            kode_instansi:    k.kode_instansi ?? null,
           },
         })
         personId = newPerson.id
 
-        // Simpan nomor HP jika ada
+        // Simpan nomor HP primer
         if (k.no_hp) {
           await db.personContact.create({
             data: {
@@ -135,7 +159,20 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
               nilai:      k.no_hp,
               is_primary: true,
             },
-          }).catch(() => {})  // ignore duplicate
+          }).catch(() => {})
+        }
+
+        // Simpan nomor HP alternatif
+        if (k.no_hp_alternatif && k.no_hp_alternatif !== k.no_hp) {
+          await db.personContact.create({
+            data: {
+              id:         randomUUID(),
+              person_id:  personId,
+              jenis:      'WA',
+              nilai:      k.no_hp_alternatif,
+              is_primary: false,
+            },
+          }).catch(() => {})
         }
 
         jumlah_baru++
@@ -161,6 +198,9 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
           tindakan_kode:    k.tindakan_kode ?? null,
           jadwal_kontrol:   k.jadwal_kontrol ? new Date(k.jadwal_kontrol) : null,
           status_kunjungan: k.status_kunjungan ?? null,
+          jenis_pembayaran: k.jenis_pembayaran ?? null,
+          nama_instansi:    k.nama_instansi ?? null,
+          kode_instansi:    k.kode_instansi ?? null,
           aktif:            true,
         }
 

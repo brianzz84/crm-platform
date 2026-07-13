@@ -144,6 +144,10 @@ model Person {
   alamat             String?
   pekerjaan          String?
   agama              String?             // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
+  jenis_pembayaran   String?             // "TUNAI" | "NON_TUNAI" — diisi dari kunjungan terakhir
+  nama_instansi      String?             // nama penjamin: "BPJS Kesehatan", "PT Prudential", dll
+  kode_instansi      String?             // kode master instansi dari SIMRS
+  no_bpjs            String?             // nomor kartu BPJS (jika penjamin BPJS)
   kategori           String?             // "umum" | "pasien" | "keluarga" — legacy, digantikan sumber
   sumber             PersonSumber        @default(MANUAL) // asal data person
   is_pasien_simrs    Boolean             @default(false)  // true jika sudah tercatat di SIMRS (punya no_rm)
@@ -220,6 +224,9 @@ model SimrsVisit {
   tindakan_kode    String?   // kode tindakan dari library layanan
   jadwal_kontrol   DateTime? // jadwal kontrol berikutnya — untuk KONTROL_REMINDER
   status_kunjungan String?   // SELESAI | BATAL | dll dari SIMRS
+  jenis_pembayaran String?   // "TUNAI" | "NON_TUNAI" — aktual per kunjungan ini
+  nama_instansi    String?   // nama penjamin kunjungan ini
+  kode_instansi    String?   // kode master instansi dari SIMRS
   simrs_visit_id   String?   // ID asli dari SIMRS (untuk dedup delta sync)
   aktif            Boolean   @default(true)   // TIDAK PERNAH DELETE
 
