@@ -54,7 +54,9 @@ export default function AktivasiClient() {
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
       setStage('done')
-      setTimeout(() => router.push('/login'), 2000)
+      // Auto-login sudah aktif (cookie di-set server) → langsung ke dashboard tenant
+      const dest = json.redirect || (json.tenantSlug ? `/${json.tenantSlug}` : '/login')
+      setTimeout(() => { router.push(dest); router.refresh() }, 1500)
     } catch (e: any) {
       setError(e.message || 'Terjadi kesalahan')
     } finally {
@@ -193,7 +195,7 @@ export default function AktivasiClient() {
               <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
               <h2 style={{ fontWeight: 700, color: 'var(--c-success)', marginBottom: 8 }}>Akun Berhasil Diaktifkan!</h2>
               <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
-                Mengalihkan ke halaman login...
+                Anda otomatis masuk. Mengalihkan ke dashboard...
               </p>
             </div>
           )}

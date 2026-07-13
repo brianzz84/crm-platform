@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMasterDb, getTenantDb } from '@/lib/tenant'
 import { hashPassword } from '@/lib/password'
+import { createSession, sessionCookieOptions } from '@/lib/session'
 import { z } from 'zod'
 
 const Schema = z.object({
@@ -67,10 +68,27 @@ export async function POST(req: NextRequest) {
         aktif:             true,
         invite_token:      null,
         invite_expires_at: null,
+        last_login_at:     new Date(),
       },
     })
 
-    return NextResponse.json({ success: true, tenantSlug: foundSlug, email: foundUser.email })
+    // Auto-login: buat session langsung → user tak perlu login manual
+    const token = await createSession({
+      userId:     foundUser.id,
+      tenantSlug: foundSlug,
+      name:       foundUser.name,
+      email:      foundUser.email,
+      roles:      foundUser.roles as string[],
+    })
+
+    const res = NextResponse.json({
+      success:    true,
+      tenantSlug: foundSlug,
+      email:      foundUser.email,
+      redirect:   `/${foundSlug}`,
+    })
+    res.cookies.set(sessionCookieOptions(token))
+    return res
   } catch (e) {
     console.error('[POST /api/auth/set-password]', e)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
