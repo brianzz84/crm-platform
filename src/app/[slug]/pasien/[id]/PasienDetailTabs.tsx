@@ -7,6 +7,7 @@ import UnitBadge from '@/components/pasien/UnitBadge'
 interface Kunjungan {
   id: string; tanggal: string; unit: string; poli: string | null
   dokter: string | null; diagnosa_nama: string | null; diagnosa_icd: string | null; tindakan: string | null
+  jenis_pembayaran: string | null; nama_instansi: string | null
 }
 interface ConvRow { id: string; channel: string; status: string; last_message_at: string; unread_count: number }
 interface KegiatanPesertaRow {
@@ -179,6 +180,22 @@ export default function PasienDetailTabs({
                         <div style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>
                           <span style={{ color: 'var(--c-text-faint)', marginRight: 4 }}>Tindakan:</span>
                           {v.tindakan}
+                        </div>
+                      )}
+
+                      {/* Row 5: pembayaran */}
+                      {v.jenis_pembayaran && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 99,
+                            background: v.jenis_pembayaran === 'TUNAI' ? '#F0FDF4' : '#EFF6FF',
+                            color: v.jenis_pembayaran === 'TUNAI' ? '#166534' : '#1D4ED8',
+                          }}>
+                            {v.jenis_pembayaran === 'TUNAI' ? 'Tunai' : 'Non-Tunai'}
+                          </span>
+                          {v.nama_instansi && (
+                            <span style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{v.nama_instansi}</span>
+                          )}
                         </div>
                       )}
                     </div>

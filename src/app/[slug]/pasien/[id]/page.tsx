@@ -44,6 +44,9 @@ export default async function PasienDetailPage({ params }: Props) {
         include: { tag: true },
         orderBy: { assigned_at: 'desc' },
       },
+      contacts: {
+        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+      },
       visits: {
         where: { aktif: true },
         orderBy: { tanggal: 'desc' },
@@ -131,6 +134,11 @@ export default async function PasienDetailPage({ params }: Props) {
                 🎂 {fmtDateLong(person.tanggal_lahir.toISOString())}
               </span>
             )}
+            {person.contacts.filter(c => !c.is_primary).map(c => (
+              <span key={c.id} style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>
+                📱 {c.nilai} <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>(alt)</span>
+              </span>
+            ))}
           </div>
 
           {/* Tags */}
@@ -167,10 +175,38 @@ export default async function PasienDetailPage({ params }: Props) {
               </div>
             ))}
             {lastVisit?.unit && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
                 <span style={{ color: 'var(--c-text-muted)' }}>Unit</span>
                 <UnitBadge unit={lastVisit.unit} />
               </div>
+            )}
+            {/* Pembayaran */}
+            {(person as any).jenis_pembayaran && (
+              <>
+                <div style={{ borderTop: '1px solid var(--c-border)', margin: '8px 0 6px' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, gap: 8 }}>
+                  <span style={{ color: 'var(--c-text-muted)', flexShrink: 0 }}>Pembayaran</span>
+                  <span style={{
+                    fontWeight: 600, fontSize: 11, padding: '1px 7px', borderRadius: 99,
+                    background: (person as any).jenis_pembayaran === 'TUNAI' ? '#F0FDF4' : '#EFF6FF',
+                    color: (person as any).jenis_pembayaran === 'TUNAI' ? '#166534' : '#1D4ED8',
+                  }}>
+                    {(person as any).jenis_pembayaran === 'TUNAI' ? 'Tunai' : 'Non-Tunai'}
+                  </span>
+                </div>
+                {(person as any).nama_instansi && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, gap: 8 }}>
+                    <span style={{ color: 'var(--c-text-muted)', flexShrink: 0 }}>Penjamin</span>
+                    <span style={{ color: 'var(--c-text)', fontWeight: 500, textAlign: 'right' }}>{(person as any).nama_instansi}</span>
+                  </div>
+                )}
+                {(person as any).no_bpjs && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8 }}>
+                    <span style={{ color: 'var(--c-text-muted)', flexShrink: 0 }}>No. BPJS</span>
+                    <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{(person as any).no_bpjs}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -213,6 +249,8 @@ export default async function PasienDetailPage({ params }: Props) {
           diagnosa_nama: v.diagnosa_nama,
           diagnosa_icd: v.diagnosa_icd,
           tindakan: v.tindakan,
+          jenis_pembayaran: (v as any).jenis_pembayaran ?? null,
+          nama_instansi: (v as any).nama_instansi ?? null,
         }))}
         conversations={person.conversations.map(c => ({
           id: c.id,
