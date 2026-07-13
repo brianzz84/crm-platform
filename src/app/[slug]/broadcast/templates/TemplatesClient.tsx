@@ -634,8 +634,8 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
           : `❌ ${msg}`)
         return
       }
-      setSyncMsg(`✅ ${json.synced} template baru, ${json.skipped} sudah ada`)
-      if (json.synced > 0) {
+      setSyncMsg(`✅ ${json.synced} baru, ${json.updated ?? 0} diperbarui, ${json.skipped} tidak berubah`)
+      if ((json.synced ?? 0) > 0 || (json.updated ?? 0) > 0) {
         const listRes = await fetch(`/api/${slug}/broadcast/templates`)
         const list    = await listRes.json()
         if (list.success) setTemplates(list.data)

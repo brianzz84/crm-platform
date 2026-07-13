@@ -157,15 +157,34 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       metaCfg.waba_id,
     )
 
-    // Hanya import yang statusnya APPROVED
-    const approved = metaTemplates.filter((t: any) => t.status === 'APPROVED')
-    let synced = 0, skipped = 0
+    let synced = 0, updated = 0, skipped = 0
 
-    for (const t of approved) {
+    for (const t of metaTemplates) {
       const existing = await db.broadcastTemplate.findFirst({
         where: { tenant_slug: params.slug, template_name: t.name },
       })
-      if (existing) { skipped++; continue }
+
+      if (existing) {
+        // Update status kalau berubah (mis. PENDING → APPROVED / REJECTED)
+        const newMetaId = t.id || existing.meta_template_id
+        if (existing.meta_status !== t.status || existing.meta_template_id !== newMetaId) {
+          await db.broadcastTemplate.update({
+            where: { id: existing.id },
+            data:  {
+              meta_status:      t.status,
+              meta_template_id: newMetaId,
+              aktif:            t.status === 'APPROVED',
+            },
+          })
+          updated++
+        } else {
+          skipped++
+        }
+        continue
+      }
+
+      // Template baru — hanya import yang sudah APPROVED
+      if (t.status !== 'APPROVED') { skipped++; continue }
 
       // Konversi komponen Meta ke format CRM
       const components_schema = (t.components || []).map((c: any) => ({
@@ -191,7 +210,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       synced++
     }
 
-    return NextResponse.json({ success: true, synced, skipped, total: approved.length })
+    return NextResponse.json({ success: true, synced, updated, skipped, total: metaTemplates.length })
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
   }

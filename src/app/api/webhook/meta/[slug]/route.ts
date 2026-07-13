@@ -39,6 +39,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
+        // Update status template (APPROVED / REJECTED / dll) dari Meta
+        if (change.field === 'message_template_status_update') {
+          await handleTemplateStatusUpdate(db, params.slug, change.value as any)
+          continue
+        }
+
         if (change.field !== 'messages') continue
 
         const value = change.value
@@ -112,6 +118,29 @@ async function handleStatusUpdate(db: any, status: MetaStatus) {
   }
 }
 
+// ─── Update status template ─────────────────────────────────────────────────────
+
+async function handleTemplateStatusUpdate(db: any, slug: string, value: MetaTemplateStatusValue) {
+  const event = value?.event // APPROVED | REJECTED | PENDING | PAUSED | DISABLED | FLAGGED
+  if (!event) return
+
+  const metaId = value.message_template_id != null ? String(value.message_template_id) : null
+  const name   = value.message_template_name
+
+  const tmpl = await db.broadcastTemplate.findFirst({
+    where: metaId
+      ? { tenant_slug: slug, meta_template_id: metaId }
+      : { tenant_slug: slug, template_name: name },
+  })
+  if (!tmpl) return
+
+  await db.broadcastTemplate.update({
+    where: { id: tmpl.id },
+    data:  { meta_status: event, aktif: event === 'APPROVED' },
+  })
+  console.log(`[webhook/meta/${slug}] template ${tmpl.template_name} → ${event}`)
+}
+
 // ─── Normalisasi nomor ────────────────────────────────────────────────────────
 
 function normalizePhone(phone: string): string {
@@ -136,6 +165,14 @@ interface MetaEntry {
 interface MetaChange {
   field: string
   value: MetaChangeValue
+}
+
+interface MetaTemplateStatusValue {
+  event?:                     string  // APPROVED | REJECTED | PENDING | PAUSED | DISABLED | FLAGGED
+  message_template_id?:       number | string
+  message_template_name?:     string
+  message_template_language?: string
+  reason?:                    string
 }
 
 interface MetaChangeValue {
