@@ -3,6 +3,7 @@ import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { sendMetaTemplateMessage } from '@/lib/meta-client'
 import { recomputeCampaignCounters } from '@/lib/campaign'
+import { resolveTemplateField, type PersonForTemplate } from '@/lib/template-fields'
 import { BROADCAST_BATCH_SIZE, BROADCAST_DELAY_MS } from '@/constants'
 
 type Ctx = { params: { slug: string; id: string } }
@@ -118,9 +119,28 @@ async function sendBatchAsync(
   for (let i = 0; i < recipients.length; i += BROADCAST_BATCH_SIZE) {
     const batch = recipients.slice(i, i + BROADCAST_BATCH_SIZE)
 
+    // Ambil data pasien (+ kunjungan terakhir) untuk variabel dinamis
+    const persons = await db.person.findMany({
+      where:  { id: { in: batch.map(r => r.person_id) } },
+      select: {
+        id: true, name: true, no_rm: true, no_hp: true, agama: true,
+        jenis_pembayaran: true, nama_instansi: true, no_bpjs: true,
+        visits: { where: { aktif: true }, orderBy: { tanggal: 'desc' }, take: 1,
+          select: { poli: true, dokter: true, diagnosa_nama: true, tanggal: true } },
+      },
+    })
+    const personMap = new Map<string, any>(persons.map(p => [p.id, p]))
+
     await Promise.all(batch.map(async (r) => {
       try {
-        const components = buildMetaComponents(template, r, templateParams)
+        const pRow = personMap.get(r.person_id)
+        const person: PersonForTemplate = {
+          name: r.nama ?? pRow?.name, no_rm: pRow?.no_rm, no_hp: r.no_hp ?? pRow?.no_hp,
+          agama: pRow?.agama, jenis_pembayaran: pRow?.jenis_pembayaran,
+          nama_instansi: pRow?.nama_instansi, no_bpjs: pRow?.no_bpjs,
+          lastVisit: pRow?.visits?.[0] ?? null,
+        }
+        const components = buildMetaComponents(template, person, templateParams)
         const msgId = await sendMetaTemplateMessage(
           { phone_number_id: metaCfg.phone_number_id, access_token: metaCfg.access_token },
           r.no_hp,
@@ -158,14 +178,24 @@ async function sendBatchAsync(
   })
 }
 
-function buildMetaComponents(template: any, recipient: any, params: Record<string, string>) {
+function buildMetaComponents(template: any, person: PersonForTemplate, params: Record<string, string>) {
   return (template.components_schema || []).map((comp: any) => ({
     type:       comp.type,
     sub_type:   comp.sub_type,
     index:      comp.index,
     parameters: (comp.parameters || []).map((p: any) => {
-      let text = params[p.param_key] ?? p.example ?? ''
-      text = text.replace(/\{\{nama\}\}/g, recipient.nama).replace(/\{\{no_hp\}\}/g, recipient.no_hp)
+      let text: string
+      if (p.source === 'field' && p.field) {
+        // Variabel dinamis — ambil dari data pasien
+        text = resolveTemplateField(person, p.field) || p.example || ''
+      } else {
+        // Variabel statis — nilai dari campaign, fallback ke contoh
+        text = params[p.param_key] ?? p.example ?? ''
+      }
+      // Kompat lama: template yang masih pakai token literal {{nama}}/{{no_hp}}
+      text = text
+        .replace(/\{\{nama\}\}/g, person.name ?? '')
+        .replace(/\{\{no_hp\}\}/g, person.no_hp ?? '')
       return { type: 'text', text }
     }),
   }))

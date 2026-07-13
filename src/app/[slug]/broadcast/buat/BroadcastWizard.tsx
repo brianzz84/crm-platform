@@ -1,18 +1,31 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { TEMPLATE_FIELD_LABELS } from '@/lib/template-fields'
 
 /* ─── Types ─── */
 interface Segment { id: string; nama: string; deskripsi: string | null; _count: { segment_persons: number } }
+interface TmplParam { param_key: string; example?: string; source?: 'static' | 'field'; field?: string }
+interface TmplComponent { type: string; text?: string; parameters?: TmplParam[] }
+interface Template {
+  id: string; nama: string; template_name: string; meta_status: string | null
+  components_schema: TmplComponent[]
+}
 interface FormState {
-  segment_id:   string
-  channel:      'WA' | 'IG' | 'FB'
-  template_id:  string
-  pesan:        string
-  nama:         string
-  jadwal_type:  'sekarang' | 'jadwal'
-  jadwal_kirim: string   // ISO string
+  segment_id:      string
+  channel:         'WA' | 'IG' | 'FB'
+  template_id:     string
+  template_params: Record<string, string>
+  nama:            string
+  jadwal_type:     'sekarang' | 'jadwal'
+  jadwal_kirim:    string   // ISO string
+}
+
+/* Ambil semua variabel statis (perlu diisi manual) dari sebuah template */
+function flatParams(t: Template | undefined): TmplParam[] {
+  if (!t) return []
+  return (t.components_schema || []).flatMap(c => c.parameters || [])
 }
 
 /* ─── Helpers ─── */
@@ -85,33 +98,60 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
   const router   = useRouter()
   const [step, setStep]       = useState(0)
   const [form, setForm]       = useState<FormState>({
-    segment_id: defaultSegmentId || '', channel: 'WA', template_id: '', pesan: '',
+    segment_id: defaultSegmentId || '', channel: 'WA', template_id: '', template_params: {},
     nama: '', jadwal_type: 'sekarang', jadwal_kirim: '',
   })
   const [segments, setSegments]   = useState<Segment[]>([])
+  const [templates, setTemplates] = useState<Template[]>([])
   const [loadingSeg, setLoadingSeg] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState('')
   const [successId, setSuccessId]   = useState('')
 
   // Character counter ref
-  const charCount = form.pesan.length
 
   useEffect(() => {
     fetch(`/api/${slug}/segmen`)
       .then(r => r.json())
       .then(j => { if (j.success) setSegments(j.data) })
       .finally(() => setLoadingSeg(false))
+    fetch(`/api/${slug}/broadcast/templates`)
+      .then(r => r.json())
+      .then(j => { if (j.success) setTemplates((j.data || []).filter((t: Template) => t.meta_status === 'APPROVED')) })
+      .catch(() => {})
   }, [slug])
 
-  const upd = (k: keyof FormState, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const upd = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  const selectedSegment = segments.find(s => s.id === form.segment_id)
+  const selectedSegment  = segments.find(s => s.id === form.segment_id)
+  const selectedTemplate = templates.find(t => t.id === form.template_id)
+  const params           = flatParams(selectedTemplate)
+  const staticParams     = params.filter(p => (p.source ?? 'static') === 'static')
+
+  function setParam(key: string, val: string) {
+    setForm(f => ({ ...f, template_params: { ...f.template_params, [key]: val } }))
+  }
+
+  // Substitusi {{1}},{{2}}… untuk preview satu komponen
+  function renderPreview(text: string | undefined): string {
+    if (!text) return ''
+    const ps = params
+    return text.replace(/\{\{(\d+)\}\}/g, (_m, n) => {
+      const p = ps[Number(n) - 1]
+      if (!p) return _m
+      if ((p.source ?? 'static') === 'field') return `[${TEMPLATE_FIELD_LABELS[p.field || ''] || 'data pasien'}]`
+      return form.template_params[p.param_key] || p.example || `[${p.param_key}]`
+    })
+  }
 
   /* ─── Validate per step ─── */
   function canNext() {
     if (step === 0) return !!form.segment_id
-    if (step === 1) return form.nama.trim().length >= 3 && form.pesan.trim().length >= 10
+    if (step === 1) {
+      if (form.nama.trim().length < 3 || !form.template_id) return false
+      // tiap variabel statis harus punya nilai atau contoh
+      return staticParams.every(p => (form.template_params[p.param_key] || p.example || '').trim().length > 0)
+    }
     if (step === 2) return form.jadwal_type === 'sekarang' || !!form.jadwal_kirim
     return true
   }
@@ -121,12 +161,12 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
     setSubmitting(true); setError('')
     try {
       const payload = {
-        nama:         form.nama,
-        channel:      form.channel,
-        pesan:        form.pesan,
-        segment_id:   form.segment_id || null,
-        template_id:  form.template_id || null,
-        jadwal_kirim: form.jadwal_type === 'jadwal' ? form.jadwal_kirim : null,
+        nama:            form.nama,
+        channel:         form.channel,
+        segment_id:      form.segment_id || null,
+        template_id:     form.template_id || null,
+        template_params: form.template_params,
+        jadwal_kirim:    form.jadwal_type === 'jadwal' ? form.jadwal_kirim : null,
       }
       const res  = await fetch(`/api/${slug}/broadcast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json()
@@ -223,79 +263,72 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
           </div>
         )}
 
-        {/* ═══ STEP 1: Susun Pesan ═══ */}
+        {/* ═══ STEP 1: Pilih Template & Isi Variabel ═══ */}
         {step === 1 && (
           <div>
-            <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--c-primary)', marginBottom: 4 }}>Susun Pesan</h2>
-            <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 'var(--sp-6)' }}>Tulis nama campaign dan isi pesan yang akan dikirim ke {selectedSegment?._count.segment_persons.toLocaleString('id-ID') ?? '—'} pasien.</p>
+            <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--c-primary)', marginBottom: 4 }}>Pilih Template & Isi Pesan</h2>
+            <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 'var(--sp-6)' }}>Pesan dikirim ke {selectedSegment?._count.segment_persons.toLocaleString('id-ID') ?? '—'} pasien memakai template WhatsApp yang sudah disetujui Meta.</p>
 
             <FieldWrap label="Nama Campaign">
               <input value={form.nama} onChange={e => upd('nama', e.target.value)}
-                placeholder="Contoh: Reminder Kontrol Jantung - Juli 2026"
-                style={inputStyle} />
+                placeholder="Contoh: Reminder Kontrol Jantung - Juli 2026" style={inputStyle} />
             </FieldWrap>
 
-            <FieldWrap label="Channel Pengiriman">
-              <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-                {CHANNEL_OPT.map(c => {
-                  const sel = form.channel === c.val
-                  return (
-                    <button key={c.val} onClick={() => upd('channel', c.val)}
-                      style={{
-                        padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
-                        border: sel ? '2px solid var(--c-secondary)' : '1.5px solid var(--c-border)',
-                        background: sel ? 'var(--c-secondary)08' : 'white', fontFamily: 'inherit', textAlign: 'left',
-                      }}>
-                      <div style={{ fontSize: 20, marginBottom: 4 }}>{c.icon}</div>
-                      <div style={{ fontSize: 13, fontWeight: sel ? 700 : 500, color: sel ? 'var(--c-secondary)' : 'var(--c-text)' }}>{c.label}</div>
-                      <div style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{c.desc}</div>
-                    </button>
-                  )
-                })}
-              </div>
+            <FieldWrap label="Template Pesan" hint="Hanya template berstatus Approved yang bisa dipakai.">
+              {templates.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--c-text-muted)', padding: '10px 0' }}>
+                  Belum ada template Approved. Buat & submit template dulu di <a href={`/${slug}/broadcast/templates`} style={{ color: 'var(--c-secondary)' }}>Kelola Template</a>.
+                </div>
+              ) : (
+                <select value={form.template_id}
+                  onChange={e => setForm(f => ({ ...f, template_id: e.target.value, template_params: {} }))}
+                  style={inputStyle}>
+                  <option value="">— pilih template —</option>
+                  {templates.map(t => <option key={t.id} value={t.id}>{t.nama} ({t.template_name})</option>)}
+                </select>
+              )}
             </FieldWrap>
 
-            {form.channel === 'WA' && (
-              <FieldWrap label="Template ID Wappin" hint="Opsional. ID template pre-approved dari dasbor Wappin.">
-                <input value={form.template_id} onChange={e => upd('template_id', e.target.value)}
-                  placeholder="Contoh: reminder_kontrol_v2"
-                  style={inputStyle} />
+            {/* Isi variabel */}
+            {selectedTemplate && params.length > 0 && (
+              <FieldWrap label="Isi Variabel">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                  {params.map((p, i) => {
+                    const isField = (p.source ?? 'static') === 'field'
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--c-secondary)', width: 34 }}>{`{{${i + 1}}}`}</span>
+                        {isField ? (
+                          <span style={{ flex: 1, minWidth: 200, fontSize: 13, color: 'var(--c-text-muted)', background: 'var(--c-bg)', borderRadius: 'var(--r-sm)', padding: '8px 12px' }}>
+                            🔗 Otomatis dari data pasien: <strong>{TEMPLATE_FIELD_LABELS[p.field || ''] || p.field}</strong>
+                          </span>
+                        ) : (
+                          <input value={form.template_params[p.param_key] ?? ''} onChange={e => setParam(p.param_key, e.target.value)}
+                            placeholder={p.example ? `contoh: ${p.example}` : `nilai untuk ${p.param_key}`}
+                            style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c-text-muted)' }}>
+                  Variabel <strong>otomatis</strong> terisi berbeda per pasien saat kirim. Variabel <strong>manual</strong> sama untuk semua penerima.
+                </div>
               </FieldWrap>
             )}
 
-            <FieldWrap label="Isi Pesan">
-              <div style={{ position: 'relative' }}>
-                <textarea value={form.pesan} onChange={e => upd('pesan', e.target.value)}
-                  rows={7} placeholder="Halo {nama}, kami mengingatkan..."
-                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
-                <div style={{ position: 'absolute', bottom: 10, right: 12, fontSize: 11, color: charCount > 1000 ? 'var(--c-danger)' : 'var(--c-text-faint)' }}>
-                  {charCount} karakter
-                </div>
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c-text-muted)' }}>
-                Variabel: <code style={{ background: 'var(--c-bg)', padding: '1px 5px', borderRadius: 3 }}>{'{nama}'}</code>{' '}
-                <code style={{ background: 'var(--c-bg)', padding: '1px 5px', borderRadius: 3 }}>{'{no_rm}'}</code>{' '}
-                <code style={{ background: 'var(--c-bg)', padding: '1px 5px', borderRadius: 3 }}>{'{poli}'}</code>
-              </div>
-            </FieldWrap>
-
-            {/* Preview bubble */}
-            {form.pesan && (
+            {/* Preview */}
+            {selectedTemplate && (
               <div style={{ background: '#ECF9F1', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', marginTop: 'var(--sp-2)' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#278B58', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Preview Pesan
+                  Preview (dengan contoh data)
                 </div>
-                <div style={{
-                  background: 'white', borderRadius: '0 12px 12px 12px',
-                  padding: '10px 14px', maxWidth: 340,
-                  fontSize: 13, lineHeight: 1.6, color: 'var(--c-text)',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-                  whiteSpace: 'pre-wrap',
-                }}>
-                  {form.pesan.replace('{nama}', 'Budi Santoso').replace('{no_rm}', 'RM-001234').replace('{poli}', 'Poli Jantung')}
-                </div>
-                <div style={{ fontSize: 11, color: '#278B58', marginTop: 6, textAlign: 'right', maxWidth: 340 }}>
-                  {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ✓✓
+                <div style={{ background: 'white', borderRadius: '0 12px 12px 12px', padding: '10px 14px', maxWidth: 360, fontSize: 13, lineHeight: 1.6, color: 'var(--c-text)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)', whiteSpace: 'pre-wrap' }}>
+                  {selectedTemplate.components_schema.map((c, idx) => {
+                    const t = renderPreview(c.text)
+                    if (!t) return null
+                    return <div key={idx} style={{ fontWeight: c.type === 'header' ? 700 : 400, marginBottom: 4 }}>{t}</div>
+                  })}
                 </div>
               </div>
             )}
@@ -356,7 +389,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
                 { label: 'Nama Campaign', val: form.nama },
                 { label: 'Segmen',        val: selectedSegment ? `${selectedSegment.nama} (${selectedSegment._count.segment_persons.toLocaleString('id-ID')} pasien)` : '—' },
                 { label: 'Channel',       val: CHANNEL_OPT.find(c => c.val === form.channel)?.label ?? form.channel },
-                { label: 'Template ID',   val: form.template_id || '(tidak ada)' },
+                { label: 'Template',      val: selectedTemplate ? `${selectedTemplate.nama}` : '(belum dipilih)' },
                 { label: 'Jadwal',        val: form.jadwal_type === 'jadwal' ? new Date(form.jadwal_kirim).toLocaleString('id-ID') : 'Disimpan sebagai Draft' },
               ].map(row => (
                 <div key={row.label} style={{
@@ -372,8 +405,13 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
 
             {/* Pesan preview */}
             <div style={{ background: 'var(--c-bg)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', marginBottom: 'var(--sp-5)' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Isi Pesan</div>
-              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--c-text)', whiteSpace: 'pre-wrap' }}>{form.pesan}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Preview Pesan (contoh data)</div>
+              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--c-text)', whiteSpace: 'pre-wrap' }}>
+                {(selectedTemplate?.components_schema || []).map((c, idx) => {
+                  const t = renderPreview(c.text)
+                  return t ? <div key={idx} style={{ fontWeight: c.type === 'header' ? 700 : 400, marginBottom: 4 }}>{t}</div> : null
+                })}
+              </div>
             </div>
 
             {error && (

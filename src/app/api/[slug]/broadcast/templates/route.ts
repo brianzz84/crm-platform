@@ -28,6 +28,8 @@ const ComponentSchema = z.object({
   parameters: z.array(z.object({
     param_key: z.string(),
     example:   z.string().optional(),
+    source:    z.enum(['static', 'field']).optional(),
+    field:     z.string().optional(),
   })).default([]),
 })
 

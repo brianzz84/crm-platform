@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { TEMPLATE_FIELDS } from '@/lib/template-fields'
 
 interface ComponentParam {
   param_key: string
   example:   string
+  source?:   'static' | 'field'   // static = diisi saat campaign; field = ambil dari data pasien
+  field?:    string               // key field DB jika source='field'
 }
 
 interface Component {
@@ -98,7 +101,8 @@ function ComponentEditor({
   }
   function addParam(ci: number) {
     const c = components[ci]
-    updateComp(ci, { parameters: [...c.parameters, { param_key: '', example: '' }] })
+    const nextNum = c.parameters.length + 1
+    updateComp(ci, { parameters: [...c.parameters, { param_key: `var${nextNum}`, example: '', source: 'static' }] })
   }
   function removeParam(ci: number, pi: number) {
     const c = components[ci]
@@ -130,6 +134,11 @@ function ComponentEditor({
         }}>
           + Component
         </button>
+      </div>
+
+      <div style={{ background: 'var(--c-primary-xlight)', borderRadius: 'var(--r-sm)', padding: '8px 10px', marginBottom: 10, fontSize: 11, color: 'var(--c-primary)', lineHeight: 1.5 }}>
+        💡 Tulis variabel di teks pakai <code>{'{{1}}'}</code>, <code>{'{{2}}'}</code>, dst (berurutan). Lalu untuk tiap variabel, tentukan sumbernya:
+        <strong> Isi manual</strong> (nilai kamu masukkan saat buat campaign) atau <strong>Dari data pasien</strong> (otomatis terisi per penerima, mis. Nama/No. RM). Kolom <em>contoh</em> wajib diisi untuk proses approval Meta.
       </div>
 
       {components.length === 0 && (
@@ -208,27 +217,41 @@ function ComponentEditor({
           {/* Parameters */}
           <div style={{ paddingLeft: 8, borderLeft: '2px solid var(--c-border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>Parameters ({comp.parameters.length})</span>
+              <span style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>Variabel {'{{1}}'}, {'{{2}}'}… ({comp.parameters.length}) — urutan = urutan variabel di teks</span>
               <button type="button" onClick={() => addParam(ci)} style={{
                 fontSize: 11, padding: '2px 8px', border: '1px solid var(--c-border)',
                 borderRadius: 'var(--r-sm)', background: 'white', cursor: 'pointer', fontFamily: 'inherit',
-              }}>+ param</button>
+              }}>+ variabel</button>
             </div>
             {comp.parameters.map((p, pi) => (
-              <div key={pi} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'center' }}>
-                <input placeholder="param_key (e.g. nama)" value={p.param_key}
-                  onChange={e => updateParam(ci, pi, { param_key: e.target.value })}
-                  style={{ ...inp, flex: 1, fontFamily: 'monospace', fontSize: 11 }} />
-                <input placeholder="contoh nilai" value={p.example}
+              <div key={pi} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: 'var(--c-secondary)', width: 34, flexShrink: 0 }}>{`{{${pi + 1}}}`}</span>
+                <select value={p.source ?? 'static'} onChange={e => updateParam(ci, pi, { source: e.target.value as any })}
+                  style={{ ...inp, width: 130, flexShrink: 0, fontSize: 11 }}>
+                  <option value="static">Isi manual</option>
+                  <option value="field">Dari data pasien</option>
+                </select>
+                {(p.source ?? 'static') === 'field' ? (
+                  <select value={p.field ?? ''} onChange={e => updateParam(ci, pi, { field: e.target.value })}
+                    style={{ ...inp, flex: 1, minWidth: 140, fontSize: 11 }}>
+                    <option value="">— pilih kolom —</option>
+                    {TEMPLATE_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                  </select>
+                ) : (
+                  <input placeholder="label (mis. promo)" value={p.param_key}
+                    onChange={e => updateParam(ci, pi, { param_key: e.target.value })}
+                    style={{ ...inp, flex: 1, minWidth: 120, fontFamily: 'monospace', fontSize: 11 }} />
+                )}
+                <input placeholder="contoh (utk approval Meta)" value={p.example}
                   onChange={e => updateParam(ci, pi, { example: e.target.value })}
-                  style={{ ...inp, flex: 1, fontSize: 11 }} />
+                  style={{ ...inp, flex: 1, minWidth: 120, fontSize: 11 }} />
                 <button type="button" onClick={() => removeParam(ci, pi)} style={{
                   background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', fontSize: 14, flexShrink: 0,
                 }}>×</button>
               </div>
             ))}
             {comp.parameters.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>Tidak ada parameter variabel</div>
+              <div style={{ fontSize: 11, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>Belum ada variabel. Klik "+ variabel" untuk tiap {'{{n}}'} di teks.</div>
             )}
           </div>
         </div>
