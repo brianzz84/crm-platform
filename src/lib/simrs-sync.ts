@@ -48,7 +48,7 @@ async function getSimrsConfig(tenantSlug: string): Promise<SimrsClientConfig | n
 // Sinkronisasi satu tanggal
 // ──────────────────────────────────────────────
 
-export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cron' | 'manual' = 'cron'): Promise<SyncResult> {
+export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cron' | 'manual' | 'backfill' = 'cron'): Promise<SyncResult> {
   const logId    = randomUUID()
   const startedAt = new Date()
 
@@ -207,7 +207,7 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
 // Catchup — backfill tanggal yang terlewat
 // ──────────────────────────────────────────────
 
-export async function syncWithCatchup(tenantSlug: string, mode: 'cron' | 'manual' = 'cron'): Promise<SyncResult[]> {
+export async function syncWithCatchup(tenantSlug: string, mode: 'cron' | 'manual' | 'backfill' = 'cron'): Promise<SyncResult[]> {
   const db = await getTenantDb(tenantSlug)
 
   // Cari tanggal sync terakhir yang DONE

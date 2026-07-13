@@ -41,6 +41,30 @@ async function main() {
         job.log(`[SIMRS_SYNC] ${results.length} tanggal, ${total_baru} baru, ${total_update} update`)
         return { dates: results.length, total_baru, total_update }
       }
+      if (job.name === 'simrs-backfill') {
+        const { syncTanggal } = await import('@/lib/simrs-sync')
+        const { getRedis }    = await import('@/lib/queue')
+        const result = await syncTanggal(job.data.tenantSlug, job.data.tanggal, 'backfill')
+        job.log(`[SIMRS_BACKFILL] ${job.data.tanggal}: +${result.jumlah_baru} baru, ${result.jumlah_update} update${result.error ? ' ERROR: ' + result.error : ''}`)
+
+        // Update progress counter di Redis
+        const redis    = getRedis()
+        const stateKey = `crm:backfill:${job.data.tenantSlug}:state`
+        const raw      = await redis.get(stateKey)
+        if (raw) {
+          const state = JSON.parse(raw)
+          if (result.error) state.failed++
+          else state.done++
+          const selesai = state.done + state.failed >= state.total
+          if (selesai) {
+            state.status     = state.failed > 0 && state.done === 0 ? 'failed' : state.failed > 0 ? 'partial' : 'done'
+            state.finishedAt = new Date().toISOString()
+          }
+          await redis.set(stateKey, JSON.stringify(state), 'EX', 60 * 60 * 24 * 7)
+        }
+
+        return result
+      }
       const { processSapaanJob } = await import('./sapaan.worker') as any
       return processSapaanJob(job)
     },

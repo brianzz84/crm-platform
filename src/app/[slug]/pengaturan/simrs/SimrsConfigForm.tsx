@@ -23,6 +23,19 @@ interface Summary {
   total_update_14d: number
 }
 
+interface BackfillState {
+  batchId:    string
+  dari:       string
+  sampai:     string
+  total:      number
+  done:       number
+  failed:     number
+  skipped:    number
+  status:     'running' | 'done' | 'failed' | 'partial' | 'cancelled'
+  startedAt:  string
+  finishedAt: string | null
+}
+
 interface Props {
   slug:        string
   canConfig:   boolean
@@ -71,6 +84,15 @@ export default function SimrsConfigForm({ slug, canConfig, canSync, initialData 
   const [loadingLog, setLoadingLog] = useState(true)
   const [showAll,    setShowAll]    = useState(false)
 
+  // Backfill state
+  const [bfDari,     setBfDari]     = useState('')
+  const [bfSampai,   setBfSampai]   = useState('')
+  const [bfLoading,  setBfLoading]  = useState(false)
+  const [bfState,    setBfState]    = useState<BackfillState | null>(null)
+  const [bfMsg,      setBfMsg]      = useState('')
+  const [bfError,    setBfError]    = useState('')
+  const [cancelling, setCancelling] = useState(false)
+
   const fetchLogs = useCallback(async () => {
     try {
       const res  = await fetch(`/api/${slug}/simrs/logs`)
@@ -84,14 +106,29 @@ export default function SimrsConfigForm({ slug, canConfig, canSync, initialData 
     setLoadingLog(false)
   }, [slug])
 
-  useEffect(() => { fetchLogs() }, [fetchLogs])
+  const fetchBackfillState = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/${slug}/simrs/backfill`)
+      const json = await res.json()
+      if (json.success) setBfState(json.data)
+    } catch {}
+  }, [slug])
 
-  // Poll saat RUNNING
+  useEffect(() => { fetchLogs(); fetchBackfillState() }, [fetchLogs, fetchBackfillState])
+
+  // Poll saat sync RUNNING
   useEffect(() => {
     if (lastSync?.status !== 'RUNNING') return
     const t = setInterval(fetchLogs, 3000)
     return () => clearInterval(t)
   }, [lastSync?.status, fetchLogs])
+
+  // Poll saat backfill berjalan
+  useEffect(() => {
+    if (bfState?.status !== 'running') return
+    const t = setInterval(() => { fetchBackfillState(); fetchLogs() }, 4000)
+    return () => clearInterval(t)
+  }, [bfState?.status, fetchBackfillState, fetchLogs])
 
   async function handleSave() {
     setSaving(true); setError(''); setSaved(false)
@@ -108,6 +145,45 @@ export default function SimrsConfigForm({ slug, canConfig, canSync, initialData 
       setTimeout(() => setSaved(false), 3000)
     } finally { setSaving(false) }
   }
+
+  async function handleBackfill() {
+    if (!bfDari || !bfSampai) { setBfError('Pilih rentang tanggal terlebih dahulu'); return }
+    setBfLoading(true); setBfMsg(''); setBfError('')
+    try {
+      const res  = await fetch(`/api/${slug}/simrs/backfill`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dari: bfDari, sampai: bfSampai }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setBfError(json.error || 'Gagal memulai backfill'); return }
+      setBfMsg(json.message || 'Backfill dimulai')
+      await fetchBackfillState()
+    } finally { setBfLoading(false) }
+  }
+
+  async function handleCancelBackfill() {
+    setCancelling(true)
+    try {
+      const res  = await fetch(`/api/${slug}/simrs/backfill`, { method: 'DELETE' })
+      const json = await res.json()
+      if (res.ok) { setBfMsg(''); await fetchBackfillState() }
+      else setBfError(json.error || 'Gagal membatalkan')
+    } finally { setCancelling(false) }
+  }
+
+  // Estimasi hari yang akan di-sync (exclude yang sudah DONE)
+  const doneSet = new Set(logs.filter(l => l.status === 'DONE').map(l => l.tanggal_data.slice(0, 10)))
+  function estimasiBfDays(): { total: number; skip: number; proses: number } | null {
+    if (!bfDari || !bfSampai || bfDari > bfSampai) return null
+    const dates: string[] = []
+    const c = new Date(bfDari)
+    const e = new Date(bfSampai)
+    while (c <= e) { dates.push(c.toISOString().slice(0, 10)); c.setDate(c.getDate() + 1) }
+    const skip   = dates.filter(d => doneSet.has(d)).length
+    const proses = dates.length - skip
+    return { total: dates.length, skip, proses }
+  }
+  const bfEstimasi = estimasiBfDays()
 
   async function handleSync() {
     setSyncing(true); setSyncMsg(''); setSyncError('')
@@ -340,6 +416,178 @@ export default function SimrsConfigForm({ slug, canConfig, canSync, initialData 
           </>
         )}
       </div>
+
+      {/* ── Import Data Historis (Backfill) — hanya ADMIN_IT / SUPER_ADMIN ── */}
+      {canConfig && (
+        <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', marginBottom: 'var(--sp-5)', overflow: 'hidden' }}>
+          <div style={{ padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--c-border)', background: 'var(--c-bg)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>📥</span>
+            <div>
+              <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)' }}>Import Data Historis</span>
+              <span style={{ fontSize: 11, color: 'var(--c-text-faint)', marginLeft: 10 }}>Tarik data kunjungan dari periode tertentu di masa lalu</span>
+            </div>
+          </div>
+
+          <div style={{ padding: 'var(--sp-5)' }}>
+
+            {/* Progress backfill yang sedang/sudah berjalan */}
+            {bfState && (() => {
+              const pct      = bfState.total > 0 ? Math.round(((bfState.done + bfState.failed) / bfState.total) * 100) : 0
+              const isRunning = bfState.status === 'running'
+              const statusMap: Record<string, { label: string; color: string }> = {
+                running:   { label: 'Sedang berjalan',  color: '#D97706' },
+                done:      { label: 'Selesai',           color: '#16A34A' },
+                partial:   { label: 'Selesai (sebagian gagal)', color: '#EA580C' },
+                failed:    { label: 'Gagal semua',       color: '#DC2626' },
+                cancelled: { label: 'Dibatalkan',        color: '#94A3B8' },
+              }
+              const s = statusMap[bfState.status] ?? statusMap['done']
+              return (
+                <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', marginBottom: 'var(--sp-5)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--c-text)' }}>
+                        Backfill {new Date(bfState.dari).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} — {new Date(bfState.sampai).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                      <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: s.color + '20', color: s.color }}>
+                        {s.label}
+                      </span>
+                    </div>
+                    {isRunning && (
+                      <button
+                        onClick={handleCancelBackfill}
+                        disabled={cancelling}
+                        style={{ padding: '5px 12px', borderRadius: 'var(--r-sm)', border: '1px solid #EF4444', background: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: cancelling ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+                      >
+                        {cancelling ? 'Membatalkan...' : 'Batalkan'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Progress bar */}
+                  <div style={{ background: 'var(--c-border)', borderRadius: 99, height: 8, marginBottom: 10, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 99, transition: 'width 0.5s ease',
+                      width: `${pct}%`,
+                      background: bfState.failed > 0 ? 'linear-gradient(90deg, #16A34A, #EA580C)' : '#16A34A',
+                    }} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 'var(--sp-4)', fontSize: 12, flexWrap: 'wrap' }}>
+                    <span style={{ color: 'var(--c-text-muted)' }}>Total: <strong>{bfState.total}</strong> tanggal</span>
+                    <span style={{ color: '#16A34A' }}>Selesai: <strong>{bfState.done}</strong></span>
+                    {bfState.failed > 0 && <span style={{ color: '#DC2626' }}>Gagal: <strong>{bfState.failed}</strong></span>}
+                    {bfState.skipped > 0 && <span style={{ color: 'var(--c-text-faint)' }}>Dilewati (sudah ada): <strong>{bfState.skipped}</strong></span>}
+                    <span style={{ color: 'var(--c-text-faint)', marginLeft: 'auto' }}>{pct}%</span>
+                  </div>
+
+                  {!isRunning && bfState.finishedAt && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: 'var(--c-text-faint)' }}>
+                      Selesai: {new Date(bfState.finishedAt).toLocaleString('id-ID')}
+                      {' · '}Dimulai: {new Date(bfState.startedAt).toLocaleString('id-ID')}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Form input range */}
+            {(!bfState || bfState.status !== 'running') && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)', marginBottom: 'var(--sp-4)' }}>
+                  <div>
+                    <label style={lbl}>Dari Tanggal</label>
+                    <input type="date" value={bfDari} onChange={e => setBfDari(e.target.value)}
+                      max={bfSampai || new Date(Date.now() - 86400000).toISOString().slice(0, 10)}
+                      style={inp} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Sampai Tanggal</label>
+                    <input type="date" value={bfSampai} onChange={e => setBfSampai(e.target.value)}
+                      min={bfDari}
+                      max={new Date(Date.now() - 86400000).toISOString().slice(0, 10)}
+                      style={inp} />
+                  </div>
+                </div>
+
+                {/* Estimasi */}
+                {bfEstimasi && (
+                  <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 'var(--r-sm)', padding: 'var(--sp-3) var(--sp-4)', marginBottom: 'var(--sp-4)', fontSize: 12 }}>
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', color: '#0369A1' }}>
+                      <span>Total hari: <strong>{bfEstimasi.total}</strong></span>
+                      <span>Akan diproses: <strong>{bfEstimasi.proses}</strong></span>
+                      {bfEstimasi.skip > 0 && <span style={{ color: '#64748B' }}>Sudah ada (dilewati): <strong>{bfEstimasi.skip}</strong></span>}
+                      {bfEstimasi.proses > 0 && (
+                        <span style={{ marginLeft: 'auto', color: '#64748B' }}>
+                          Estimasi: ~{Math.ceil(bfEstimasi.proses * 1.5 / 60)} menit
+                        </span>
+                      )}
+                    </div>
+                    {bfEstimasi.total > 366 && (
+                      <div style={{ color: '#DC2626', marginTop: 6, fontWeight: 600 }}>Maksimal 366 hari per backfill</div>
+                    )}
+                  </div>
+                )}
+
+                {bfMsg   && <div style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', borderRadius: 'var(--r-sm)', padding: 'var(--sp-3) var(--sp-4)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--sp-3)' }}>✓ {bfMsg}</div>}
+                {bfError && <div style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA', borderLeft: '3px solid #EF4444', borderRadius: 'var(--r-sm)', padding: 'var(--sp-3) var(--sp-4)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--sp-3)' }}>{bfError}</div>}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
+                  {/* Shortcut buttons */}
+                  {[
+                    { label: '7 hari terakhir',  days: 7 },
+                    { label: '30 hari terakhir', days: 30 },
+                    { label: '3 bulan terakhir', days: 90 },
+                    { label: '1 tahun terakhir', days: 365 },
+                  ].map(s => {
+                    const sampai = new Date(Date.now() - 86400000)
+                    const dari   = new Date(sampai)
+                    dari.setDate(sampai.getDate() - (s.days - 1))
+                    return (
+                      <button
+                        key={s.days}
+                        onClick={() => {
+                          setBfDari(dari.toISOString().slice(0, 10))
+                          setBfSampai(sampai.toISOString().slice(0, 10))
+                          setBfMsg(''); setBfError('')
+                        }}
+                        style={{
+                          padding: '5px 12px', borderRadius: 'var(--r-sm)',
+                          border: '1px solid var(--c-border)', background: 'var(--c-bg)',
+                          fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)',
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    )
+                  })}
+
+                  <button
+                    onClick={handleBackfill}
+                    disabled={bfLoading || !bfDari || !bfSampai || (bfEstimasi?.proses === 0) || (bfEstimasi?.total ?? 0) > 366}
+                    style={{
+                      marginLeft: 'auto', padding: '9px 20px', borderRadius: 'var(--r-md)',
+                      background: (bfLoading || !bfDari || !bfSampai || bfEstimasi?.proses === 0) ? '#94A3B8' : '#7C3AED',
+                      border: 'none', color: 'white', fontFamily: 'inherit',
+                      fontSize: 'var(--font-size-sm)', fontWeight: 700,
+                      cursor: (bfLoading || !bfDari || !bfSampai || bfEstimasi?.proses === 0) ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}
+                  >
+                    <span>{bfLoading ? '⏳' : '📥'}</span>
+                    {bfLoading ? 'Memulai...' : bfEstimasi?.proses === 0 ? 'Semua sudah ada' : `Mulai Import ${bfEstimasi ? `(${bfEstimasi.proses} hari)` : ''}`}
+                  </button>
+                </div>
+
+                <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 'var(--sp-3)', marginBottom: 0 }}>
+                  Proses berjalan di background — aman ditinggal. Tanggal yang sudah pernah berhasil di-sync akan dilewati otomatis.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Konfigurasi SIMRS — hanya ADMIN_IT / SUPER_ADMIN ── */}
       {canConfig && (
