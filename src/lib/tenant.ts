@@ -5,20 +5,12 @@
  */
 import { PrismaClient } from '../generated/prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { Pool } from 'pg'
 
 // Cache koneksi per slug untuk menghindari connection pool exhausted
 const connectionCache = new Map<string, PrismaClient>()
 
 function createClient(connectionString: string): PrismaClient {
-  const pool = new Pool({
-    connectionString,
-    max: 3,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 5_000,
-    keepAlive: true,
-  })
-  const adapter = new PrismaPg(pool)
+  const adapter = new PrismaPg({ connectionString })
   return new PrismaClient({ adapter })
 }
 
