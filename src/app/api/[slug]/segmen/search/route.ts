@@ -14,7 +14,11 @@ const schema = z.object({
   tagIds:          z.array(z.string()).optional(),
   jenisPembayaran: z.string().optional(),  // "TUNAI" | "NON_TUNAI"
   nameQuery:       z.string().optional(),
+  // pasien yang sengaja dikeluarkan admin (persisten terhadap refresh)
+  excludeIds:      z.array(z.string()).optional(),
 })
+
+const SELECT_LIMIT = 300  // jumlah baris yang dikembalikan untuk diseleksi/di-exclude
 
 export type SegmenSearchInput = z.infer<typeof schema>
 
@@ -62,17 +66,23 @@ export async function runSegmenSearch(db: any, slug: string, p: SegmenSearchInpu
 
   // Semua id yang cocok (untuk disimpan sebagai anggota segmen)
   const allMatches = await db.person.findMany({ where: personWhere, select: { id: true } })
-  const personIds  = allMatches.map((m: any) => m.id)
+  let personIds    = allMatches.map((m: any) => m.id)
 
-  // Preview 50 pertama
+  // Buang pasien yang sengaja dikeluarkan admin
+  if (p.excludeIds?.length) {
+    const ex = new Set(p.excludeIds)
+    personIds = personIds.filter((id: string) => !ex.has(id))
+  }
+
+  // Baris untuk diseleksi (hingga SELECT_LIMIT)
   const persons = await db.person.findMany({
     where: { id: { in: personIds } },
     select: { id: true, name: true, no_hp: true, no_rm: true },
     orderBy: { name: 'asc' },
-    take: 50,
+    take: SELECT_LIMIT,
   })
 
-  return { persons, total: personIds.length, person_ids: personIds }
+  return { persons, total: personIds.length, person_ids: personIds, capped: personIds.length > SELECT_LIMIT }
 }
 
 // POST: search pasien berdasarkan filter gabungan di DB lokal

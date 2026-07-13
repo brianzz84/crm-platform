@@ -18,6 +18,7 @@ interface SearchResult {
   persons:    { id: string; name: string; no_hp: string | null; no_rm: string | null }[]
   total:      number
   person_ids: string[]
+  capped?:    boolean
 }
 interface TagItem { id: string; name: string; warna: string; total_pasien: number; aktif: boolean }
 interface PersonRow { id: string; name: string; no_hp: string | null; no_rm: string | null }
@@ -73,6 +74,7 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
 
   // Preview + save
   const [result, setResult]   = useState<SearchResult | null>(null)
+  const [excluded, setExcluded] = useState<Record<string, boolean>>({}) // id yang di-exclude admin
   const [nama, setNama]       = useState('')
   const [deskripsi, setDesk]  = useState('')
   const [saving, setSaving]   = useState(false)
@@ -89,7 +91,7 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
 
   function resetForMode(m: Mode) {
     setMode(m); setError(''); setResult(null); setPenjelasan('')
-    setForm({ units: [], icdCodes: [] }); setTagIds([]); setSelected({}); setPresults([]); setPquery(''); setQuery('')
+    setForm({ units: [], icdCodes: [] }); setTagIds([]); setSelected({}); setPresults([]); setPquery(''); setQuery(''); setExcluded({})
   }
 
   function buildFilterDef(): any {
@@ -128,6 +130,7 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Gagal mencari pasien')
       setResult(json.data)
+      setExcluded({})
     } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }
 
@@ -143,8 +146,11 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
   }, [pquery, slug])
 
   async function handleSave() {
-    const personIds = mode === 'manual' ? Object.keys(selected) : result?.person_ids
-    if (!nama.trim() || !personIds?.length) return
+    const excludedIds = Object.keys(excluded).filter(id => excluded[id])
+    const personIds = mode === 'manual'
+      ? Object.keys(selected)
+      : (result?.person_ids || []).filter(id => !excluded[id])
+    if (!nama.trim() || !personIds.length) return
     setSaving(true); setError('')
     const tipe = mode === 'ai' ? 'AI' : mode === 'filter' ? 'FILTER' : mode === 'tag' ? 'TAG' : 'MANUAL'
     try {
@@ -155,7 +161,7 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
           deskripsi: deskripsi.trim() || undefined,
           tipe,
           nlp_query: mode === 'ai' ? query : undefined,
-          filter_def: mode === 'manual' ? undefined : buildFilterDef(),
+          filter_def: mode === 'manual' ? undefined : { ...buildFilterDef(), excludeIds: excludedIds },
           person_ids: personIds,
         }),
       })
@@ -176,8 +182,19 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
     setSelected(s => { const n = { ...s }; if (n[p.id]) delete n[p.id]; else n[p.id] = p; return n })
   }
 
-  const selectedCount = Object.keys(selected).length
-  const canSave = !!nama.trim() && (mode === 'manual' ? selectedCount > 0 : (result?.total ?? 0) > 0)
+  const selectedCount  = Object.keys(selected).length
+  const excludedCount  = Object.values(excluded).filter(Boolean).length
+  const effectiveTotal = (result?.total ?? 0) - excludedCount
+  const canSave = !!nama.trim() && (mode === 'manual' ? selectedCount > 0 : effectiveTotal > 0)
+
+  function includeAll() { setExcluded({}) }
+  function excludeAllVisible() {
+    if (!result) return
+    setExcluded(Object.fromEntries(result.persons.map(p => [p.id, true])))
+  }
+  function toggleExclude(id: string) {
+    setExcluded(e => ({ ...e, [id]: !e[id] }))
+  }
 
   if (done) {
     return (
@@ -363,39 +380,56 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* ── Hasil pencarian (ai/filter/tag) ── */}
+      {/* ── Hasil pencarian (ai/filter/tag) — checkbox untuk exclude ── */}
       {mode !== 'manual' && result && (
         <div style={cardStyle}>
-          <div style={{ background: result.total > 0 ? 'var(--c-success-light)' : 'var(--c-error-light)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--font-size-sm)' }}>
-            Ditemukan <strong>{result.total} pasien</strong>.{result.total > 50 && ` (menampilkan 50 pertama)`}
-          </div>
-          {result.persons.length > 0 && (
-            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
-                <thead><tr style={{ background: 'var(--c-bg)', position: 'sticky', top: 0 }}>
-                  {['Nama', 'No. HP', 'No. RM'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {result.persons.map(p => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_hp || '—'}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_rm || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ background: effectiveTotal > 0 ? 'var(--c-success-light)' : 'var(--c-error-light)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--font-size-sm)', flex: 1, minWidth: 240 }}>
+              Ditemukan <strong>{result.total} pasien</strong>
+              {excludedCount > 0 && <> · <strong>{effectiveTotal}</strong> akan disimpan ({excludedCount} dikecualikan)</>}
+              {result.capped && <span style={{ color: 'var(--c-text-muted)' }}> · menampilkan 300 pertama untuk seleksi</span>}
             </div>
+          </div>
+
+          {result.persons.length > 0 && (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={includeAll} type="button" style={{ padding: '4px 12px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>✓ Pilih Semua</button>
+                <button onClick={excludeAllVisible} type="button" style={{ padding: '4px 12px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>✕ Batal Semua</button>
+              </div>
+              <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
+                  <thead><tr style={{ background: 'var(--c-bg)', position: 'sticky', top: 0 }}>
+                    {['', 'Nama', 'No. HP', 'No. RM'].map((h, i) => <th key={i} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {result.persons.map(p => {
+                      const included = !excluded[p.id]
+                      return (
+                        <tr key={p.id} style={{ borderBottom: '1px solid var(--c-border)', opacity: included ? 1 : 0.45 }}>
+                          <td style={{ padding: '8px 12px', width: 32 }}>
+                            <input type="checkbox" checked={included} onChange={() => toggleExclude(p.id)} />
+                          </td>
+                          <td style={{ padding: '8px 12px', fontWeight: 500, textDecoration: included ? 'none' : 'line-through' }}>{p.name}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_hp || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_rm || '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}
 
       {/* ── Simpan ── */}
-      {((mode !== 'manual' && result && result.total > 0) || (mode === 'manual' && selectedCount > 0)) && (
+      {((mode !== 'manual' && result && effectiveTotal > 0) || (mode === 'manual' && selectedCount > 0)) && (
         <div style={cardStyle}>
           <h2 style={{ fontWeight: 700 }}>Simpan Segmen</h2>
           <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', background: 'var(--c-bg)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)' }}>
-            Menyimpan <strong>{mode === 'manual' ? selectedCount : result?.total} pasien</strong>.
+            Menyimpan <strong>{mode === 'manual' ? selectedCount : effectiveTotal} pasien</strong>.
             {mode !== 'manual' && ' Segmen dinamis — bisa di-refresh untuk perbarui anggota.'}
           </div>
           <div>
