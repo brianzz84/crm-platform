@@ -22,8 +22,8 @@ export default function CampaignActions({ slug, campaignId, status }: Props) {
     finally { setBusy(false) }
   }
 
-  async function send() {
-    if (!confirm('Mulai kirim campaign ini sekarang?')) return
+  async function send(resend = false) {
+    if (!confirm(resend ? 'Kirim ulang ke penerima yang gagal?' : 'Mulai kirim campaign ini sekarang?')) return
     setBusy(true)
     try {
       const res  = await fetch(`/api/${slug}/broadcast/${campaignId}/send`, { method: 'POST' })
@@ -64,7 +64,7 @@ export default function CampaignActions({ slug, campaignId, status }: Props) {
     <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
       {status === 'DRAFT' && (
         <>
-          {btn('▶ Kirim Sekarang', send, true)}
+          {btn('▶ Kirim Sekarang', () => send(false), true)}
           {btn('🗑 Hapus', del)}
         </>
       )}
@@ -77,7 +77,10 @@ export default function CampaignActions({ slug, campaignId, status }: Props) {
         <span style={{ fontSize: 12, color: 'var(--c-text-muted)', alignSelf: 'center' }}>Campaign sedang berjalan...</span>
       )}
       {(status === 'DONE' || status === 'FAILED') && (
-        <span style={{ fontSize: 12, color: 'var(--c-text-muted)', alignSelf: 'center' }}>Campaign selesai</span>
+        <>
+          {btn('🔁 Kirim Ulang Gagal', () => send(true), true)}
+          <span style={{ fontSize: 12, color: 'var(--c-text-muted)', alignSelf: 'center' }}>Hanya penerima berstatus Gagal yang dikirim ulang.</span>
+        </>
       )}
     </div>
   )

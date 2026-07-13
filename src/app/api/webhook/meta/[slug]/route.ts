@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/tenant'
 import { handleIncomingMessage } from '@/lib/inbox-handler'
+import { recomputeCampaignCounters } from '@/lib/campaign'
 
 type Ctx = { params: { slug: string } }
 
@@ -119,13 +120,8 @@ async function handleStatusUpdate(db: any, status: MetaStatus) {
 
   await db.campaignRecipient.update({ where: { id: recipient.id }, data })
 
-  if (mapped === 'DELIVERED') {
-    await db.campaign.update({ where: { id: recipient.campaign_id }, data: { total_diterima: { increment: 1 } } })
-  } else if (mapped === 'READ') {
-    await db.campaign.update({ where: { id: recipient.campaign_id }, data: { total_dibaca: { increment: 1 } } })
-  } else if (mapped === 'FAILED') {
-    await db.campaign.update({ where: { id: recipient.campaign_id }, data: { total_gagal: { increment: 1 } } })
-  }
+  // Hitung ulang counter dari status recipient sebenarnya (konsisten, tanpa double-count)
+  await recomputeCampaignCounters(db, recipient.campaign_id)
 }
 
 // ─── Update status template ─────────────────────────────────────────────────────

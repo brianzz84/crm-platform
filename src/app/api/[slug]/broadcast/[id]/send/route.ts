@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { sendMetaTemplateMessage } from '@/lib/meta-client'
+import { recomputeCampaignCounters } from '@/lib/campaign'
 import { BROADCAST_BATCH_SIZE, BROADCAST_DELAY_MS } from '@/constants'
 
 type Ctx = { params: { slug: string; id: string } }
@@ -19,9 +20,17 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     })
     if (!campaign) return NextResponse.json({ error: 'Campaign tidak ditemukan' }, { status: 404 })
     if (campaign.status === 'RUNNING') return NextResponse.json({ error: 'Campaign sedang berjalan' }, { status: 409 })
-    if (campaign.status === 'DONE')    return NextResponse.json({ error: 'Campaign sudah selesai' }, { status: 409 })
     if (!campaign.segment_id)          return NextResponse.json({ error: 'Segmen belum dipilih' }, { status: 400 })
     if (!campaign.template_id)         return NextResponse.json({ error: 'Template belum dipilih' }, { status: 400 })
+
+    // Mode kirim ulang: campaign DONE/FAILED → reset recipient yang GAGAL ke PENDING
+    const isResend = campaign.status === 'DONE' || campaign.status === 'FAILED'
+    if (isResend) {
+      await db.campaignRecipient.updateMany({
+        where: { campaign_id: params.id, status: 'FAILED' },
+        data:  { status: 'PENDING', error_code: null, error_detail: null, sent_at: null, wappin_message_id: null },
+      })
+    }
 
     // Ambil konfigurasi Meta Cloud API tenant
     const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
@@ -135,19 +144,17 @@ async function sendBatchAsync(
       }
     }))
 
-    await db.campaign.update({
-      where: { id: campaignId },
-      data:  { total_terkirim: terkirim, total_gagal: gagal },
-    })
+    await recomputeCampaignCounters(db, campaignId)
 
     if (i + BROADCAST_BATCH_SIZE < recipients.length) {
       await new Promise(res => setTimeout(res, BROADCAST_DELAY_MS))
     }
   }
 
+  await recomputeCampaignCounters(db, campaignId)
   await db.campaign.update({
     where: { id: campaignId },
-    data:  { status: 'DONE', finished_at: new Date(), total_terkirim: terkirim, total_gagal: gagal, error_summary: errorSummary },
+    data:  { status: 'DONE', finished_at: new Date(), error_summary: errorSummary },
   })
 }
 
