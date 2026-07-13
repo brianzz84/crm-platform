@@ -3,8 +3,9 @@
 // Perubahan nama field HARUS di sini dulu, baru propagate ke types/index.ts
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
