@@ -196,15 +196,16 @@ export default function InboxShell({
       if (!json.success) return
       const newMsgs: MsgRow[] = json.data
       setMsgs(prev => {
+        // Signature mencakup status → deteksi perubahan status (PENDING→SENT→DELIVERED→READ),
+        // bukan hanya pesan baru. Tanpa ini, centang bubble mentok di 🕐 sampai ada balasan.
+        const sig = (arr: MsgRow[]) => arr.map(m => `${m.id}:${m.status}`).join('|')
+        if (sig(prev) === sig(newMsgs)) return prev  // benar-benar tak ada perubahan → no re-render
+
         const lastPrevId = prev[prev.length - 1]?.id
         const lastNewId  = newMsgs[newMsgs.length - 1]?.id
-        // Ada pesan baru → refresh daftar conv juga (badge unread)
-        if (lastPrevId !== lastNewId || prev.length !== newMsgs.length) {
-          loadConvs(false)
-          return newMsgs
-        }
-        // Tidak ada perubahan → kembalikan state lama (tidak trigger re-render)
-        return prev
+        // Refresh daftar conv hanya jika ada pesan baru (badge unread), bukan sekadar ganti status
+        if (lastPrevId !== lastNewId || prev.length !== newMsgs.length) loadConvs(false)
+        return newMsgs
       })
     } catch { /* abaikan error network */ }
   }, [slug, loadConvs])
