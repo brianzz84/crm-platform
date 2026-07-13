@@ -48,27 +48,7 @@ export async function getTenantDb(slug: string): Promise<PrismaClient> {
  * Master DB — hanya untuk lookup tenant.
  * Tidak boleh digunakan untuk query data bisnis per-tenant.
  */
-let _masterDb: PrismaClient = createClient(process.env.DATABASE_URL!)
-
-export const masterDb: PrismaClient = new Proxy({} as PrismaClient, {
-  get(_target, prop) {
-    return (...args: any[]) => {
-      const fn = (_masterDb as any)[prop]
-      if (typeof fn !== 'function') return fn
-      return fn.apply(_masterDb, args).catch(async (err: any) => {
-        if (err?.message?.includes('Connection terminated') || err?.message?.includes('ECONNRESET')) {
-          _masterDb = createClient(process.env.DATABASE_URL!)
-          return (_masterDb as any)[prop].apply(_masterDb, args)
-        }
-        throw err
-      })
-    }
-  },
-})
-
-export async function getMasterDb(): Promise<PrismaClient> {
-  return _masterDb
-}
+export const masterDb: PrismaClient = createClient(process.env.DATABASE_URL!)
 
 /**
  * Jalankan ini setelah membuat tenant baru.
