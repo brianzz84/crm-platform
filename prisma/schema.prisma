@@ -37,7 +37,10 @@ model TenantConfig {
   id                      String   @id @default(uuid())
   tenant_id               String   @unique
   simrs_base_url          String?
-  simrs_api_key           String?
+  simrs_api_key           String?   // credential awal / static key (legacy)
+  simrs_token             String?   // bearer token aktif dari SIMRS
+  simrs_token_expires_at  DateTime? // kapan token expire
+  simrs_jam_sync          Int       @default(0)  // jam WIB (0-23) untuk cron sync harian
   meta_access_token       String?
   ai_enabled              Boolean  @default(false)
   max_broadcast_per_month Int      @default(1000)
@@ -141,7 +144,9 @@ model Person {
   alamat             String?
   pekerjaan          String?
   agama              String?             // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
-  kategori           String?             // "umum" | "pasien" | "keluarga"
+  kategori           String?             // "umum" | "pasien" | "keluarga" — legacy, digantikan sumber
+  sumber             PersonSumber        @default(MANUAL) // asal data person
+  is_pasien_simrs    Boolean             @default(false)  // true jika sudah tercatat di SIMRS (punya no_rm)
   akar_kode          String?             // kode dari Akar (CST20260001, dll)
   aktif              Boolean   @default(true)
   created_at         DateTime  @default(now())
@@ -162,6 +167,8 @@ model Person {
   @@index([no_rm])
   @@index([nik])
   @@index([akar_kode])
+  @@index([sumber])
+  @@index([is_pasien_simrs])
   @@map("crm_persons")
 }
 
@@ -200,24 +207,47 @@ model PersonTag {
 }
 
 model SimrsVisit {
-  id             String    @id @default(uuid())
-  person_id      String
-  tanggal        DateTime
-  unit           SimrsUnit
-  poli           String?
-  dokter         String?
-  diagnosa_nama  String?
-  diagnosa_icd   String?   // kode ICD-10
-  tindakan       String?   // untuk penunjang
-  simrs_visit_id String?   // ID asli dari SIMRS (untuk dedup delta sync)
-  aktif          Boolean   @default(true)   // TIDAK PERNAH DELETE
+  id               String    @id @default(uuid())
+  person_id        String
+  tanggal          DateTime
+  unit             SimrsUnit
+  poli             String?
+  dokter           String?
+  diagnosa_nama    String?
+  diagnosa_icd     String?   // kode ICD-10 diagnosa utama
+  diagnosa_sekunder String[] // kode ICD-10 diagnosa sekunder
+  tindakan         String?   // nama tindakan (untuk penunjang)
+  tindakan_kode    String?   // kode tindakan dari library layanan
+  jadwal_kontrol   DateTime? // jadwal kontrol berikutnya — untuk KONTROL_REMINDER
+  status_kunjungan String?   // SELESAI | BATAL | dll dari SIMRS
+  simrs_visit_id   String?   // ID asli dari SIMRS (untuk dedup delta sync)
+  aktif            Boolean   @default(true)   // TIDAK PERNAH DELETE
 
   person Person @relation(fields: [person_id], references: [id])
 
   @@unique([person_id, simrs_visit_id])
   @@index([person_id])
   @@index([tanggal])
+  @@index([diagnosa_icd])
   @@map("crm_simrs_visits")
+}
+
+// Log setiap eksekusi sync SIMRS — untuk tracking catchup dan error
+model SimrsSyncLog {
+  id           String          @id @default(uuid())
+  tenant_slug  String
+  tanggal_data DateTime        // tanggal kunjungan yang di-sync (bukan tanggal sync)
+  status       SimrsSyncStatus
+  jumlah_baru  Int             @default(0) // baris baru yang berhasil diinsert
+  jumlah_update Int            @default(0) // baris yang diupdate
+  error_msg    String?
+  mode         String          @default("cron")  // cron | manual
+  started_at   DateTime        @default(now())
+  finished_at  DateTime?
+
+  @@index([tenant_slug, tanggal_data])
+  @@index([tenant_slug, status])
+  @@map("crm_simrs_sync_logs")
 }
 
 model SimrsLayananLibrary {
@@ -778,4 +808,19 @@ enum ContactJenis {
   WA
   EMAIL
   TELEPON_RUMAH
+}
+
+enum PersonSumber {
+  SIMRS      // masuk via sync API SIMRS, punya no_rm
+  KEGIATAN   // masuk via QR check-in atau input peserta kegiatan
+  IMPORT     // masuk via import Excel manual
+  MANUAL     // diinput langsung oleh admin CRM
+  REGISTRASI // mendaftar sendiri via form publik
+}
+
+enum SimrsSyncStatus {
+  RUNNING   // sedang berjalan
+  DONE      // selesai sukses
+  FAILED    // gagal total
+  PARTIAL   // sebagian berhasil (misal timeout di halaman tertentu)
 }

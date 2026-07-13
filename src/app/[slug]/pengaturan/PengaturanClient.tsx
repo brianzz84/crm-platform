@@ -80,6 +80,15 @@ const SUB_MENUS = [
     badge: (meta: Meta) => meta.eflyerAktif ? 'Aktif' : 'Nonaktif',
     badgeColor: (meta: Meta) => meta.eflyerAktif ? '#22C55E' : '#94A3B8',
   },
+  {
+    key:   'simrs',
+    icon:  '🏥',
+    label: 'Integrasi SIMRS',
+    desc:  'Sinkronisasi data kunjungan pasien dari Sistem Informasi Manajemen RS secara otomatis.',
+    href:  (slug: string) => `/${slug}/pengaturan/simrs`,
+    badge: () => 'Konfigurasi',
+    badgeColor: () => '#7C3AED',
+  },
 ]
 
 export default function PengaturanClient({ slug, userRoles, initialProfile, meta }: Props) {

@@ -31,8 +31,8 @@ export async function POST(
     }
     if (p.icdCodes?.length) {
       visitWhere.OR = [
-        { diagnosa_kode: { in: p.icdCodes } },
-        ...p.icdCodes.map(code => ({ diagnosa_kode: { startsWith: code } })),
+        { diagnosa_icd: { in: p.icdCodes } },
+        ...p.icdCodes.map(code => ({ diagnosa_icd: { startsWith: code } })),
       ]
     }
     if (p.periodeAwal) {

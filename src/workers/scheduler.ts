@@ -6,11 +6,11 @@
  *  - ULTAH:            setiap hari pukul jam_kirim dari SapaanConfig
  *  - KONTROL_REMINDER: setiap hari pukul jam_kirim (H-3 dan H-1)
  *  - HARI_RAYA:        hanya via trigger manual dari admin
+ *  - SIMRS_SYNC:       setiap hari pukul simrs_jam_sync dari TenantConfig
  *
- * Karena jam_kirim berbeda per tenant, kita gunakan pendekatan:
+ * Karena jam berbeda per tenant, kita gunakan pendekatan:
  * - Satu "scanner" job setiap jam (cron "0 * * * *")
- * - Scanner cek SapaanConfig tiap tenant → tambah job jika sudah waktunya
- * - Lebih sederhana dari membuat cron per-tenant dinamis
+ * - Scanner cek config tiap tenant → tambah job jika sudah waktunya
  */
 
 import { Job } from 'bullmq'
@@ -59,6 +59,16 @@ export async function runScanner(job: Job) {
 
   let enqueued = 0
 
+  // Ambil config SIMRS per tenant dari master DB untuk cek jam_sync
+  const tenantsWithConfig = await masterDb.tenant.findMany({
+    where:  { aktif: true },
+    select: { slug: true, config: { select: { simrs_jam_sync: true, simrs_base_url: true } } },
+  })
+
+  const simrsJamBySlug = new Map(
+    tenantsWithConfig.map(t => [t.slug, t.config?.simrs_jam_sync ?? 0])
+  )
+
   for (const tenant of tenants) {
     try {
       const { getTenantDb } = await import('@/lib/tenant')
@@ -85,10 +95,24 @@ export async function runScanner(job: Job) {
           job.log(`[scanner] Enqueue ULTAH untuk ${tenant.slug}`)
         }
 
-        // KONTROL_REMINDER: PENDING — menunggu integrasi SIMRS.
-        // Tidak di-enqueue sampai field jadwal_kontrol tersedia dari SIMRS.
-        // if (cfg.jenis === 'KONTROL_REMINDER') { ... }
+        // KONTROL_REMINDER: aktif jika data SIMRS sudah tersinkron (jadwal_kontrol tersedia)
+        // TODO: aktifkan setelah modul SIMRS live
       }
+
+      // SIMRS SYNC: cek jam sinkronisasi per tenant
+      const simrsJam = simrsJamBySlug.get(tenant.slug) ?? 0
+      if (hourWib === simrsJam) {
+        const today    = nowWib.toISOString().slice(0, 10)
+        const syncJobId = `simrs-sync-${tenant.slug}-${today}`
+        await queue.add(
+          'simrs-sync',
+          { type: 'SIMRS_SYNC', tenantSlug: tenant.slug, mode: 'cron' },
+          { jobId: syncJobId, removeOnComplete: 20, removeOnFail: 30 },
+        )
+        enqueued++
+        job.log(`[scanner] Enqueue SIMRS_SYNC untuk ${tenant.slug} (jam ${simrsJam}:00 WIB)`)
+      }
+
     } catch (e: any) {
       job.log(`[scanner] Error tenant ${tenant.slug}: ${e.message}`)
     }

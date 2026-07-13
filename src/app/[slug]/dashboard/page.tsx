@@ -125,8 +125,11 @@ export default async function DashboardPage({ params }: { params: { slug: string
 
   // ── Queries paralel ──────────────────────────────────────────────────────
 
+  const canSeeSimrs = canDo(session.roles, 'manageSegments')
+
   const [totalPasien, pasienBaru30d, totalSegmen, campaignAktif,
-         inboxTerbuka, inboxUnassigned, campaignTerbaru, percakapanBelumDitangani] =
+         inboxTerbuka, inboxUnassigned, campaignTerbaru, percakapanBelumDitangani,
+         lastSimrsSync] =
     db
       ? await Promise.all([
           // 1. Total pasien
@@ -152,7 +155,7 @@ export default async function DashboardPage({ params }: { params: { slug: string
             },
           }),
 
-          // 6. Inbox belum di-assign (hanya untuk yang bisa lihat semua)
+          // 6. Inbox belum di-assign
           canViewAll
             ? db.conversation.count({ where: { tenant_slug: slug, status: { in: ['OPEN', 'PENDING'] }, assigned_to: null } })
             : 0,
@@ -185,8 +188,16 @@ export default async function DashboardPage({ params }: { params: { slug: string
               assigned_user: { select: { name: true } },
             },
           }),
+
+          // 9. Status sync SIMRS terakhir (hanya untuk manageSegments)
+          canSeeSimrs
+            ? db.simrsSyncLog.findFirst({
+                where:   { tenant_slug: slug },
+                orderBy: { started_at: 'desc' },
+              })
+            : null,
         ])
-      : [0, 0, 0, 0, 0, 0, [], []]
+      : [0, 0, 0, 0, 0, 0, [], [], null]
 
   const thStyle: React.CSSProperties = {
     padding: '10px var(--sp-4)',
@@ -258,7 +269,64 @@ export default async function DashboardPage({ params }: { params: { slug: string
           accentColor="var(--c-accent)"
           href={`/${slug}/inbox`}
         />
+
+        {/* SIMRS Sync card — hanya untuk manageSegments */}
+        {canSeeSimrs && (() => {
+          const log = lastSimrsSync as any
+          if (!log) return (
+            <StatCard
+              label="SIMRS Sync"
+              value="—"
+              sub="Belum pernah sync"
+              badge={{ text: 'Belum dikonfigurasi', color: '#94A3B8' }}
+              accentColor="#94A3B8"
+              href={`/${slug}/pengaturan/simrs`}
+            />
+          )
+          const isOk     = log.status === 'DONE'
+          const isFail   = log.status === 'FAILED'
+          const isRun    = log.status === 'RUNNING'
+          const color    = isOk ? '#16A34A' : isFail ? '#DC2626' : '#D97706'
+          const label    = isOk ? 'Berhasil' : isFail ? 'Gagal' : 'Berjalan'
+          const tanggal  = new Date(log.tanggal_data).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+          return (
+            <StatCard
+              label="SIMRS Sync Terakhir"
+              value={`+${(log.jumlah_baru as number).toLocaleString('id-ID')}`}
+              sub={`${(log.jumlah_update as number).toLocaleString('id-ID')} diperbarui · ${tanggal}`}
+              badge={{ text: label, color }}
+              accentColor={color}
+              href={`/${slug}/pengaturan/simrs`}
+            />
+          )
+        })()}
       </div>
+
+      {/* Alert: SIMRS sync gagal kemarin */}
+      {canSeeSimrs && (() => {
+        const log = lastSimrsSync as any
+        if (!log || log.status !== 'FAILED') return null
+        return (
+          <div style={{
+            background: '#FEF2F2', border: '1px solid #FECACA', borderLeft: '3px solid #DC2626',
+            borderRadius: 'var(--r-md)', padding: 'var(--sp-3) var(--sp-4)',
+            marginBottom: 'var(--sp-5)', display: 'flex', alignItems: 'center',
+            gap: 'var(--sp-3)', flexWrap: 'wrap',
+          }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span style={{ fontSize: 'var(--font-size-sm)', color: '#B91C1C', flex: 1 }}>
+              <strong>Sync SIMRS gagal</strong> pada {new Date(log.started_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.
+              {log.error_msg && <> Pesan: <em>{log.error_msg}</em></>}
+            </span>
+            <a href={`/${slug}/pengaturan/simrs`} style={{
+              fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#DC2626',
+              textDecoration: 'none', whiteSpace: 'nowrap',
+            }}>
+              Lihat detail →
+            </a>
+          </div>
+        )
+      })()}
 
       {/* Aksi cepat */}
       <div style={{ marginBottom: 'var(--sp-6)' }}>

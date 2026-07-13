@@ -25,13 +25,21 @@ async function main() {
   // Daftarkan cron scanner
   await setupScheduler()
 
-  // Buat sapaan worker — handle job biasa + scanner
+  // Buat sapaan worker — handle job biasa + scanner + simrs-sync
   const worker = new Worker<SapaanJobData & { type: string }>(
     QUEUE_SAPAAN,
     async (job: Job) => {
       if (job.name === 'scanner') {
         const { runScanner } = await import('./scheduler')
         return runScanner(job)
+      }
+      if (job.name === 'simrs-sync') {
+        const { syncWithCatchup } = await import('@/lib/simrs-sync')
+        const results = await syncWithCatchup(job.data.tenantSlug, job.data.mode ?? 'cron')
+        const total_baru   = results.reduce((s, r) => s + r.jumlah_baru, 0)
+        const total_update = results.reduce((s, r) => s + r.jumlah_update, 0)
+        job.log(`[SIMRS_SYNC] ${results.length} tanggal, ${total_baru} baru, ${total_update} update`)
+        return { dates: results.length, total_baru, total_update }
       }
       const { processSapaanJob } = await import('./sapaan.worker') as any
       return processSapaanJob(job)
