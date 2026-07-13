@@ -5,6 +5,7 @@ import { getSessionFromHeaders } from '@/lib/auth'
 import { canDo } from '@/constants'
 import { getTenantDb } from '@/lib/tenant'
 import HapusSegmenBtn from './HapusSegmenBtn'
+import RefreshSegmenBtn from './RefreshSegmenBtn'
 
 export const metadata: Metadata = { title: 'Detail Segmen' }
 
@@ -134,9 +135,24 @@ export default async function SegmenDetailPage({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-4)', marginBottom: 'var(--sp-6)', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 800, color: 'var(--c-primary)', marginBottom: 6 }}>
-            {segmen.nama}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 800, color: 'var(--c-primary)' }}>
+              {segmen.nama}
+            </h1>
+            {(() => {
+              const t = (segmen as any).tipe || 'AI'
+              const BADGE: Record<string, { label: string; icon: string }> = {
+                AI: { label: 'AI', icon: '🤖' }, FILTER: { label: 'Filter', icon: '🎛️' },
+                TAG: { label: 'Tag', icon: '🏷️' }, MANUAL: { label: 'Manual', icon: '👤' },
+              }
+              const b = BADGE[t] || BADGE.AI
+              return (
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 999, background: 'var(--c-bg)', border: '1px solid var(--c-border)', color: 'var(--c-text-muted)' }}>
+                  {b.icon} {b.label}{t !== 'MANUAL' ? ' · dinamis' : ' · statis'}
+                </span>
+              )
+            })()}
+          </div>
           {segmen.deskripsi && (
             <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', maxWidth: 600 }}>
               {segmen.deskripsi}
@@ -155,6 +171,9 @@ export default async function SegmenDetailPage({
           >
             📢 Buat Broadcast
           </Link>
+          {(segmen as any).tipe !== 'MANUAL' && (
+            <RefreshSegmenBtn slug={params.slug} segmenId={params.segmenId} />
+          )}
           <HapusSegmenBtn slug={params.slug} segmenId={params.segmenId} nama={segmen.nama} />
         </div>
       </div>

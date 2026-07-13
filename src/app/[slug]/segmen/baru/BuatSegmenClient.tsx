@@ -1,428 +1,414 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import IcdSearchInput from '@/components/IcdSearchInput'
 
-interface SimrsParams {
-  units:        string[]
-  icdCodes:     string[]
-  periodeAwal?: string
-  periodeAkhir?:string
-  poli?:        string
-  extraFilter?: string
-}
+type Mode = 'ai' | 'filter' | 'tag' | 'manual'
 
+interface FilterForm {
+  units:           string[]
+  icdCodes:        string[]
+  periodeAwal?:    string
+  periodeAkhir?:   string
+  poli?:           string
+  jenisPembayaran?: string
+}
 interface SearchResult {
-  persons:    { id: string; name: string; no_hp: string; no_rm: string }[]
+  persons:    { id: string; name: string; no_hp: string | null; no_rm: string | null }[]
   total:      number
   person_ids: string[]
 }
+interface TagItem { id: string; name: string; warna: string; total_pasien: number; aktif: boolean }
+interface PersonRow { id: string; name: string; no_hp: string | null; no_rm: string | null }
 
-type Stage = 'nlp' | 'params' | 'hasil' | 'simpan' | 'done'
-
-const UNIT_LABELS: Record<string, string> = {
-  RAWAT_JALAN: 'Rawat Jalan',
-  RAWAT_INAP:  'Rawat Inap',
-  PENUNJANG:   'Penunjang',
-}
+const UNIT_LABELS: Record<string, string> = { RAWAT_JALAN: 'Rawat Jalan', RAWAT_INAP: 'Rawat Inap', PENUNJANG: 'Penunjang' }
 const ALL_UNITS = ['RAWAT_JALAN', 'RAWAT_INAP', 'PENUNJANG']
+
+const MODES: { key: Mode; icon: string; label: string; desc: string }[] = [
+  { key: 'ai',     icon: '🤖', label: 'Dengan AI',     desc: 'Ketik bahasa natural, AI ekstrak filter' },
+  { key: 'filter', icon: '🎛️', label: 'Filter Manual', desc: 'Pilih unit, diagnosa, periode sendiri' },
+  { key: 'tag',    icon: '🏷️', label: 'Berdasarkan Tag', desc: 'Pasien yang punya tag tertentu' },
+  { key: 'manual', icon: '👤', label: 'Pilih Manual',  desc: 'Cari & centang pasien satu per satu' },
+]
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-md)',
+  border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)',
+  background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box',
+}
+const cardStyle: React.CSSProperties = {
+  background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)',
+  padding: 'var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)',
+}
+const btnPrimary = (enabled: boolean): React.CSSProperties => ({
+  padding: '10px 24px', borderRadius: 'var(--r-md)',
+  background: enabled ? 'var(--c-secondary)' : 'var(--c-border)',
+  color: enabled ? 'white' : 'var(--c-text-muted)',
+  fontWeight: 600, border: 'none', cursor: enabled ? 'pointer' : 'default', fontSize: 'var(--font-size-sm)',
+})
 
 export default function BuatSegmenClient({ slug }: { slug: string }) {
   const router = useRouter()
 
-  const [stage, setStage]         = useState<Stage>('nlp')
-  const [query, setQuery]         = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState('')
+  const [mode, setMode]       = useState<Mode | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
 
-  const [nlpResult, setNlpResult] = useState<{ params: SimrsParams; penjelasan: string } | null>(null)
-  const [params, setParams]       = useState<SimrsParams>({ units: [], icdCodes: [] })
-  // icdInput hanya digunakan untuk sync dari NLP result ke chips
-  const [, setIcdInput]   = useState('')
+  // AI
+  const [query, setQuery]       = useState('')
+  const [penjelasan, setPenjelasan] = useState('')
 
-  const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  // AI + Filter
+  const [form, setForm] = useState<FilterForm>({ units: [], icdCodes: [] })
 
-  const [namaSegmen, setNamaSegmen]   = useState('')
-  const [deskripsi, setDeskripsi]     = useState('')
-  const [saving, setSaving]           = useState(false)
+  // Tag
+  const [tags, setTags]         = useState<TagItem[]>([])
+  const [tagIds, setTagIds]     = useState<string[]>([])
+
+  // Manual
+  const [pquery, setPquery]     = useState('')
+  const [presults, setPresults] = useState<PersonRow[]>([])
+  const [selected, setSelected] = useState<Record<string, PersonRow>>({})
+
+  // Preview + save
+  const [result, setResult]   = useState<SearchResult | null>(null)
+  const [nama, setNama]       = useState('')
+  const [deskripsi, setDesk]  = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [done, setDone]       = useState(false)
+
+  // Muat tag saat mode tag dipilih
+  useEffect(() => {
+    if (mode === 'tag' && tags.length === 0) {
+      fetch(`/api/${slug}/tags`).then(r => r.json()).then(j => {
+        if (j.success) setTags(j.data.filter((t: TagItem) => t.aktif))
+      }).catch(() => {})
+    }
+  }, [mode, slug, tags.length])
+
+  function resetForMode(m: Mode) {
+    setMode(m); setError(''); setResult(null); setPenjelasan('')
+    setForm({ units: [], icdCodes: [] }); setTagIds([]); setSelected({}); setPresults([]); setPquery(''); setQuery('')
+  }
+
+  function buildFilterDef(): any {
+    if (mode === 'tag') return { tagIds }
+    // ai + filter
+    return {
+      units: form.units, icdCodes: form.icdCodes,
+      periodeAwal: form.periodeAwal, periodeAkhir: form.periodeAkhir,
+      poli: form.poli, jenisPembayaran: form.jenisPembayaran,
+    }
+  }
 
   async function handleNlp() {
     if (!query.trim()) return
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     try {
       const res  = await fetch(`/api/${slug}/segmen/nlp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Gagal memproses query')
-      setNlpResult(json.data)
-      setParams(json.data.params)
-      setIcdInput(json.data.params.icdCodes.join(', '))  // hanya untuk referensi, chips sudah masuk params
-      setStage('params')
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+      const p = json.data.params
+      setForm({ units: p.units || [], icdCodes: p.icdCodes || [], periodeAwal: p.periodeAwal || undefined, periodeAkhir: p.periodeAkhir || undefined, poli: p.poli || undefined })
+      setPenjelasan(json.data.penjelasan || '')
+    } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }
 
   async function handleSearch() {
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     try {
       const res  = await fetch(`/api/${slug}/segmen/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildFilterDef()),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Gagal mencari pasien')
-      setSearchResult(json.data)
-      setStage('hasil')
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+      setResult(json.data)
+    } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }
 
-  async function handleSimpan() {
-    if (!namaSegmen.trim() || !searchResult) return
-    setSaving(true)
-    setError('')
+  const searchPersons = useCallback(async () => {
+    if (!pquery.trim()) return
+    setLoading(true); setError('')
+    try {
+      const res  = await fetch(`/api/${slug}/pasien?q=${encodeURIComponent(pquery.trim())}&per_page=25`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Gagal mencari')
+      setPresults((json.data || []).map((p: any) => ({ id: p.id, name: p.name, no_hp: p.no_hp, no_rm: p.no_rm })))
+    } catch (e: any) { setError(e.message) } finally { setLoading(false) }
+  }, [pquery, slug])
+
+  async function handleSave() {
+    const personIds = mode === 'manual' ? Object.keys(selected) : result?.person_ids
+    if (!nama.trim() || !personIds?.length) return
+    setSaving(true); setError('')
+    const tipe = mode === 'ai' ? 'AI' : mode === 'filter' ? 'FILTER' : mode === 'tag' ? 'TAG' : 'MANUAL'
     try {
       const res = await fetch(`/api/${slug}/segmen`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nama:         namaSegmen.trim(),
-          deskripsi:    deskripsi.trim() || undefined,
-          nlp_query:    query,
-          simrs_params: params,
-          person_ids:   searchResult.person_ids,
+          nama: nama.trim(),
+          deskripsi: deskripsi.trim() || undefined,
+          tipe,
+          nlp_query: mode === 'ai' ? query : undefined,
+          filter_def: mode === 'manual' ? undefined : buildFilterDef(),
+          person_ids: personIds,
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Gagal menyimpan segmen')
-      setStage('done')
-      setTimeout(() => router.push(`/${slug}/segmen`), 1500)
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
-    }
+      setDone(true)
+      setTimeout(() => router.push(`/${slug}/segmen`), 1400)
+    } catch (e: any) { setError(e.message) } finally { setSaving(false) }
   }
 
-  function toggleUnit(unit: string) {
-    setParams(p => ({
-      ...p,
-      units: p.units.includes(unit) ? p.units.filter(u => u !== unit) : [...p.units, unit],
-    }))
+  function toggleUnit(u: string) {
+    setForm(f => ({ ...f, units: f.units.includes(u) ? f.units.filter(x => x !== u) : [...f.units, u] }))
+  }
+  function toggleTag(id: string) {
+    setTagIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+  }
+  function togglePerson(p: PersonRow) {
+    setSelected(s => { const n = { ...s }; if (n[p.id]) delete n[p.id]; else n[p.id] = p; return n })
   }
 
-const stepNum = { nlp: 1, params: 2, hasil: 3, simpan: 4, done: 4 }[stage]
+  const selectedCount = Object.keys(selected).length
+  const canSave = !!nama.trim() && (mode === 'manual' ? selectedCount > 0 : (result?.total ?? 0) > 0)
+
+  if (done) {
+    return (
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+        <div style={{ ...cardStyle, padding: 'var(--sp-10)', textAlign: 'center', alignItems: 'center' }}>
+          <div style={{ fontSize: 48 }}>✓</div>
+          <h2 style={{ fontWeight: 700, color: 'var(--c-success)' }}>Segmen berhasil disimpan!</h2>
+          <p style={{ color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)' }}>Mengalihkan ke daftar segmen...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto' }}>
-      {/* Stepper */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 'var(--sp-8)', alignItems: 'center' }}>
-        {['Deskripsi', 'Review Parameter', 'Hasil Pencarian', 'Simpan'].map((label, i) => {
-          const n       = i + 1
-          const active  = n === stepNum
-          const done    = n < stepNum
-          return (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 700, fontSize: 'var(--font-size-sm)',
-                  background: done ? 'var(--c-success)' : active ? 'var(--c-secondary)' : 'var(--c-border)',
-                  color: (done || active) ? 'white' : 'var(--c-text-muted)',
-                }}>
-                  {done ? '✓' : n}
-                </div>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: active ? 'var(--c-secondary)' : 'var(--c-text-muted)', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>
-                  {label}
-                </span>
-              </div>
-              {i < 3 && <div style={{ flex: 0, width: 40, height: 2, background: done ? 'var(--c-success)' : 'var(--c-border)', marginBottom: 20 }} />}
-            </div>
-          )
-        })}
+    <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+
+      {/* Pilih metode */}
+      <div>
+        <label style={{ display: 'block', fontWeight: 700, fontSize: 'var(--font-size-sm)', marginBottom: 'var(--sp-3)' }}>Metode Pembuatan Segmen</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--sp-3)' }}>
+          {MODES.map(m => {
+            const active = mode === m.key
+            return (
+              <button key={m.key} onClick={() => resetForMode(m.key)} style={{
+                textAlign: 'left', padding: 'var(--sp-4)', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                border: '2px solid', borderColor: active ? 'var(--c-secondary)' : 'var(--c-border)',
+                background: active ? 'var(--c-primary-xlight)' : 'var(--c-surface)',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{m.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: active ? 'var(--c-secondary)' : 'var(--c-text)' }}>{m.label}</div>
+                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', marginTop: 2 }}>{m.desc}</div>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {error && (
-        <div style={{ background: 'var(--c-error-light)', border: '1px solid var(--c-error)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', marginBottom: 'var(--sp-4)', color: 'var(--c-error)', fontSize: 'var(--font-size-sm)' }}>
-          {error}
-        </div>
+        <div style={{ background: 'var(--c-error-light)', border: '1px solid var(--c-error)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', color: 'var(--c-error)', fontSize: 'var(--font-size-sm)' }}>{error}</div>
       )}
 
-      {/* Stage 1: NLP Input */}
-      {stage === 'nlp' && (
-        <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', padding: 'var(--sp-6)' }}>
-          <h2 style={{ fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Deskripsikan target pasien</h2>
-          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', marginBottom: 'var(--sp-4)' }}>
-            Gunakan bahasa natural. AI akan menerjemahkan ke parameter pencarian.
-          </p>
-          <div style={{ marginBottom: 'var(--sp-3)', fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>
-            Contoh: "pasien diabetes rawat inap 3 bulan terakhir" atau "pasien poli jantung yang belum kontrol 6 bulan"
+      {/* ── AI: input NLP ── */}
+      {mode === 'ai' && (
+        <div style={cardStyle}>
+          <div>
+            <h2 style={{ fontWeight: 700, marginBottom: 8 }}>Deskripsikan target pasien</h2>
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)' }}>Contoh: "pasien diabetes rawat inap 3 bulan terakhir". AI hanya menerjemahkan ke filter — bisa kamu koreksi di bawah.</p>
           </div>
-          <textarea
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleNlp())}
-            placeholder="Ketik deskripsi pasien yang ingin di-segmentasi..."
-            rows={4}
-            style={{
-              width: '100%', padding: 'var(--sp-3)', borderRadius: 'var(--r-md)',
-              border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)',
-              fontFamily: 'var(--font-family)', resize: 'vertical',
-              background: 'var(--c-bg)', color: 'var(--c-text)',
-              boxSizing: 'border-box',
-            }}
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--sp-4)' }}>
-            <button
-              onClick={handleNlp}
-              disabled={loading || !query.trim()}
-              style={{
-                padding: '10px 24px', borderRadius: 'var(--r-md)',
-                background: query.trim() ? 'var(--c-secondary)' : 'var(--c-border)',
-                color: query.trim() ? 'white' : 'var(--c-text-muted)',
-                fontWeight: 600, border: 'none', cursor: query.trim() ? 'pointer' : 'default',
-                fontSize: 'var(--font-size-sm)',
-              }}
-            >
-              {loading ? 'Memproses...' : 'Analisa dengan AI →'}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={query} onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleNlp())}
+              placeholder="Ketik deskripsi pasien..." style={inputStyle} />
+            <button onClick={handleNlp} disabled={loading || !query.trim()} style={{ ...btnPrimary(!!query.trim()), whiteSpace: 'nowrap' }}>
+              {loading ? '...' : 'Analisa AI'}
             </button>
           </div>
+          {penjelasan && (
+            <div style={{ background: 'var(--c-primary-xlight)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)', borderLeft: '3px solid var(--c-primary)' }}>
+              <strong>AI:</strong> {penjelasan}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Stage 2: Review params */}
-      {stage === 'params' && nlpResult && (
-        <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', padding: 'var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
-          <div>
-            <h2 style={{ fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Review Parameter Pencarian</h2>
-            <div style={{ background: 'var(--c-primary-xlight)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)', borderLeft: '3px solid var(--c-primary)' }}>
-              <strong>AI:</strong> {nlpResult.penjelasan}
-            </div>
-          </div>
+      {/* ── AI (setelah analisa) + Filter: form filter ── */}
+      {((mode === 'ai' && penjelasan) || mode === 'filter') && (
+        <div style={cardStyle}>
+          <h2 style={{ fontWeight: 700 }}>{mode === 'ai' ? 'Review & Koreksi Filter' : 'Filter Pencarian'}</h2>
 
-          {/* Unit */}
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Unit Layanan</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {ALL_UNITS.map(u => (
-                <button
-                  key={u}
-                  onClick={() => toggleUnit(u)}
-                  style={{
-                    padding: '6px 14px', borderRadius: 'var(--r-md)', border: '2px solid',
-                    borderColor: params.units.includes(u) ? 'var(--c-secondary)' : 'var(--c-border)',
-                    background: params.units.includes(u) ? 'var(--c-secondary)' : 'transparent',
-                    color: params.units.includes(u) ? 'white' : 'var(--c-text)',
-                    fontWeight: 600, fontSize: 'var(--font-size-sm)', cursor: 'pointer',
-                  }}
-                >
-                  {UNIT_LABELS[u]}
-                </button>
+                <button key={u} onClick={() => toggleUnit(u)} style={{
+                  padding: '6px 14px', borderRadius: 'var(--r-md)', border: '2px solid',
+                  borderColor: form.units.includes(u) ? 'var(--c-secondary)' : 'var(--c-border)',
+                  background: form.units.includes(u) ? 'var(--c-secondary)' : 'transparent',
+                  color: form.units.includes(u) ? 'white' : 'var(--c-text)', fontWeight: 600, fontSize: 'var(--font-size-sm)', cursor: 'pointer',
+                }}>{UNIT_LABELS[u]}</button>
               ))}
             </div>
-            {params.units.length === 0 && (
-              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', marginTop: 4 }}>Tidak dipilih = semua unit</p>
-            )}
+            {form.units.length === 0 && <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', marginTop: 4 }}>Tidak dipilih = semua unit</p>}
           </div>
 
-          {/* ICD Codes */}
-          <div style={{ position: 'relative' }}>
-            <IcdSearchInput
-              slug={slug}
-              label="Kode ICD-10"
-              hint="Ketik kode atau nama penyakit — pilih dari daftar INA-CBGs."
-              chips={params.icdCodes}
-              onChange={codes => setParams(p => ({ ...p, icdCodes: codes }))}
-              chipColor="#0089A8"
-            />
-          </div>
+          <IcdSearchInput slug={slug} label="Kode ICD-10" hint="Ketik kode atau nama penyakit."
+            chips={form.icdCodes} onChange={codes => setForm(f => ({ ...f, icdCodes: codes }))} chipColor="#0089A8" />
 
-          {/* Periode */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)' }}>
             <div>
               <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Dari Tanggal</label>
-              <input
-                type="date"
-                value={params.periodeAwal || ''}
-                onChange={e => setParams(p => ({ ...p, periodeAwal: e.target.value || undefined }))}
-                style={{ width: '100%', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)', background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box' }}
-              />
+              <input type="date" value={form.periodeAwal || ''} onChange={e => setForm(f => ({ ...f, periodeAwal: e.target.value || undefined }))} style={inputStyle} />
             </div>
             <div>
               <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Sampai Tanggal</label>
-              <input
-                type="date"
-                value={params.periodeAkhir || ''}
-                onChange={e => setParams(p => ({ ...p, periodeAkhir: e.target.value || undefined }))}
-                style={{ width: '100%', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)', background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box' }}
-              />
+              <input type="date" value={form.periodeAkhir || ''} onChange={e => setForm(f => ({ ...f, periodeAkhir: e.target.value || undefined }))} style={inputStyle} />
             </div>
           </div>
 
-          {/* Poli */}
-          <div>
-            <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Poli / Spesialisasi (opsional)</label>
-            <input
-              value={params.poli || ''}
-              onChange={e => setParams(p => ({ ...p, poli: e.target.value || undefined }))}
-              placeholder="mis: Poli Jantung, Poli Penyakit Dalam"
-              style={{ width: '100%', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)', background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box' }}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)' }}>
+            <div>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Poli / Spesialisasi</label>
+              <input value={form.poli || ''} onChange={e => setForm(f => ({ ...f, poli: e.target.value || undefined }))} placeholder="mis: Poli Jantung" style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Pembayaran</label>
+              <select value={form.jenisPembayaran || ''} onChange={e => setForm(f => ({ ...f, jenisPembayaran: e.target.value || undefined }))} style={inputStyle}>
+                <option value="">Semua</option>
+                <option value="TUNAI">Tunai</option>
+                <option value="NON_TUNAI">Non-Tunai</option>
+              </select>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--c-border)' }}>
-            <button
-              onClick={() => setStage('nlp')}
-              style={{ padding: '8px 16px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}
-            >
-              ← Kembali
-            </button>
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              style={{ padding: '10px 24px', borderRadius: 'var(--r-md)', background: 'var(--c-secondary)', color: 'white', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}
-            >
-              {loading ? 'Mencari...' : 'Konfirmasi & Cari Pasien →'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-3)' }}>
+            <button onClick={handleSearch} disabled={loading} style={btnPrimary(true)}>{loading ? 'Mencari...' : 'Cari Pasien →'}</button>
           </div>
         </div>
       )}
 
-      {/* Stage 3: Hasil */}
-      {stage === 'hasil' && searchResult && (
-        <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', padding: 'var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
-          <div>
-            <h2 style={{ fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Hasil Pencarian</h2>
-            <div style={{ background: searchResult.total > 0 ? 'var(--c-success-light)' : 'var(--c-error-light)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--font-size-sm)' }}>
-              Ditemukan <strong>{searchResult.total} pasien</strong> yang sesuai parameter.
-              {searchResult.total > 50 && ` (menampilkan 50 dari ${searchResult.total})`}
+      {/* ── Tag ── */}
+      {mode === 'tag' && (
+        <div style={cardStyle}>
+          <h2 style={{ fontWeight: 700 }}>Pilih Tag</h2>
+          {tags.length === 0 ? (
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)' }}>Belum ada tag aktif. Buat tag dulu di menu Tag.</p>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {tags.map(t => {
+                const on = tagIds.includes(t.id)
+                return (
+                  <button key={t.id} onClick={() => toggleTag(t.id)} style={{
+                    padding: '6px 12px', borderRadius: 999, border: '2px solid', cursor: 'pointer',
+                    borderColor: on ? t.warna : 'var(--c-border)',
+                    background: on ? t.warna : 'transparent', color: on ? 'white' : 'var(--c-text)',
+                    fontWeight: 600, fontSize: 'var(--font-size-sm)',
+                  }}>{t.name} <span style={{ opacity: 0.7, fontWeight: 400 }}>({t.total_pasien})</span></button>
+                )
+              })}
             </div>
+          )}
+          <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>Pasien yang punya <strong>salah satu</strong> tag terpilih akan masuk segmen.</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-3)' }}>
+            <button onClick={handleSearch} disabled={loading || tagIds.length === 0} style={btnPrimary(tagIds.length > 0)}>{loading ? 'Mencari...' : 'Cari Pasien →'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Manual ── */}
+      {mode === 'manual' && (
+        <div style={cardStyle}>
+          <h2 style={{ fontWeight: 700 }}>Pilih Pasien Manual</h2>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={pquery} onChange={e => setPquery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), searchPersons())}
+              placeholder="Cari nama / no HP / no RM..." style={inputStyle} />
+            <button onClick={searchPersons} disabled={loading || !pquery.trim()} style={{ ...btnPrimary(!!pquery.trim()), whiteSpace: 'nowrap' }}>{loading ? '...' : 'Cari'}</button>
           </div>
 
-          {searchResult.persons.length > 0 && (
-            <div style={{ maxHeight: 300, overflowY: 'auto', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+          {presults.length > 0 && (
+            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)' }}>
+              {presults.map(p => (
+                <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--c-border)', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}>
+                  <input type="checkbox" checked={!!selected[p.id]} onChange={() => togglePerson(p)} />
+                  <span style={{ fontWeight: 500, flex: 1 }}>{p.name}</span>
+                  <span style={{ color: 'var(--c-text-muted)' }}>{p.no_hp || '—'}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {selectedCount > 0 && (
+            <div style={{ fontSize: 'var(--font-size-sm)', background: 'var(--c-success-light)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)' }}>
+              <strong>{selectedCount} pasien</strong> terpilih.
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {Object.values(selected).map(p => (
+                  <span key={p.id} onClick={() => togglePerson(p)} style={{ background: 'white', border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 10px', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
+                    {p.name} ✕
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Hasil pencarian (ai/filter/tag) ── */}
+      {mode !== 'manual' && result && (
+        <div style={cardStyle}>
+          <div style={{ background: result.total > 0 ? 'var(--c-success-light)' : 'var(--c-error-light)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--font-size-sm)' }}>
+            Ditemukan <strong>{result.total} pasien</strong>.{result.total > 50 && ` (menampilkan 50 pertama)`}
+          </div>
+          {result.persons.length > 0 && (
+            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
-                <thead>
-                  <tr style={{ background: 'var(--c-bg)', position: 'sticky', top: 0 }}>
-                    {['Nama', 'No. HP', 'No. RM'].map(h => (
-                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
+                <thead><tr style={{ background: 'var(--c-bg)', position: 'sticky', top: 0 }}>
+                  {['Nama', 'No. HP', 'No. RM'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>)}
+                </tr></thead>
                 <tbody>
-                  {searchResult.persons.map((p, i) => (
-                    <tr key={p.id} style={{ borderBottom: i < searchResult.persons.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                  {result.persons.map(p => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
                       <td style={{ padding: '8px 12px', fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_hp || '-'}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_rm || '-'}</td>
+                      <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_hp || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{p.no_rm || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <button
-              onClick={() => setStage('params')}
-              style={{ padding: '8px 16px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}
-            >
-              ← Ubah Parameter
-            </button>
-            <button
-              onClick={() => setStage('simpan')}
-              disabled={searchResult.total === 0}
-              style={{
-                padding: '10px 24px', borderRadius: 'var(--r-md)',
-                background: searchResult.total > 0 ? 'var(--c-secondary)' : 'var(--c-border)',
-                color: searchResult.total > 0 ? 'white' : 'var(--c-text-muted)',
-                fontWeight: 600, border: 'none', cursor: searchResult.total > 0 ? 'pointer' : 'default',
-                fontSize: 'var(--font-size-sm)',
-              }}
-            >
-              Beri Nama Segmen →
-            </button>
-          </div>
         </div>
       )}
 
-      {/* Stage 4: Simpan */}
-      {stage === 'simpan' && searchResult && (
-        <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', padding: 'var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
-          <div>
-            <h2 style={{ fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Simpan Segmen</h2>
-            <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', background: 'var(--c-bg)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)' }}>
-              Segmen akan menyimpan <strong>{searchResult.total} pasien</strong>.
-            </div>
+      {/* ── Simpan ── */}
+      {((mode !== 'manual' && result && result.total > 0) || (mode === 'manual' && selectedCount > 0)) && (
+        <div style={cardStyle}>
+          <h2 style={{ fontWeight: 700 }}>Simpan Segmen</h2>
+          <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', background: 'var(--c-bg)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)' }}>
+            Menyimpan <strong>{mode === 'manual' ? selectedCount : result?.total} pasien</strong>.
+            {mode !== 'manual' && ' Segmen dinamis — bisa di-refresh untuk perbarui anggota.'}
           </div>
-
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Nama Segmen <span style={{ color: 'var(--c-error)' }}>*</span></label>
-            <input
-              value={namaSegmen}
-              onChange={e => setNamaSegmen(e.target.value)}
-              placeholder="mis: Pasien Diabetes Rawat Inap Q2 2026"
-              style={{ width: '100%', padding: 'var(--sp-3)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)', background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box' }}
-            />
+            <input value={nama} onChange={e => setNama(e.target.value)} placeholder="mis: Pasien Diabetes Q2 2026" style={inputStyle} />
           </div>
-
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Deskripsi (opsional)</label>
-            <textarea
-              value={deskripsi}
-              onChange={e => setDeskripsi(e.target.value)}
-              rows={3}
-              placeholder="Catatan tambahan tentang segmen ini..."
-              style={{ width: '100%', padding: 'var(--sp-3)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-sm)', fontFamily: 'var(--font-family)', resize: 'vertical', background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box' }}
-            />
+            <textarea value={deskripsi} onChange={e => setDesk(e.target.value)} rows={2} placeholder="Catatan..." style={{ ...inputStyle, fontFamily: 'var(--font-family)', resize: 'vertical' }} />
           </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <button
-              onClick={() => setStage('hasil')}
-              style={{ padding: '8px 16px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}
-            >
-              ← Kembali
-            </button>
-            <button
-              onClick={handleSimpan}
-              disabled={saving || !namaSegmen.trim()}
-              style={{
-                padding: '10px 24px', borderRadius: 'var(--r-md)',
-                background: namaSegmen.trim() ? 'var(--c-secondary)' : 'var(--c-border)',
-                color: namaSegmen.trim() ? 'white' : 'var(--c-text-muted)',
-                fontWeight: 600, border: 'none', cursor: namaSegmen.trim() ? 'pointer' : 'default',
-                fontSize: 'var(--font-size-sm)',
-              }}
-            >
-              {saving ? 'Menyimpan...' : 'Simpan Segmen'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleSave} disabled={saving || !canSave} style={btnPrimary(canSave)}>{saving ? 'Menyimpan...' : 'Simpan Segmen'}</button>
           </div>
-        </div>
-      )}
-
-      {/* Stage done */}
-      {stage === 'done' && (
-        <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', padding: 'var(--sp-10)', textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>✓</div>
-          <h2 style={{ fontWeight: 700, color: 'var(--c-success)', marginBottom: 8 }}>Segmen berhasil disimpan!</h2>
-          <p style={{ color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Mengalihkan ke daftar segmen...
-          </p>
         </div>
       )}
     </div>

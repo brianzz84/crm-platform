@@ -292,8 +292,10 @@ model Segment {
   tenant_slug     String
   nama            String
   deskripsi       String?
-  nlp_query       String?  // query natural language dari admin
-  simrs_params    Json?    // parameter yang dikirim ke SIMRS
+  tipe            String   @default("AI") // AI | FILTER | TAG | MANUAL
+  nlp_query       String?  // query natural language dari admin (hanya tipe AI)
+  simrs_params    Json?    // parameter hasil AI (kompat lama)
+  filter_def      Json?    // definisi filter tersimpan → untuk refresh segmen dinamis
   last_refresh_at DateTime?
   created_by      String
   created_at      DateTime @default(now())

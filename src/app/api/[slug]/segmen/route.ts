@@ -6,8 +6,10 @@ import { z } from 'zod'
 const createSchema = z.object({
   nama:         z.string().min(1),
   deskripsi:    z.string().optional(),
+  tipe:         z.enum(['AI', 'FILTER', 'TAG', 'MANUAL']).default('AI'),
   nlp_query:    z.string().optional(),
   simrs_params: z.record(z.string(), z.any()).optional(),
+  filter_def:   z.record(z.string(), z.any()).optional(),
   person_ids:   z.array(z.string()).optional(),
 })
 
@@ -73,8 +75,10 @@ export async function POST(
         tenant_slug:    params.slug,
         nama:           data.nama,
         deskripsi:      data.deskripsi,
+        tipe:           data.tipe,
         nlp_query:      data.nlp_query,
         simrs_params:   data.simrs_params as any,
+        filter_def:     data.filter_def as any,
         created_by:     session!.userId,
         last_refresh_at: new Date(),
         ...(data.person_ids?.length && {
