@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getTenantDb } from '@/lib/tenant'
 import { notFound } from 'next/navigation'
 import CampaignActions from './CampaignActions'
+import CampaignAutoRefresh from './CampaignAutoRefresh'
 
 interface Props { params: { slug: string; id: string } }
 
@@ -94,7 +95,10 @@ export default async function CampaignDetailPage({ params }: Props) {
               <span>Dibuat: {fmtDate(campaign.created_at)}</span>
             </div>
           </div>
-          <CampaignActions slug={params.slug} campaignId={campaign.id} status={campaign.status} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <CampaignActions slug={params.slug} campaignId={campaign.id} status={campaign.status} />
+            <CampaignAutoRefresh status={campaign.status} />
+          </div>
         </div>
 
         {/* Stats row */}
