@@ -106,6 +106,16 @@ async function handleStatusUpdate(db: any, status: MetaStatus) {
   const data: any = { status: mapped }
   if (mapped === 'DELIVERED') data.delivered_at = new Date()
   if (mapped === 'READ')      data.read_at       = new Date()
+  if (mapped === 'FAILED') {
+    // Simpan alasan gagal dari Meta agar bisa didiagnosis
+    const err = status.errors?.[0]
+    if (err) {
+      data.error_code   = String(err.code ?? 'meta_delivery')
+      data.error_detail = [err.title, err.error_data?.details || err.message].filter(Boolean).join(' — ').slice(0, 300)
+    } else {
+      data.error_code = 'meta_delivery'
+    }
+  }
 
   await db.campaignRecipient.update({ where: { id: recipient.id }, data })
 
@@ -193,4 +203,10 @@ interface MetaStatus {
   status:     string
   timestamp:  string
   recipient_id: string
+  errors?: Array<{
+    code?:       number | string
+    title?:      string
+    message?:    string
+    error_data?: { details?: string }
+  }>
 }
