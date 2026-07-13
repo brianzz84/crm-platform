@@ -10,12 +10,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 const connectionCache = new Map<string, PrismaClient>()
 
 function createClient(connectionString: string): PrismaClient {
-  const adapter = new PrismaPg({
-    connectionString,
-    max: 2,
-    idleTimeoutMillis: 10_000,
-    ssl: { rejectUnauthorized: false },
-  })
+  const adapter = new PrismaPg({ connectionString })
   return new PrismaClient({ adapter })
 }
 
@@ -25,14 +20,7 @@ function createClient(connectionString: string): PrismaClient {
  */
 export async function getTenantDb(slug: string): Promise<PrismaClient> {
   if (connectionCache.has(slug)) {
-    const cached = connectionCache.get(slug)!
-    try {
-      await cached.$queryRaw`SELECT 1`
-      return cached
-    } catch {
-      // Koneksi mati — buang cache, buat ulang
-      connectionCache.delete(slug)
-    }
+    return connectionCache.get(slug)!
   }
 
   const tenant = await masterDb.tenant.findUnique({
@@ -53,7 +41,11 @@ export async function getTenantDb(slug: string): Promise<PrismaClient> {
  * Master DB — hanya untuk lookup tenant.
  * Tidak boleh digunakan untuk query data bisnis per-tenant.
  */
-export const masterDb: PrismaClient = createClient(process.env.DATABASE_URL!)
+export const masterDb = createClient(process.env.DATABASE_URL!)
+
+export async function getMasterDb(): Promise<PrismaClient> {
+  return masterDb
+}
 
 /**
  * Jalankan ini setelah membuat tenant baru.
