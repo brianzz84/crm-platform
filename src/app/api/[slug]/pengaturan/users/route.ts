@@ -87,9 +87,15 @@ export async function POST(
 
     // Kirim email undangan (jika RESEND_API_KEY ada)
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/aktivasi?token=${inviteToken}`
-    await sendInviteEmail(parsed.data.email, parsed.data.name, session!.name, params.slug, inviteUrl)
+    const emailResult = await sendInviteEmail(parsed.data.email, parsed.data.name, session!.name, params.slug, inviteUrl)
 
-    return NextResponse.json({ success: true, data: user, inviteUrl }, { status: 201 })
+    return NextResponse.json({
+      success:    true,
+      data:       user,
+      inviteUrl,
+      emailSent:  emailResult.sent,
+      emailError: emailResult.error,
+    }, { status: 201 })
   } catch (e) {
     console.error('[POST /pengaturan/users]', e)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
@@ -98,19 +104,20 @@ export async function POST(
 
 async function sendInviteEmail(
   to: string, name: string, invitedBy: string, slug: string, inviteUrl: string
-) {
+): Promise<{ sent: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
-    console.warn('[invite] RESEND_API_KEY tidak ada — email tidak dikirim, gunakan inviteUrl dari response')
-    return
+    console.warn('[invite] RESEND_API_KEY tidak ada — email tidak dikirim, gunakan inviteUrl')
+    return { sent: false, error: 'RESEND_API_KEY belum dikonfigurasi' }
   }
+  const from = process.env.RESEND_FROM || 'CRM Platform <noreply@meditech.my.id>'
 
   try {
-    await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.resend.com/emails', {
       method:  'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from:    'CRM Platform <noreply@meditech.my.id>',
+        from,
         to:      [to],
         subject: `Undangan akses CRM Platform — ${slug}`,
         html: `
@@ -123,7 +130,15 @@ async function sendInviteEmail(
         `,
       }),
     })
-  } catch (e) {
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      const msg = j?.message || j?.error?.message || `HTTP ${res.status}`
+      console.error('[invite] Resend menolak:', JSON.stringify(j))
+      return { sent: false, error: msg }
+    }
+    return { sent: true }
+  } catch (e: any) {
     console.error('[invite] Gagal kirim email:', e)
+    return { sent: false, error: e?.message || 'network error' }
   }
 }

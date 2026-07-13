@@ -52,6 +52,7 @@ export default function UsersClient({
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState('')
   const [toast, setToast]           = useState('')
+  const [inviteResult, setInviteResult] = useState<{ email: string; url: string; emailSent: boolean; emailError?: string } | null>(null)
 
   // Form state
   const [form, setForm] = useState({ name: '', email: '', roles: [] as UserRole[] })
@@ -115,7 +116,8 @@ export default function UsersClient({
         if (!json.success) throw new Error(json.error)
         setUsers(us => [json.data, ...us])
         setShowModal(false)
-        showToast(`Undangan dikirim ke ${form.email}`)
+        setInviteResult({ email: form.email, url: json.inviteUrl, emailSent: !!json.emailSent, emailError: json.emailError })
+        showToast(json.emailSent ? `Email undangan terkirim ke ${form.email}` : `User dibuat — email belum terkirim, salin link aktivasi`)
       }
     } catch (e: any) {
       setError(e.message || 'Terjadi kesalahan')
@@ -273,6 +275,32 @@ export default function UsersClient({
           </div>
         )}
       </div>
+
+      {/* Modal hasil undangan — tampilkan link aktivasi (fallback bila email gagal) */}
+      {inviteResult && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setInviteResult(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 'var(--r-lg)', padding: 'var(--sp-6)', maxWidth: 480, width: '100%', boxShadow: 'var(--shadow-xl)' }}>
+            <h3 style={{ fontWeight: 800, color: 'var(--c-primary)', marginBottom: 8 }}>Undangan Dibuat</h3>
+            <div style={{ fontSize: 13, padding: '8px 12px', borderRadius: 'var(--r-md)', marginBottom: 12,
+              background: inviteResult.emailSent ? '#F0FDF4' : '#FFFBEB', color: inviteResult.emailSent ? '#166534' : '#92400E' }}>
+              {inviteResult.emailSent
+                ? `✅ Email undangan terkirim ke ${inviteResult.email}.`
+                : `⚠️ Email belum terkirim${inviteResult.emailError ? ` (${inviteResult.emailError})` : ''}. Bagikan link aktivasi di bawah secara manual.`}
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)' }}>Link Aktivasi (berlaku 7 hari)</label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <input readOnly value={inviteResult.url} onFocus={e => e.currentTarget.select()}
+                style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', fontSize: 12, background: 'var(--c-bg)', color: 'var(--c-text)' }} />
+              <button onClick={() => { navigator.clipboard?.writeText(inviteResult.url); showToast('Link disalin') }}
+                style={{ padding: '8px 14px', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--c-secondary)', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Salin</button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setInviteResult(null)} style={{ padding: '8px 18px', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)', background: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Tutup</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Undang / Edit */}
       {showModal && (
