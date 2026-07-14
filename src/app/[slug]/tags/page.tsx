@@ -17,7 +17,8 @@ export default async function TagsPage({ params }: { params: { slug: string } })
     where:   { tenant_slug: params.slug },
     orderBy: [{ aktif: 'desc' }, { name: 'asc' }],
     include: {
-      _count: { select: { person_tags: { where: { aktif: true } }, tag_rules: { where: { aktif: true } } } },
+      _count:  { select: { person_tags: { where: { aktif: true } }, tag_rules: { where: { aktif: true } } } },
+      aliases: { orderBy: { alias: 'asc' } },
     },
   })
 
@@ -39,6 +40,7 @@ export default async function TagsPage({ params }: { params: { slug: string } })
   const initialTags = tags.map(t => ({
     id:           t.id,
     name:         t.name,
+    kategori:     t.kategori,
     warna:        t.warna,
     keterangan:   t.keterangan ?? '',
     aktif:        t.aktif,
@@ -46,6 +48,7 @@ export default async function TagsPage({ params }: { params: { slug: string } })
     total_pasien: t._count.person_tags,
     has_rule:     t._count.tag_rules > 0,
     breakdown:    bdMap[t.id] ?? {},
+    aliases:      t.aliases.map(a => ({ id: a.id, alias: a.alias })),
   }))
 
   return (

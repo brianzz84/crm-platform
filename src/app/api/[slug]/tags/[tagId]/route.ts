@@ -23,8 +23,11 @@ export async function GET(req: NextRequest, { params }: Ctx) {
           where: {
             tenant_slug: params.slug,
             aktif:       true,
-            name:        { contains: w, mode: 'insensitive' },
             NOT:         { id: params.tagId === 'new' ? undefined : params.tagId },
+            OR: [
+              { name: { contains: w, mode: 'insensitive' } },
+              { aliases: { some: { alias: { contains: w, mode: 'insensitive' } } } },
+            ],
           },
           take:    5,
           include: { _count: { select: { person_tags: { where: { aktif: true } } } } },
@@ -47,6 +50,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       where:   { id: params.tagId, tenant_slug: params.slug },
       include: {
         tag_rules:  true,
+        aliases:    { orderBy: { alias: 'asc' } },
         _count: { select: { person_tags: { where: { aktif: true } } } },
       },
     })
@@ -59,6 +63,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
 const PatchSchema = z.object({
   name:       z.string().min(1).max(60).optional(),
+  kategori:   z.string().max(50).nullable().optional(),
   warna:      z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   keterangan: z.string().max(200).nullable().optional(),
   aktif:      z.boolean().optional(),

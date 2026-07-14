@@ -10,8 +10,8 @@ const Schema = z.object({
 })
 
 // POST /api/[slug]/tags/[tagId]/merge
-// Gabungkan source_ids ke tagId (target). Source dinonaktifkan, namanya tidak disimpan sbg alias
-// karena tidak ada model alias di CRM Platform — cukup nonaktifkan.
+// Gabungkan source_ids ke tagId (target). Source dinonaktifkan; nama & alias
+// tag sumber disimpan sebagai alias baru di tag tujuan (riwayat penamaan tak hilang).
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'manageTagRules')
   if (error) return error
@@ -32,8 +32,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     // Verifikasi semua tag milik tenant ini
     const allTags = await db.tag.findMany({
-      where: { id: { in: [targetId, ...source_ids] }, tenant_slug: params.slug },
-      select: { id: true, name: true },
+      where:   { id: { in: [targetId, ...source_ids] }, tenant_slug: params.slug },
+      include: { aliases: { select: { alias: true } } },
     })
     if (allTags.length !== source_ids.length + 1) {
       return NextResponse.json({ error: 'Satu atau lebih tag tidak ditemukan' }, { status: 404 })
@@ -42,6 +42,18 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     let totalDipindah = 0
 
     for (const srcId of source_ids) {
+      const srcTag = allTags.find((t: any) => t.id === srcId)!
+
+      // Simpan nama & alias tag sumber sebagai alias baru di tag tujuan
+      const namaBaruSbgAlias = [srcTag.name, ...(srcTag.aliases?.map((a: any) => a.alias) ?? [])]
+      for (const aliasText of namaBaruSbgAlias) {
+        const sudahAda = await db.tagAlias.findFirst({
+          where: { tag_id: targetId, alias: { equals: aliasText, mode: 'insensitive' } },
+        })
+        if (!sudahAda) {
+          await db.tagAlias.create({ data: { tag_id: targetId, alias: aliasText } }).catch(() => null)
+        }
+      }
       // Ambil semua PersonTag dari tag sumber
       const srcPersonTags = await db.personTag.findMany({
         where: { tag_id: srcId, aktif: true },

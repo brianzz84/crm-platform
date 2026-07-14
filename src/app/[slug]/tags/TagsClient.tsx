@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+
+interface AliasItem { id: string; alias: string }
 
 interface TagItem {
   id: string
   name: string
+  kategori: string | null
   warna: string
   keterangan: string
   aktif: boolean
@@ -13,6 +16,7 @@ interface TagItem {
   total_pasien: number
   has_rule: boolean
   breakdown: Record<string, number>
+  aliases: AliasItem[]
 }
 
 const PRESET_COLORS = [
@@ -20,6 +24,9 @@ const PRESET_COLORS = [
   '#00897B','#43A047','#FB8C00','#F4511E','#546E7A',
   '#0089A8','#6D4C41','#00695C','#1565C0','#4527A0',
 ]
+
+const KATEGORI_PRESET = ['Spesialisasi', 'Tipe Kontak', 'Layanan', 'Ketertarikan']
+const KATEGORI_LAINNYA = 'Lainnya'
 
 type ModalMode = 'create' | 'edit' | 'merge' | null
 
@@ -32,11 +39,17 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
 
   // Form create/edit
   const [editTarget, setEditTarget] = useState<TagItem | null>(null)
-  const [fName,  setFName]  = useState('')
-  const [fWarna, setFWarna] = useState('#0089A8')
-  const [fKet,   setFKet]   = useState('')
+  const [fName,     setFName]     = useState('')
+  const [fKategori, setFKategori] = useState('')
+  const [fKategoriCustom, setFKategoriCustom] = useState(false)
+  const [fWarna,    setFWarna]    = useState('#0089A8')
+  const [fKet,      setFKet]      = useState('')
   const [similar, setSimilar] = useState<{ id: string; name: string; warna: string; total: number }[]>([])
   const similarTimer = useRef<ReturnType<typeof setTimeout>>()
+
+  // Alias (hanya saat edit — butuh tag id)
+  const [aliasInput, setAliasInput] = useState('')
+  const [aliasSaving, setAliasSaving] = useState(false)
 
   // Merge
   const [mergeTarget,  setMergeTarget]  = useState('')
@@ -53,7 +66,7 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
 
   function openCreate() {
     setEditTarget(null)
-    setFName(''); setFWarna('#0089A8'); setFKet('')
+    setFName(''); setFKategori(''); setFKategoriCustom(false); setFWarna('#0089A8'); setFKet('')
     setSimilar([])
     setModal('create')
   }
@@ -61,6 +74,10 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
   function openEdit(t: TagItem) {
     setEditTarget(t)
     setFName(t.name); setFWarna(t.warna); setFKet(t.keterangan)
+    const isPreset = !t.kategori || KATEGORI_PRESET.includes(t.kategori)
+    setFKategori(t.kategori ?? '')
+    setFKategoriCustom(!isPreset)
+    setAliasInput('')
     setSimilar([])
     setModal('edit')
   }
@@ -74,7 +91,7 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
     setModal(null); setEditTarget(null); setSimilar([])
   }
 
-  // Fuzzy similar check (debounced)
+  // Fuzzy similar check (debounced) — server juga cek kecocokan alias
   async function checkSimilar(name: string) {
     clearTimeout(similarTimer.current)
     if (name.length < 2) { setSimilar([]); return }
@@ -94,21 +111,24 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
       const method = isEdit ? 'PATCH' : 'POST'
       const res  = await fetch(url, {
         method, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: fName.trim(), warna: fWarna, keterangan: fKet.trim() || null }),
+        body: JSON.stringify({
+          name: fName.trim(), warna: fWarna, keterangan: fKet.trim() || null,
+          kategori: fKategori.trim() || null,
+        }),
       })
       const json = await res.json()
       if (!res.ok) { showToast(json.error || 'Gagal menyimpan', 'err'); return }
       showToast(isEdit ? 'Tag diperbarui.' : 'Tag baru ditambahkan.')
-      closeModal()
       router.refresh()
-      // Optimistic update
       if (isEdit) {
         setTags(prev => prev.map(t => t.id === editTarget.id
-          ? { ...t, name: fName.trim(), warna: fWarna, keterangan: fKet.trim() }
+          ? { ...t, name: fName.trim(), warna: fWarna, keterangan: fKet.trim(), kategori: fKategori.trim() || null }
           : t))
+        closeModal()
       } else {
-        const newTag: TagItem = { ...json.data, total_pasien: 0, has_rule: false, breakdown: {}, keterangan: fKet.trim() }
+        const newTag: TagItem = { ...json.data, total_pasien: 0, has_rule: false, breakdown: {}, keterangan: fKet.trim(), aliases: [] }
         setTags(prev => [newTag, ...prev])
+        closeModal()
       }
     } finally {
       setLoading(false)
@@ -126,6 +146,35 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
     }
   }
 
+  async function handleAddAlias() {
+    if (!editTarget || !aliasInput.trim()) return
+    setAliasSaving(true)
+    try {
+      const res  = await fetch(`/api/${slug}/tags/${editTarget.id}/alias`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: aliasInput.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) { showToast(json.error || 'Gagal menambah alias', 'err'); return }
+      const updated = { ...editTarget, aliases: [...editTarget.aliases, json.data].sort((a, b) => a.alias.localeCompare(b.alias)) }
+      setEditTarget(updated)
+      setTags(prev => prev.map(t => t.id === updated.id ? updated : t))
+      setAliasInput('')
+    } finally {
+      setAliasSaving(false)
+    }
+  }
+
+  async function handleRemoveAlias(aliasId: string) {
+    if (!editTarget) return
+    const res = await fetch(`/api/${slug}/tags/${editTarget.id}/alias/${aliasId}`, { method: 'DELETE' })
+    if (res.ok) {
+      const updated = { ...editTarget, aliases: editTarget.aliases.filter(a => a.id !== aliasId) }
+      setEditTarget(updated)
+      setTags(prev => prev.map(t => t.id === updated.id ? updated : t))
+    }
+  }
+
   async function handleMerge() {
     if (!mergeTarget) { showToast('Pilih tag tujuan', 'err'); return }
     if (mergeSources.size === 0) { showToast('Pilih minimal 1 tag sumber', 'err'); return }
@@ -138,24 +187,39 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
       })
       const json = await res.json()
       if (!res.ok) { showToast(json.error || 'Merge gagal', 'err'); return }
-      showToast(`Merge selesai. ${json.data.total_akhir} pasien di tag tujuan.`)
+      showToast(`Merge selesai. ${json.data.total_akhir} pasien di tag tujuan. Nama tag lama disimpan sebagai alias.`)
       closeModal()
       router.refresh()
-      // Optimistic: nonaktifkan source
       setTags(prev => prev.map(t => mergeSources.has(t.id) ? { ...t, aktif: false } : t))
     } finally {
       setLoading(false)
     }
   }
 
+  const matchSearchQ = (t: TagItem, q: string) =>
+    t.name.toLowerCase().includes(q) || t.aliases.some(a => a.alias.toLowerCase().includes(q))
+
   const filtered = tags.filter(t => {
     const matchFilter = filterAktif === 'semua' || (filterAktif === 'aktif' ? t.aktif : !t.aktif)
-    const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase())
+    const q = search.trim().toLowerCase()
+    const matchSearch = !q || matchSearchQ(t, q)
     return matchFilter && matchSearch
   })
 
   const aktifTags    = tags.filter(t => t.aktif)
   const nonaktifTags = tags.filter(t => !t.aktif)
+
+  // Grouping per kategori — preset dulu, lalu kategori custom lain (sorted), lalu "Lainnya" (tanpa kategori)
+  const customKategori = Array.from(new Set(
+    filtered.map(t => t.kategori).filter((k): k is string => !!k && !KATEGORI_PRESET.includes(k))
+  )).sort()
+  const kategoriOrder = [...KATEGORI_PRESET, ...customKategori, KATEGORI_LAINNYA]
+  const grouped = kategoriOrder
+    .map(kat => ({
+      kategori: kat,
+      items: filtered.filter(t => (t.kategori || KATEGORI_LAINNYA) === kat),
+    }))
+    .filter(g => g.items.length > 0)
 
   const inputStyle: React.CSSProperties = {
     display: 'block', width: '100%', padding: '9px 12px',
@@ -167,6 +231,84 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
   const labelStyle: React.CSSProperties = {
     display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700,
     color: 'var(--c-text)', marginBottom: 6,
+  }
+
+  function renderTagRow(t: TagItem) {
+    return (
+      <tr key={t.id} style={{ opacity: t.aktif ? 1 : 0.5 }}>
+        <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.warna, flexShrink: 0, display: 'inline-block' }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--c-text)' }}>{t.name}</div>
+              {t.keterangan && <div style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>{t.keterangan}</div>}
+              {t.aliases.length > 0 ? (
+                <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 2 }}>
+                  <span style={{ fontWeight: 600 }}>{t.aliases.length} alias:</span>{' '}
+                  <span style={{ fontStyle: 'italic' }}>{t.aliases.map(a => a.alias).join(', ')}</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: 'var(--c-text-faint)', fontStyle: 'italic', marginTop: 2 }}>belum ada alias</div>
+              )}
+            </div>
+            {!t.aktif && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: '#F1F5F9', color: '#94A3B8' }}>nonaktif</span>
+            )}
+          </div>
+        </td>
+        <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
+          <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)' }}>{t.total_pasien.toLocaleString('id-ID')}</span>
+        </td>
+        <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {Object.entries(t.breakdown).map(([src, count]) => (
+              <span key={src} style={{
+                fontSize: 10, padding: '2px 7px', borderRadius: 99, fontWeight: 600,
+                background: src === 'manual' ? '#EFF6FF' : src === 'auto_ai' ? '#F0FDF4' : '#F8FAFC',
+                color: src === 'manual' ? '#3B82F6' : src === 'auto_ai' ? '#22C55E' : '#64748B',
+              }}>
+                {src === 'manual' ? 'Manual' : src === 'auto_ai' ? 'AI' : src} {count}
+              </span>
+            ))}
+            {Object.keys(t.breakdown).length === 0 && (
+              <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>—</span>
+            )}
+          </div>
+        </td>
+        <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
+          {t.has_rule
+            ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#FEF9C3', color: '#CA8A04' }}>Ada aturan</span>
+            : <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>Belum ada</span>
+          }
+        </td>
+        <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <a
+              href={`/${slug}/tags/${t.id}`}
+              style={{ padding: '5px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--c-secondary)', textDecoration: 'none' }}
+            >
+              Aturan AI
+            </a>
+            <button onClick={() => openEdit(t)} style={{
+              padding: '5px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)',
+              fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--c-text-muted)',
+              background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              Edit
+            </button>
+            <button onClick={() => handleToggleAktif(t)} style={{
+              padding: '5px 12px', borderRadius: 'var(--r-sm)',
+              border: `1px solid ${t.aktif ? '#EF4444' : '#22C55E'}`,
+              fontSize: 'var(--font-size-xs)', fontWeight: 600,
+              color: t.aktif ? '#EF4444' : '#22C55E',
+              background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              {t.aktif ? 'Nonaktifkan' : 'Aktifkan'}
+            </button>
+          </div>
+        </td>
+      </tr>
+    )
   }
 
   return (
@@ -187,7 +329,7 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
       <div style={{ display: 'flex', gap: 'var(--sp-3)', marginBottom: 'var(--sp-5)', flexWrap: 'wrap', alignItems: 'center' }}>
         <input
           type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Cari tag..."
+          placeholder="Cari tag atau alias..."
           style={{ ...inputStyle, width: 220 }}
         />
         <div style={{ display: 'flex', gap: 4 }}>
@@ -222,102 +364,49 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
         </div>
       </div>
 
-      {/* Tabel */}
-      {filtered.length === 0 ? (
+      {/* Grup per kategori */}
+      {grouped.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 'var(--sp-16)', color: 'var(--c-text-faint)', fontSize: 'var(--font-size-sm)' }}>
-          {search ? `Tidak ada tag yang cocok dengan "${search}"` : 'Belum ada tag.'}
+          {search ? `Tidak ada tag/alias yang cocok dengan "${search}"` : 'Belum ada tag.'}
         </div>
       ) : (
-        <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--c-bg)' }}>
-                {['Tag','Pasien','Sumber','Aturan AI',''].map(h => (
-                  <th key={h} style={{
-                    padding: '10px 16px', fontSize: 'var(--font-size-xs)', fontWeight: 700,
-                    color: 'var(--c-text-muted)', textAlign: 'left',
-                    borderBottom: '2px solid var(--c-border)', whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(t => (
-                <tr key={t.id} style={{ opacity: t.aktif ? 1 : 0.5 }}>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.warna, flexShrink: 0, display: 'inline-block' }} />
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--c-text)' }}>{t.name}</div>
-                        {t.keterangan && <div style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>{t.keterangan}</div>}
-                      </div>
-                      {!t.aktif && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: '#F1F5F9', color: '#94A3B8' }}>nonaktif</span>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
-                    <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)' }}>{t.total_pasien.toLocaleString('id-ID')}</span>
-                  </td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {Object.entries(t.breakdown).map(([src, count]) => (
-                        <span key={src} style={{
-                          fontSize: 10, padding: '2px 7px', borderRadius: 99, fontWeight: 600,
-                          background: src === 'manual' ? '#EFF6FF' : src === 'auto_ai' ? '#F0FDF4' : '#F8FAFC',
-                          color: src === 'manual' ? '#3B82F6' : src === 'auto_ai' ? '#22C55E' : '#64748B',
-                        }}>
-                          {src === 'manual' ? 'Manual' : src === 'auto_ai' ? 'AI' : src} {count}
-                        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+          {grouped.map(g => (
+            <div key={g.kategori}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontWeight: 800, fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)' }}>{g.kategori}</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 99,
+                  background: 'var(--c-primary-xlight)', color: 'var(--c-primary)',
+                }}>{g.items.length}</span>
+              </div>
+              <div style={{ background: 'var(--c-surface)', borderRadius: 'var(--r-lg)', border: '1px solid var(--c-border)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--c-bg)' }}>
+                      {['Nama Tag','Pasien','Sumber','Aturan AI',''].map(h => (
+                        <th key={h} style={{
+                          padding: '10px 16px', fontSize: 'var(--font-size-xs)', fontWeight: 700,
+                          color: 'var(--c-text-muted)', textAlign: 'left',
+                          borderBottom: '2px solid var(--c-border)', whiteSpace: 'nowrap',
+                        }}>{h}</th>
                       ))}
-                      {Object.keys(t.breakdown).length === 0 && (
-                        <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>—</span>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
-                    {t.has_rule
-                      ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#FEF9C3', color: '#CA8A04' }}>Ada aturan</span>
-                      : <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>Belum ada</span>
-                    }
-                  </td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', verticalAlign: 'middle' }}>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <a
-                        href={`/${slug}/tags/${t.id}`}
-                        style={{ padding: '5px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)', fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--c-secondary)', textDecoration: 'none' }}
-                      >
-                        Aturan AI
-                      </a>
-                      <button onClick={() => openEdit(t)} style={{
-                        padding: '5px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--c-border)',
-                        fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--c-text-muted)',
-                        background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
-                      }}>
-                        Edit
-                      </button>
-                      <button onClick={() => handleToggleAktif(t)} style={{
-                        padding: '5px 12px', borderRadius: 'var(--r-sm)',
-                        border: `1px solid ${t.aktif ? '#EF4444' : '#22C55E'}`,
-                        fontSize: 'var(--font-size-xs)', fontWeight: 600,
-                        color: t.aktif ? '#EF4444' : '#22C55E',
-                        background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
-                      }}>
-                        {t.aktif ? 'Nonaktifkan' : 'Aktifkan'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.items.map(renderTagRow)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* ── MODAL CREATE/EDIT ────────────────────────────── */}
       {(modal === 'create' || modal === 'edit') && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', borderRadius: 'var(--r-xl)', padding: 'var(--sp-8)', width: '100%', maxWidth: 440, boxShadow: 'var(--shadow-xl)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 'var(--sp-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--r-xl)', padding: 'var(--sp-8)', width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)' }}>
             <h2 style={{ fontWeight: 800, color: 'var(--c-primary)', marginBottom: 'var(--sp-6)', fontSize: 'var(--font-size-lg)' }}>
               {modal === 'edit' ? 'Edit Tag' : 'Tag Baru'}
             </h2>
@@ -350,6 +439,29 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
             </div>
 
             <div style={{ marginBottom: 'var(--sp-4)' }}>
+              <label style={labelStyle}>Kategori <span style={{ fontWeight: 400, color: 'var(--c-text-faint)' }}>(untuk pengelompokan tampilan)</span></label>
+              {!fKategoriCustom ? (
+                <select value={fKategori} onChange={e => {
+                  if (e.target.value === '__custom__') { setFKategoriCustom(true); setFKategori('') }
+                  else setFKategori(e.target.value)
+                }} style={inputStyle}>
+                  <option value="">— tanpa kategori (Lainnya) —</option>
+                  {KATEGORI_PRESET.map(k => <option key={k} value={k}>{k}</option>)}
+                  <option value="__custom__">+ Kategori baru...</option>
+                </select>
+              ) : (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="text" value={fKategori} onChange={e => setFKategori(e.target.value)}
+                    placeholder="Nama kategori baru" style={inputStyle} autoFocus />
+                  <button type="button" onClick={() => { setFKategoriCustom(false); setFKategori('') }} style={{
+                    padding: '0 12px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--c-border)',
+                    background: 'transparent', color: 'var(--c-text-muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--font-size-xs)',
+                  }}>Batal</button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 'var(--sp-4)' }}>
               <label style={labelStyle}>Warna</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input type="color" value={fWarna} onChange={e => setFWarna(e.target.value)}
@@ -373,9 +485,53 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
                 style={inputStyle} />
             </div>
 
+            {/* Alias — hanya saat edit */}
+            {modal === 'edit' && editTarget && (
+              <div style={{ marginBottom: 'var(--sp-6)' }}>
+                <label style={labelStyle}>Alias / Sinonim</label>
+                <p style={{ fontSize: 11, color: 'var(--c-text-faint)', margin: '0 0 8px' }}>
+                  Kata lain yang merujuk ke tag ini. Contoh: "Kardiologi" → alias "jantung", "kardio".
+                </p>
+                <div style={{ border: '1.5px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '8px 10px', display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 40, marginBottom: 8 }}>
+                  {editTarget.aliases.length === 0 && (
+                    <span style={{ fontSize: 12, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>Belum ada alias</span>
+                  )}
+                  {editTarget.aliases.map(a => (
+                    <span key={a.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      background: 'var(--c-bg)', border: '1px solid var(--c-border)',
+                      borderRadius: 20, padding: '3px 6px 3px 10px', fontSize: 12,
+                    }}>
+                      {a.alias}
+                      <span onClick={() => handleRemoveAlias(a.id)} title="Hapus alias" style={{
+                        cursor: 'pointer', color: '#EF4444', fontWeight: 700, padding: '0 4px',
+                      }}>×</span>
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="text" value={aliasInput} onChange={e => setAliasInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddAlias() } }}
+                    placeholder="Ketik alias baru, lalu Enter…"
+                    style={{ ...inputStyle }} />
+                  <button type="button" onClick={handleAddAlias} disabled={aliasSaving || !aliasInput.trim()} style={{
+                    padding: '0 16px', borderRadius: 'var(--r-md)', border: 'none', whiteSpace: 'nowrap',
+                    background: aliasSaving || !aliasInput.trim() ? '#94A3B8' : 'var(--c-secondary)',
+                    color: 'white', fontWeight: 600, fontSize: 'var(--font-size-xs)',
+                    cursor: aliasSaving || !aliasInput.trim() ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  }}>+ Tambah</button>
+                </div>
+              </div>
+            )}
+            {modal === 'create' && (
+              <div style={{ marginBottom: 'var(--sp-6)', fontSize: 11, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>
+                Alias/sinonim bisa ditambahkan setelah tag ini disimpan (buka Edit).
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 'var(--sp-3)', justifyContent: 'flex-end' }}>
               <button onClick={closeModal} style={{ padding: '9px 20px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--c-border)', background: 'transparent', color: 'var(--c-text-muted)', fontFamily: 'inherit', fontSize: 'var(--font-size-sm)', fontWeight: 600, cursor: 'pointer' }}>
-                Batal
+                Tutup
               </button>
               <button onClick={handleSave} disabled={loading} style={{ padding: '9px 20px', borderRadius: 'var(--r-md)', background: loading ? '#94A3B8' : 'var(--c-secondary)', border: 'none', color: 'white', fontFamily: 'inherit', fontSize: 'var(--font-size-sm)', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}>
                 {loading ? 'Menyimpan...' : 'Simpan'}
@@ -391,7 +547,7 @@ export default function TagsClient({ slug, initialTags }: { slug: string; initia
           <div style={{ background: 'white', borderRadius: 'var(--r-xl)', padding: 'var(--sp-8)', width: '100%', maxWidth: 560, boxShadow: 'var(--shadow-xl)', maxHeight: '90vh', overflowY: 'auto' }}>
             <h2 style={{ fontWeight: 800, color: 'var(--c-primary)', marginBottom: 8, fontSize: 'var(--font-size-lg)' }}>Merge Tag</h2>
             <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)', marginBottom: 'var(--sp-6)' }}>
-              Tag sumber akan dinonaktifkan. Semua pasiennya dipindahkan ke tag tujuan.
+              Tag sumber akan dinonaktifkan, pasiennya dipindahkan ke tag tujuan, dan namanya otomatis tersimpan sebagai alias di tag tujuan.
             </p>
 
             <div style={{ marginBottom: 'var(--sp-5)' }}>

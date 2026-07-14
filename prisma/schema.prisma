@@ -180,6 +180,7 @@ model Tag {
   id          String   @id @default(uuid())
   tenant_slug String
   name        String
+  kategori    String?  // pengelompokan tampilan: Spesialisasi | Tipe Kontak | Layanan | Ketertarikan | custom
   warna       String   @default("#0089A8")
   keterangan  String?
   aktif       Boolean  @default(true)   // TIDAK PERNAH DELETE — aktif=false saja
@@ -187,10 +188,25 @@ model Tag {
 
   person_tags PersonTag[]
   tag_rules   TagRule[]
+  aliases     TagAlias[]
 
   @@unique([tenant_slug, name])
   @@index([tenant_slug])
+  @@index([tenant_slug, kategori])
   @@map("crm_tags")
+}
+
+model TagAlias {
+  id         String   @id @default(uuid())
+  tag_id     String
+  alias      String
+  created_at DateTime @default(now())
+
+  tag Tag @relation(fields: [tag_id], references: [id])
+
+  @@unique([tag_id, alias])
+  @@index([tag_id])
+  @@map("crm_tag_aliases")
 }
 
 model PersonTag {

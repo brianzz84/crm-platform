@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 type Ctx = { params: { slug: string } }
 
-// GET: daftar semua tag + stats
+// GET: daftar semua tag + stats + alias
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'manageTagRules')
   if (error) return error
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     const db   = await getTenantDb(params.slug)
     const tags = await db.tag.findMany({
       where:   { tenant_slug: params.slug },
-      orderBy: [{ aktif: 'desc' }, { name: 'asc' }],
+      orderBy: [{ aktif: 'desc' }, { kategori: 'asc' }, { name: 'asc' }],
       include: {
         _count: {
           select: {
@@ -26,6 +26,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
           where:  { aktif: true },
           select: { id: true },
           take:   1,
+        },
+        aliases: {
+          orderBy: { alias: 'asc' },
+          select:  { id: true, alias: true },
         },
       },
     })
@@ -49,6 +53,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     const result = tags.map(t => ({
       id:          t.id,
       name:        t.name,
+      kategori:    t.kategori,
       warna:       t.warna,
       keterangan:  t.keterangan,
       aktif:       t.aktif,
@@ -56,6 +61,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       total_pasien: t._count.person_tags,
       has_rule:    t._count.tag_rules > 0,
       breakdown:   breakdownMap[t.id] ?? {},
+      aliases:     t.aliases,
     }))
 
     return NextResponse.json({ success: true, data: result })
@@ -67,8 +73,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
 const CreateSchema = z.object({
   name:       z.string().min(1, 'Nama tag wajib diisi').max(60),
+  kategori:   z.string().max(50).nullable().optional(),
   warna:      z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#0089A8'),
-  keterangan: z.string().max(200).optional(),
+  keterangan: z.string().max(200).nullable().optional(),
 })
 
 // POST: buat tag baru
@@ -84,7 +91,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: msg }, { status: 400 })
     }
 
-    const { name, warna, keterangan } = parsed.data
+    const { name, kategori, warna, keterangan } = parsed.data
     const db = await getTenantDb(params.slug)
 
     // Cek duplikat exact (case-insensitive)
@@ -96,10 +103,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     }
 
     const tag = await db.tag.create({
-      data: { tenant_slug: params.slug, name, warna, keterangan, aktif: true },
+      data: { tenant_slug: params.slug, name, kategori: kategori || null, warna, keterangan, aktif: true },
     })
 
-    return NextResponse.json({ success: true, data: tag }, { status: 201 })
+    return NextResponse.json({ success: true, data: { ...tag, aliases: [] } }, { status: 201 })
   } catch (e) {
     console.error('[POST /api/[slug]/tags]', e)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
