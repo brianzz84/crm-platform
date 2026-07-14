@@ -12,7 +12,8 @@
     "lint": "next lint",
     "worker": "tsx --tsconfig tsconfig.json src/workers/index.ts",
     "worker:dev": "tsx watch --tsconfig tsconfig.json src/workers/index.ts",
-    "worker:start": "node --import tsx/esm src/workers/index.ts"
+    "worker:start": "node --import tsx/esm src/workers/index.ts",
+    "sapaan:cron": "tsx --tsconfig tsconfig.json scripts/sapaan-cron.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

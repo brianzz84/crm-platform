@@ -14,9 +14,10 @@ export default async function SapaanPage({ params }: { params: { slug: string } 
 
   const db = await getTenantDb(params.slug)
 
-  const [configs, wappinCfg] = await Promise.all([
+  const [configs, wappinCfg, metaCfg] = await Promise.all([
     db.sapaanConfig.findMany({ where: { tenant_slug: params.slug } }),
     db.wappinConfig.findUnique({ where: { tenant_slug: params.slug } }),
+    db.metaConfig.findUnique({ where: { tenant_slug: params.slug } }),
   ])
 
   // Statistik 30 hari terakhir per jenis
@@ -33,7 +34,7 @@ export default async function SapaanPage({ params }: { params: { slug: string } 
     statsMap[s.jenis][s.status] = s._count._all
   }
 
-  const configMap = Object.fromEntries(configs.map(c => [c.jenis, c]))
+  const configMap = Object.fromEntries(configs.map(c => [c.jenis, c])) as Record<string, any>
 
   return (
     <div style={{ padding: 'var(--sp-6)', flex: 1 }}>
@@ -47,13 +48,13 @@ export default async function SapaanPage({ params }: { params: { slug: string } 
             Kirim pesan WhatsApp otomatis pada momen penting pasien — ulang tahun, hari raya, dan pengingat kontrol.
           </p>
         </div>
-        {!wappinCfg?.aktif && (
-          <a href={`/${params.slug}/pengaturan/integrasi`} style={{
+        {!metaCfg?.aktif && (
+          <a href={`/${params.slug}/pengaturan/meta`} style={{
             display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px',
             borderRadius: 'var(--r-sm)', background: '#FEF3C7', border: '1px solid #F59E0B',
             color: '#92400E', fontSize: 'var(--font-size-sm)', fontWeight: 600, textDecoration: 'none',
           }}>
-            ⚠ Konfigurasi Wappin belum diatur
+            ⚠ Konfigurasi Meta WhatsApp belum diatur
           </a>
         )}
       </div>
@@ -61,13 +62,16 @@ export default async function SapaanPage({ params }: { params: { slug: string } 
       <SapaanClient
         slug={params.slug}
         wappinAktif={!!wappinCfg?.aktif}
+        metaAktif={!!metaCfg?.aktif}
         initialConfigs={{
-          ULTAH:            configMap['ULTAH'] ? {
-            aktif:     configMap['ULTAH'].aktif,
-            template:  configMap['ULTAH'].template,
-            jam_kirim: configMap['ULTAH'].jam_kirim,
+          ULTAH: configMap['ULTAH'] ? {
+            aktif:           configMap['ULTAH'].aktif,
+            jam_kirim:       configMap['ULTAH'].jam_kirim,
+            template_id:     configMap['ULTAH'].template_id,
+            template_params: configMap['ULTAH'].template_params,
+            filter_groups:   configMap['ULTAH'].filter_groups,
           } : null,
-          HARI_RAYA:        configMap['HARI_RAYA'] ? {
+          HARI_RAYA: configMap['HARI_RAYA'] ? {
             aktif:     configMap['HARI_RAYA'].aktif,
             template:  configMap['HARI_RAYA'].template,
             jam_kirim: configMap['HARI_RAYA'].jam_kirim,

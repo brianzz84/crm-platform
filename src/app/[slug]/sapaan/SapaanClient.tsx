@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import UltahCard from './UltahCard'
 
 type Jenis = 'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER'
+type LegacyJenis = 'HARI_RAYA' | 'KONTROL_REMINDER'
 
 interface ConfigData {
   aktif:     boolean
@@ -14,7 +16,8 @@ interface ConfigData {
 interface Props {
   slug:           string
   wappinAktif:    boolean
-  initialConfigs: Record<Jenis, ConfigData | null>
+  metaAktif:      boolean
+  initialConfigs: { ULTAH: any; HARI_RAYA: ConfigData | null; KONTROL_REMINDER: ConfigData | null }
   statsMap:       Record<string, Record<string, number>>
 }
 
@@ -74,7 +77,7 @@ const JAM_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 function SapaanCard({
   slug, jenis, wappinAktif, initialConfig, stats,
 }: {
-  slug: string; jenis: Jenis; wappinAktif: boolean
+  slug: string; jenis: LegacyJenis; wappinAktif: boolean
   initialConfig: ConfigData | null; stats: Record<string, number>
 }) {
   const meta   = JENIS_META[jenis]
@@ -454,10 +457,16 @@ function SapaanCard({
   )
 }
 
-export default function SapaanClient({ slug, wappinAktif, initialConfigs, statsMap }: Props) {
+export default function SapaanClient({ slug, wappinAktif, metaAktif, initialConfigs, statsMap }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-      {(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER'] as Jenis[]).map(jenis => (
+      <UltahCard
+        slug={slug}
+        metaAktif={metaAktif}
+        initialConfig={initialConfigs.ULTAH}
+        stats={statsMap['ULTAH'] ?? {}}
+      />
+      {(['HARI_RAYA', 'KONTROL_REMINDER'] as LegacyJenis[]).map(jenis => (
         <SapaanCard
           key={jenis}
           slug={slug}

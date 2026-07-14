@@ -511,7 +511,10 @@ model SapaanConfig {
   tenant_slug String
   jenis       SapaanJenis
   aktif       Boolean     @default(false)
-  template    String
+  template         String?  // legacy teks bebas — masih dipakai HARI_RAYA/KONTROL_REMINDER
+  template_id      String?  // FK BroadcastTemplate — dipakai ULTAH (wajib template approved Meta)
+  template_params  Json?    // nilai variabel statis template (mirip Campaign.template_params)
+  filter_groups    Json?    // grup filter AND/OR audiens ULTAH — null/[] = semua yang berulang tahun
   jam_kirim   Int         @default(7)
   created_at  DateTime    @default(now())
   updated_at  DateTime    @updatedAt
