@@ -1,5 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { AI_MODEL_FAST } from '@/constants'
+import { getAiProviderForTenant } from '@/lib/ai-provider'
 
 export interface SimrsParams {
   units: string[]           // e.g. ['RAWAT_INAP', 'RAWAT_JALAN']
@@ -42,17 +41,9 @@ Respons HARUS berupa JSON valid dengan struktur:
 
 Jangan sertakan komentar dalam JSON. Hanya JSON mentah.`
 
-export async function parseNlpQuery(query: string): Promise<NlpResult> {
-  const client = new Anthropic()
-
-  const response = await client.messages.create({
-    model: AI_MODEL_FAST,
-    max_tokens: 512,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: query }],
-  })
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : ''
+export async function parseNlpQuery(slug: string, query: string): Promise<NlpResult> {
+  const provider = await getAiProviderForTenant(slug)
+  const text = await provider.generateJson(SYSTEM_PROMPT, [{ role: 'user', content: query }])
 
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('AI tidak mengembalikan JSON yang valid')

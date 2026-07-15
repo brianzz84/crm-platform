@@ -16,6 +16,8 @@ interface Meta {
   wappinAktif:  boolean
   wappinTested: boolean
   eflyerAktif:  boolean
+  aiEnabled:    boolean
+  aiProvider:   string
   userCount:    number
   tenantName:   string
   plan:         string
@@ -88,6 +90,15 @@ const SUB_MENUS = [
     href:  (slug: string) => `/${slug}/pengaturan/simrs`,
     badge: () => 'Konfigurasi',
     badgeColor: () => '#7C3AED',
+  },
+  {
+    key:   'ai',
+    icon:  '🤖',
+    label: 'Kecerdasan Buatan (AI)',
+    desc:  'Pilih provider AI (Claude / Gemini) dan API key yang dipakai untuk fitur pencarian & segmentasi pasien berbasis AI.',
+    href:  (slug: string) => `/${slug}/pengaturan/ai`,
+    badge: (meta: Meta) => meta.aiEnabled ? `Aktif · ${meta.aiProvider}` : 'Nonaktif',
+    badgeColor: (meta: Meta) => meta.aiEnabled ? '#22C55E' : '#94A3B8',
   },
 ]
 

@@ -20,7 +20,10 @@ export default async function PengaturanPage({ params }: { params: { slug: strin
     db.wappinConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.eflyerConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.appUser.count({ where: { tenant_slug: params.slug, aktif: true } }),
-    masterDb.tenant.findUnique({ where: { slug: params.slug }, select: { name: true, plan: true, created_at: true } }),
+    masterDb.tenant.findUnique({
+      where:  { slug: params.slug },
+      select: { name: true, plan: true, created_at: true, config: { select: { ai_enabled: true, ai_provider: true } } },
+    }),
   ])
 
   return (
@@ -50,6 +53,8 @@ export default async function PengaturanPage({ params }: { params: { slug: strin
           wappinAktif:  !!wappinCfg?.aktif,
           wappinTested: !!wappinCfg?.tested_at,
           eflyerAktif:  !!eflyerCfg?.aktif,
+          aiEnabled:    !!tenant?.config?.ai_enabled,
+          aiProvider:   tenant?.config?.ai_provider ?? 'CLAUDE',
           userCount:    users,
           tenantName:   tenant?.name ?? params.slug,
           plan:         tenant?.plan ?? 'TRIAL',

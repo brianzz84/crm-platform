@@ -46,6 +46,7 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         { href: `${base}/dashboard`, label: 'Dashboard',   icon: '📊' },
         { href: `${base}/pasien`,    label: 'Data Pasien', icon: '👥' },
         { href: `${base}/segmen`,    label: 'Segmentasi',  icon: '🎯', feature: 'manageSegments' },
+        { href: `${base}/ai-partner`, label: 'AI Partner', icon: '🤖', feature: 'manageSegments' },
         { href: `${base}/broadcast`, label: 'Broadcast',   icon: '📢', feature: 'manageBroadcast' },
         { href: `${base}/inbox`,     label: 'Inbox',       icon: '💬', feature: 'replyChat', badge: inboxUnread || undefined },
       ],

@@ -42,14 +42,22 @@ model TenantConfig {
   simrs_token_expires_at  DateTime? // kapan token expire
   simrs_jam_sync          Int       @default(0)  // jam WIB (0-23) untuk cron sync harian
   meta_access_token       String?
-  ai_enabled              Boolean  @default(false)
-  max_broadcast_per_month Int      @default(1000)
-  created_at              DateTime @default(now())
-  updated_at              DateTime @updatedAt
+  ai_enabled              Boolean    @default(false)
+  ai_provider             AiProvider @default(CLAUDE)
+  ai_api_key              String?    // kosong = pakai env global (ANTHROPIC_API_KEY) sesuai ai_provider
+  ai_model                String?    // kosong = pakai default model per provider
+  max_broadcast_per_month Int        @default(1000)
+  created_at              DateTime   @default(now())
+  updated_at              DateTime   @updatedAt
 
   tenant Tenant @relation(fields: [tenant_id], references: [id])
 
   @@map("crm_tenant_configs")
+}
+
+enum AiProvider {
+  CLAUDE
+  GEMINI
 }
 
 // ICD global — di-copy ke setiap tenant DB saat provisioning
@@ -142,6 +150,8 @@ model Person {
   nik                String?             // NIK KTP, kunci identitas utama
   jenis_kelamin      String?             // "L" | "P"
   alamat             String?
+  kota               String?             // kota/kabupaten — field terstruktur terpisah dari alamat bebas
+  kecamatan          String?             // kecamatan — field terstruktur terpisah dari alamat bebas
   pekerjaan          String?
   agama              String?             // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
   jenis_pembayaran   String?             // "TUNAI" | "NON_TUNAI" — diisi dari kunjungan terakhir
@@ -717,6 +727,67 @@ model TagRule {
   @@unique([tenant_slug, tag_id])
   @@index([tenant_slug])
   @@map("crm_tag_rules")
+}
+
+// ─────────────────────────────────────────────
+// AI PARTNER
+// Chat diskusi admin dengan AI untuk pencarian target marketing.
+// Rule/persona disimpan sebagai daftar entri (bukan 1 blok teks) supaya
+// bisa ditambah bertahap seiring waktu pemakaian, dan tiap entri bisa
+// dinonaktifkan sendiri-sendiri tanpa bongkar semuanya.
+// ─────────────────────────────────────────────
+
+enum AiRuleKategori {
+  PERILAKU  // cara AI merespons (mis. wajib tanya balik saat ambigu)
+  PERSONA   // gaya bahasa, fokus marketing RS ini
+  BATASAN   // ruang lingkup topik yang boleh/tidak boleh dibahas
+}
+
+model AiPartnerRule {
+  id          String         @id @default(uuid())
+  tenant_slug String
+  kategori    AiRuleKategori
+  teks        String
+  aktif       Boolean        @default(true)
+  created_by  String
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+
+  @@index([tenant_slug, aktif])
+  @@map("crm_ai_partner_rules")
+}
+
+model AiPartnerSession {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  judul       String   @default("Percakapan baru")
+  created_by  String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  messages AiPartnerMessage[]
+
+  @@index([tenant_slug, created_by])
+  @@map("crm_ai_partner_sessions")
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+}
+
+model AiPartnerMessage {
+  id         String        @id @default(uuid())
+  session_id String
+  role       AiMessageRole
+  content    String
+  tool_calls Json?         // jejak pemanggilan tool (cari_kode_icd, dll) — transparansi & audit
+  created_at DateTime      @default(now())
+
+  session AiPartnerSession @relation(fields: [session_id], references: [id])
+
+  @@index([session_id])
+  @@map("crm_ai_partner_messages")
 }
 
 // ─────────────────────────────────────────────

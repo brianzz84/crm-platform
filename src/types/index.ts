@@ -78,6 +78,9 @@ export interface TenantConfig {
   wappinPhoneNumber:string | null
   metaAccessToken:  string | null
   aiEnabled:        boolean
+  aiProvider:       'CLAUDE' | 'GEMINI'
+  aiApiKey:         string | null
+  aiModel:          string | null
   maxBroadcastPerMonth: number
 }
 
@@ -110,6 +113,8 @@ export interface Person {
   nik:             string | null
   jenisKelamin:    string | null  // "L" | "P"
   alamat:          string | null
+  kota:            string | null
+  kecamatan:       string | null
   pekerjaan:       string | null
   kategori:        string | null  // "umum" | "pasien" | "keluarga"
   akarKode:        string | null
