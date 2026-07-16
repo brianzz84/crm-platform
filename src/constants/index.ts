@@ -102,19 +102,25 @@ export const MESSAGE_STATUS = {
 } as const
 
 // ─────────────────────────────────────────────
-// SIMRS UNIT
+// SIMRS UNIT / KELOMPOK
+//
+// Kelompok unit TIDAK lagi enum — sumber kebenarannya SimrsUnitLibrary di DB
+// tiap tenant (lihat prisma/schema.prisma). Tiap RS punya struktur sendiri:
+// "Pondok Sehat" khas RKZ, RS lain bisa beda. Jangan pernah dikembalikan jadi
+// daftar tetap di kode.
+//
+// Konstanta di bawah HANYA warna default untuk badge, dipakai saat data
+// library belum tersedia di sisi klien. Nilai yang tak dikenal tetap tampil
+// apa adanya dengan warna netral — bukan error.
 // ─────────────────────────────────────────────
 
-export const SIMRS_UNIT = {
-  RAWAT_JALAN: 'RAWAT_JALAN',
-  RAWAT_INAP:  'RAWAT_INAP',
-  PENUNJANG:   'PENUNJANG',
-} as const
-
-export const SIMRS_UNIT_LABEL: Record<string, string> = {
-  RAWAT_JALAN: 'Rawat Jalan',
-  RAWAT_INAP:  'Rawat Inap',
-  PENUNJANG:   'Penunjang / Lab',
+export const KELOMPOK_WARNA_DEFAULT: Record<string, { color: string; bg: string }> = {
+  'Rawat Jalan':  { color: '#006E89', bg: '#E0F4F4' },
+  'Rawat Inap':   { color: '#0D2B55', bg: '#E8EEF5' },
+  'Penunjang':    { color: '#9A6C00', bg: '#FDF3DC' },
+  'Pondok Sehat': { color: '#15803D', bg: '#F0FDF4' },
+  'One Day Care': { color: '#BE185D', bg: '#FDF2F8' },
+  'Home Care':    { color: '#0E7490', bg: '#ECFEFF' },
 }
 
 // ─────────────────────────────────────────────

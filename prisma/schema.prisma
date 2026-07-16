@@ -240,8 +240,8 @@ model SimrsVisit {
   id               String    @id @default(uuid())
   person_id        String
   tanggal          DateTime
-  unit             SimrsUnit
-  poli             String?
+  unit             String    // KELOMPOK unit, mis. "Rawat Jalan" — cocok ke SimrsUnitLibrary.kelompok
+  poli             String?   // UNIT spesifik, mis. "Poli Jantung" — cocok ke SimrsUnitLibrary.nama
   dokter           String?
   diagnosa_nama    String?
   diagnosa_icd     String?   // kode ICD-10 diagnosa utama
@@ -297,6 +297,36 @@ model SimrsLayananLibrary {
   @@index([kelompok])
   @@index([jenis])
   @@map("crm_simrs_layanan_library")
+}
+
+// ─────────────────────────────────────────────
+// UNIT LIBRARY — master unit/poli per tenant.
+// Menggantikan enum SimrsUnit yang hardcode: tiap RS punya struktur unit
+// berbeda (mis. "Pondok Sehat" itu khas RKZ), jadi ini WAJIB per-tenant dan
+// dikelola admin lewat UI Library. Jangan pernah dikembalikan jadi enum.
+//
+// CATATAN PENAMAAN (utang teknis yang disadari):
+//   SimrsUnitLibrary.nama      ↔ SimrsVisit.poli   (unit spesifik: "Poli Jantung", "Laboratorium")
+//   SimrsUnitLibrary.kelompok  ↔ SimrsVisit.unit   (grup: "Rawat Jalan", "Penunjang")
+// Kolom SimrsVisit.unit menyimpan KELOMPOK, bukan unit — nama kolomnya warisan
+// dan belum diganti karena menyentuh banyak file. Jangan tertukar.
+// ─────────────────────────────────────────────
+
+model SimrsUnitLibrary {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  nama        String   // unit spesifik: "Poli Jantung", "Laboratorium", "Pondok Sehat"
+  kelompok    String   // grup: "Rawat Jalan", "Penunjang", "Pondok Sehat" — teks bebas, beda tiap RS
+  warna       String   @default("#0089A8")  // warna badge di UI
+  urutan      Int      @default(0)          // urutan tampil dalam kelompok
+  aktif       Boolean  @default(true)       // TIDAK PERNAH DELETE — nonaktifkan saja
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, nama])
+  @@index([tenant_slug, aktif])
+  @@index([tenant_slug, kelompok])
+  @@map("crm_simrs_unit_library")
 }
 
 model IcdLibrary {
@@ -880,14 +910,10 @@ enum ConversationStatus {
 
 // Mengikuti kelompok layanan di master tindakan SIMRS RKZ (crm_simrs_layanan_library.kelompok):
 // Rawat Jalan | Rawat Inap | Penunjang | Pondok Sehat | One Day Care | Home Care
-enum SimrsUnit {
-  RAWAT_JALAN
-  RAWAT_INAP
-  PENUNJANG
-  PONDOK_SEHAT   // paket check-up (Check Up Gold, Deteksi Diabetes, dll)
-  ONE_DAY_CARE
-  HOME_CARE
-}
+// enum SimrsUnit DIHAPUS — digantikan SimrsUnitLibrary (master per-tenant).
+// Alasan: enum memaku struktur satu RS ke skema global, melanggar SAAS-FIRST
+// (CLAUDE.md §9). "Pondok Sehat" adalah unit khas RKZ; RS lain punya struktur
+// sendiri. Jangan dihidupkan lagi.
 
 enum SapaanJenis {
   ULTAH

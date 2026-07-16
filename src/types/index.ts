@@ -49,7 +49,13 @@ export type MessageDirection = 'incoming' | 'outgoing'
 
 export type ConversationStatus = 'open' | 'resolved' | 'pending'
 
-export type SimrsUnit = 'RAWAT_JALAN' | 'RAWAT_INAP' | 'PENUNJANG' | 'PONDOK_SEHAT' | 'ONE_DAY_CARE' | 'HOME_CARE'
+/**
+ * Kelompok unit kunjungan, mis. "Rawat Jalan" | "Penunjang" | "Pondok Sehat".
+ * SENGAJA string bebas, bukan union tetap: nilainya milik tiap tenant lewat
+ * SimrsUnitLibrary.kelompok di DB. "Pondok Sehat" khas RKZ — RS lain beda.
+ * Jangan dikunci jadi daftar tetap di sini (SAAS-FIRST, CLAUDE.md §9).
+ */
+export type SimrsUnit = string
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN_IT' | 'ADMIN_OPS' | 'SUPERVISOR' | 'AGEN'
 
