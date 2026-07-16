@@ -12,7 +12,8 @@ const schema = z.object({
   periodeAkhir: z.string().optional(),
   poli:         z.string().optional(),
   dokter:       z.string().optional(),
-  namaInstansi:             z.string().optional(),  // penjamin: BPJS | asuransi | perusahaan
+  namaInstansi:             z.string().optional(),         // penjamin tunggal (cocok sebagian, dipakai AI)
+  namaInstansiList:         z.array(z.string()).optional(), // beberapa penjamin (cocok persis, OR) — dari checkbox UI
   jenisPembayaranKunjungan: z.string().optional(),  // "TUNAI" | "NON_TUNAI" — level kunjungan
   // filter tingkat pasien (Person)
   tagIds:            z.array(z.string()).optional(),
@@ -50,7 +51,7 @@ export async function runSegmenSearch(db: any, slug: string, p: SegmenSearchInpu
   const hasVisitFilter = !!(
     p.units?.length || p.icdCodes?.length || p.tindakanKodes?.length ||
     p.periodeAwal || p.periodeAkhir || p.poli || p.dokter ||
-    p.namaInstansi || p.jenisPembayaranKunjungan
+    p.namaInstansi || p.namaInstansiList?.length || p.jenisPembayaranKunjungan
   )
 
   const personWhere: any = { tenant_slug: slug, aktif: true }
@@ -111,7 +112,12 @@ export async function runSegmenSearch(db: any, slug: string, p: SegmenSearchInpu
     if (p.periodeAkhir) w.tanggal = { ...w.tanggal, lte: new Date(p.periodeAkhir) }
     if (p.poli)         w.poli   = { contains: p.poli, mode: 'insensitive' }
     if (p.dokter)       w.dokter = { contains: p.dokter, mode: 'insensitive' }
-    if (p.namaInstansi) w.nama_instansi = { contains: p.namaInstansi, mode: 'insensitive' }
+    if (p.namaInstansiList?.length) {
+      // Pilih beberapa penjamin sekaligus (OR) — mis. "Prudential ATAU Allianz"
+      w.nama_instansi = { in: p.namaInstansiList }
+    } else if (p.namaInstansi) {
+      w.nama_instansi = { contains: p.namaInstansi, mode: 'insensitive' }
+    }
     if (p.jenisPembayaranKunjungan) w.jenis_pembayaran = p.jenisPembayaranKunjungan
     return w
   }

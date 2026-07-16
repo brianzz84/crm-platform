@@ -12,7 +12,10 @@ interface FilterForm {
   periodeAwal?:    string
   periodeAkhir?:   string
   poli?:           string
-  jenisPembayaran?: string
+  // Penjamin dinilai di level kunjungan. jenisPembayaranKunjungan: '' | 'TUNAI' | 'NON_TUNAI'.
+  // Saat NON_TUNAI, penjaminDipilih membatasi ke instansi tertentu (kosong = semua penjamin).
+  jenisPembayaranKunjungan?: string
+  penjaminDipilih: string[]
 }
 interface SearchResult {
   persons:    { id: string; name: string; no_hp: string | null; no_rm: string | null }[]
@@ -64,12 +67,30 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
       .catch(() => {})
   }, [slug])
 
+  // Daftar penjamin nyata (untuk checkbox saat Non-Tunai)
+  const [penjaminOpsi, setPenjaminOpsi] = useState<{ nama: string; jumlah_kunjungan: number }[]>([])
+  useEffect(() => {
+    fetch(`/api/${slug}/segmen/filter-options`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j?.penjamin) setPenjaminOpsi(j.penjamin) })
+      .catch(() => {})
+  }, [slug])
+
+  function togglePenjamin(nama: string) {
+    setForm(f => ({
+      ...f,
+      penjaminDipilih: f.penjaminDipilih.includes(nama)
+        ? f.penjaminDipilih.filter(x => x !== nama)
+        : [...f.penjaminDipilih, nama],
+    }))
+  }
+
   // AI
   const [query, setQuery]       = useState('')
   const [penjelasan, setPenjelasan] = useState('')
 
   // AI + Filter
-  const [form, setForm] = useState<FilterForm>({ units: [], icdCodes: [] })
+  const [form, setForm] = useState<FilterForm>({ units: [], icdCodes: [], penjaminDipilih: [] })
 
   // Tag
   const [tags, setTags]         = useState<TagItem[]>([])
@@ -99,17 +120,23 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
 
   function resetForMode(m: Mode) {
     setMode(m); setError(''); setResult(null); setPenjelasan('')
-    setForm({ units: [], icdCodes: [] }); setTagIds([]); setSelected({}); setPresults([]); setPquery(''); setQuery(''); setExcluded({})
+    setForm({ units: [], icdCodes: [], penjaminDipilih: [] }); setTagIds([]); setSelected({}); setPresults([]); setPquery(''); setQuery(''); setExcluded({})
   }
 
   function buildFilterDef(): any {
     if (mode === 'tag') return { tagIds }
     // ai + filter
-    return {
+    const def: any = {
       units: form.units, icdCodes: form.icdCodes,
       periodeAwal: form.periodeAwal, periodeAkhir: form.periodeAkhir,
-      poli: form.poli, jenisPembayaran: form.jenisPembayaran,
+      poli: form.poli,
     }
+    if (form.jenisPembayaranKunjungan) def.jenisPembayaranKunjungan = form.jenisPembayaranKunjungan
+    // Penjamin hanya relevan saat Non-Tunai. Kosong = semua penjamin.
+    if (form.jenisPembayaranKunjungan === 'NON_TUNAI' && form.penjaminDipilih.length) {
+      def.namaInstansiList = form.penjaminDipilih
+    }
+    return def
   }
 
   async function handleNlp() {
@@ -123,7 +150,7 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Gagal memproses query')
       const p = json.data.params
-      setForm({ units: p.units || [], icdCodes: p.icdCodes || [], periodeAwal: p.periodeAwal || undefined, periodeAkhir: p.periodeAkhir || undefined, poli: p.poli || undefined })
+      setForm({ units: p.units || [], icdCodes: p.icdCodes || [], periodeAwal: p.periodeAwal || undefined, periodeAkhir: p.periodeAkhir || undefined, poli: p.poli || undefined, penjaminDipilih: [] })
       setPenjelasan(json.data.penjelasan || '')
     } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }
@@ -308,13 +335,55 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
             </div>
             <div>
               <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Pembayaran</label>
-              <select value={form.jenisPembayaran || ''} onChange={e => setForm(f => ({ ...f, jenisPembayaran: e.target.value || undefined }))} style={inputStyle}>
+              <select
+                value={form.jenisPembayaranKunjungan || ''}
+                onChange={e => setForm(f => ({ ...f, jenisPembayaranKunjungan: e.target.value || undefined, penjaminDipilih: e.target.value === 'NON_TUNAI' ? f.penjaminDipilih : [] }))}
+                style={inputStyle}
+              >
                 <option value="">Semua</option>
                 <option value="TUNAI">Tunai</option>
-                <option value="NON_TUNAI">Non-Tunai</option>
+                <option value="NON_TUNAI">Non-Tunai (dijamin)</option>
               </select>
             </div>
           </div>
+
+          {/* Penjamin — muncul hanya saat Non-Tunai. Kosong = semua penjamin. */}
+          {form.jenisPembayaranKunjungan === 'NON_TUNAI' && (
+            <div style={{ border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', background: 'var(--c-bg)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <label style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                  Penjamin / Instansi {form.penjaminDipilih.length > 0 && <span style={{ color: 'var(--c-secondary)' }}>({form.penjaminDipilih.length} dipilih)</span>}
+                </label>
+                {penjaminOpsi.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, penjaminDipilih: f.penjaminDipilih.length === penjaminOpsi.length ? [] : penjaminOpsi.map(x => x.nama) }))}
+                    style={{ background: 'none', border: 'none', color: 'var(--c-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {form.penjaminDipilih.length === penjaminOpsi.length ? 'Kosongkan' : 'Pilih semua'}
+                  </button>
+                )}
+              </div>
+              {penjaminOpsi.length === 0 ? (
+                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', margin: 0 }}>Belum ada data penjamin.</p>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6 }}>
+                    {penjaminOpsi.map(pj => (
+                      <label key={pj.nama} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-sm)', cursor: 'pointer', padding: '4px 0' }}>
+                        <input type="checkbox" checked={form.penjaminDipilih.includes(pj.nama)} onChange={() => togglePenjamin(pj.nama)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pj.nama}</span>
+                        <span style={{ color: 'var(--c-text-faint)', fontSize: 11, marginLeft: 'auto', flexShrink: 0 }}>{pj.jumlah_kunjungan}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 8, marginBottom: 0 }}>
+                    Tidak ada yang dicentang = semua penjamin non-tunai ikut.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-3)' }}>
             <button onClick={handleSearch} disabled={loading} style={btnPrimary(true)}>{loading ? 'Mencari...' : 'Cari Pasien →'}</button>
