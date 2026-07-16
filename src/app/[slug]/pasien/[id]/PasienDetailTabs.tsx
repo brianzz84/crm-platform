@@ -31,10 +31,13 @@ const CONV_STATUS: Record<string, { label: string; color: string; bg: string }> 
 }
 
 const UNIT_STYLE: Record<string, { border: string; badge: string; badgeText: string; label: string }> = {
-  RAWAT_JALAN: { border: '#0089A8', badge: '#E0F4F4', badgeText: '#006E89', label: 'Rawat Jalan' },
-  RAWAT_INAP:  { border: '#8B5CF6', badge: '#EDE7F6', badgeText: '#512DA8', label: 'Rawat Inap' },
-  IGD:         { border: '#EF4444', badge: '#FFEBEE', badgeText: '#C62828', label: 'IGD' },
-  PENUNJANG:   { border: '#F59E0B', badge: '#FFF3E0', badgeText: '#E65100', label: 'Penunjang' },
+  RAWAT_JALAN:  { border: '#0089A8', badge: '#E0F4F4', badgeText: '#006E89', label: 'Rawat Jalan' },
+  RAWAT_INAP:   { border: '#8B5CF6', badge: '#EDE7F6', badgeText: '#512DA8', label: 'Rawat Inap' },
+  IGD:          { border: '#EF4444', badge: '#FFEBEE', badgeText: '#C62828', label: 'IGD' },
+  PENUNJANG:    { border: '#F59E0B', badge: '#FFF3E0', badgeText: '#E65100', label: 'Penunjang' },
+  PONDOK_SEHAT: { border: '#278B58', badge: '#E8F5E9', badgeText: '#278B58', label: 'Pondok Sehat' },
+  ONE_DAY_CARE: { border: '#1565C0', badge: '#E3F2FD', badgeText: '#1565C0', label: 'One Day Care' },
+  HOME_CARE:    { border: '#AD1457', badge: '#FCE4EC', badgeText: '#AD1457', label: 'Home Care' },
 }
 
 const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des']

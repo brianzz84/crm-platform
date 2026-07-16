@@ -20,16 +20,22 @@ interface PersonRow {
 interface Meta { page: number; perPage: number; total: number; totalPages: number }
 
 const UNIT_OPTIONS = [
-  { value: '',             label: 'Semua Unit' },
-  { value: 'RAWAT_JALAN', label: 'Rawat Jalan' },
-  { value: 'RAWAT_INAP',  label: 'Rawat Inap' },
-  { value: 'PENUNJANG',   label: 'Penunjang' },
+  { value: '',              label: 'Semua Unit' },
+  { value: 'RAWAT_JALAN',  label: 'Rawat Jalan' },
+  { value: 'RAWAT_INAP',   label: 'Rawat Inap' },
+  { value: 'PENUNJANG',    label: 'Penunjang' },
+  { value: 'PONDOK_SEHAT', label: 'Pondok Sehat' },
+  { value: 'ONE_DAY_CARE', label: 'One Day Care' },
+  { value: 'HOME_CARE',    label: 'Home Care' },
 ]
 
 const UNIT_COLOR: Record<string, { bg: string; color: string }> = {
-  RAWAT_JALAN: { bg: '#E0F4F4', color: '#006E89' },
-  RAWAT_INAP:  { bg: '#EDE7F6', color: '#512DA8' },
-  PENUNJANG:   { bg: '#FFF8E1', color: '#92400E' },
+  RAWAT_JALAN:  { bg: '#E0F4F4', color: '#006E89' },
+  RAWAT_INAP:   { bg: '#EDE7F6', color: '#512DA8' },
+  PENUNJANG:    { bg: '#FFF8E1', color: '#92400E' },
+  PONDOK_SEHAT: { bg: '#E8F5E9', color: '#278B58' },
+  ONE_DAY_CARE: { bg: '#E3F2FD', color: '#1565C0' },
+  HOME_CARE:    { bg: '#FCE4EC', color: '#AD1457' },
 }
 
 export default function PasienTable({ slug }: { slug: string }) {

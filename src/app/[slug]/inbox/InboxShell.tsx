@@ -1295,11 +1295,16 @@ export default function InboxShell({
                         RAWAT_INAP:   { bg: '#EDE7F6', color: '#512DA8' },
                         IGD:          { bg: '#FFEBEE', color: '#C62828' },
                         PENUNJANG:    { bg: '#FFF3E0', color: '#E65100' },
+                        PONDOK_SEHAT: { bg: '#E8F5E9', color: '#278B58' },
+                        ONE_DAY_CARE: { bg: '#E3F2FD', color: '#1565C0' },
+                        HOME_CARE:    { bg: '#FCE4EC', color: '#AD1457' },
                       }
                       const uc = unitColor[v.unit] ?? { bg: '#F0F2F5', color: '#41525D' }
                       const unitLabel: Record<string, string> = {
                         RAWAT_JALAN: 'Rawat Jalan', RAWAT_INAP: 'Rawat Inap',
                         IGD: 'IGD', PENUNJANG: 'Penunjang',
+                        PONDOK_SEHAT: 'Pondok Sehat', ONE_DAY_CARE: 'One Day Care',
+                        HOME_CARE: 'Home Care',
                       }
                       return (
                         <div key={i} style={{

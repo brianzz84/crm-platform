@@ -878,10 +878,15 @@ enum ConversationStatus {
   RESOLVED
 }
 
+// Mengikuti kelompok layanan di master tindakan SIMRS RKZ (crm_simrs_layanan_library.kelompok):
+// Rawat Jalan | Rawat Inap | Penunjang | Pondok Sehat | One Day Care | Home Care
 enum SimrsUnit {
   RAWAT_JALAN
   RAWAT_INAP
   PENUNJANG
+  PONDOK_SEHAT   // paket check-up (Check Up Gold, Deteksi Diabetes, dll)
+  ONE_DAY_CARE
+  HOME_CARE
 }
 
 enum SapaanJenis {

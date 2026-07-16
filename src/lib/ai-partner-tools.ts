@@ -76,7 +76,7 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        units:        { type: 'array', items: { type: 'string', enum: ['RAWAT_INAP', 'RAWAT_JALAN', 'PENUNJANG'] } },
+        units:        { type: 'array', items: { type: 'string', enum: ['RAWAT_JALAN', 'RAWAT_INAP', 'PENUNJANG', 'PONDOK_SEHAT', 'ONE_DAY_CARE', 'HOME_CARE'] }, description: 'Unit kunjungan. PONDOK_SEHAT = paket check-up (Check Up Gold, Deteksi Diabetes, dll) — target marketing utama.' },
         icdCodes:     { type: 'array', items: { type: 'string' }, description: 'Kode ICD yang sudah diverifikasi lewat cari_kode_icd' },
         periodeAwal:  { type: 'string', description: 'YYYY-MM-DD — periode kunjungan SIMRS' },
         periodeAkhir: { type: 'string', description: 'YYYY-MM-DD — periode kunjungan SIMRS' },

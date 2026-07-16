@@ -49,7 +49,7 @@ export type MessageDirection = 'incoming' | 'outgoing'
 
 export type ConversationStatus = 'open' | 'resolved' | 'pending'
 
-export type SimrsUnit = 'RAWAT_JALAN' | 'RAWAT_INAP' | 'PENUNJANG'
+export type SimrsUnit = 'RAWAT_JALAN' | 'RAWAT_INAP' | 'PENUNJANG' | 'PONDOK_SEHAT' | 'ONE_DAY_CARE' | 'HOME_CARE'
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN_IT' | 'ADMIN_OPS' | 'SUPERVISOR' | 'AGEN'
 
