@@ -1290,22 +1290,19 @@ export default function InboxShell({
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {detail.person.visits.map((v, i) => {
+                      // Kelompok unit = teks bebas per tenant (SimrsUnitLibrary.kelompok).
+                      // Daftar di bawah hanya warna yang sudah dikenal; nilai lain
+                      // memakai warna netral dan tampil apa adanya.
                       const unitColor: Record<string, { bg: string; color: string }> = {
-                        RAWAT_JALAN:  { bg: '#E0F4F4', color: '#006E89' },
-                        RAWAT_INAP:   { bg: '#EDE7F6', color: '#512DA8' },
-                        IGD:          { bg: '#FFEBEE', color: '#C62828' },
-                        PENUNJANG:    { bg: '#FFF3E0', color: '#E65100' },
-                        PONDOK_SEHAT: { bg: '#E8F5E9', color: '#278B58' },
-                        ONE_DAY_CARE: { bg: '#E3F2FD', color: '#1565C0' },
-                        HOME_CARE:    { bg: '#FCE4EC', color: '#AD1457' },
+                        'Rawat Jalan':  { bg: '#E0F4F4', color: '#006E89' },
+                        'Rawat Inap':   { bg: '#EDE7F6', color: '#512DA8' },
+                        'IGD':          { bg: '#FFEBEE', color: '#C62828' },
+                        'Penunjang':    { bg: '#FFF3E0', color: '#E65100' },
+                        'Pondok Sehat': { bg: '#E8F5E9', color: '#278B58' },
+                        'One Day Care': { bg: '#E3F2FD', color: '#1565C0' },
+                        'Home Care':    { bg: '#FCE4EC', color: '#AD1457' },
                       }
                       const uc = unitColor[v.unit] ?? { bg: '#F0F2F5', color: '#41525D' }
-                      const unitLabel: Record<string, string> = {
-                        RAWAT_JALAN: 'Rawat Jalan', RAWAT_INAP: 'Rawat Inap',
-                        IGD: 'IGD', PENUNJANG: 'Penunjang',
-                        PONDOK_SEHAT: 'Pondok Sehat', ONE_DAY_CARE: 'One Day Care',
-                        HOME_CARE: 'Home Care',
-                      }
                       return (
                         <div key={i} style={{
                           background: '#F8FAFC', borderRadius: 8, padding: '10px 12px',
@@ -1316,7 +1313,7 @@ export default function InboxShell({
                               {new Date(v.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
                             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: uc.bg, color: uc.color }}>
-                              {unitLabel[v.unit] ?? v.unit}
+                              {v.unit}
                             </span>
                           </div>
                           {v.poli && (

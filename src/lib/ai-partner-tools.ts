@@ -64,7 +64,7 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
       properties: {
         dimensi: {
           type: 'string',
-          enum: ['jenis_kegiatan', 'penyelenggara', 'lokasi_kegiatan', 'poli', 'unit', 'dokter', 'kota', 'kecamatan', 'pekerjaan', 'penjamin'],
+          enum: ['jenis_kegiatan', 'penyelenggara', 'lokasi_kegiatan', 'kelompok_unit', 'poli', 'unit', 'dokter', 'kota', 'kecamatan', 'pekerjaan', 'penjamin'],
           description: 'Dimensi yang ingin dilihat nilai-nilainya',
         },
       },
@@ -103,7 +103,7 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
       'CARA PAKAI YANG BENAR:\n' +
       '- PENTING soal cara AND bekerja: kriteria kunjungan (units, icdCodes, tindakanKodes, poli, dokter, ' +
       'namaInstansi, periode) harus terpenuhi pada SATU kunjungan yang sama. Jadi ' +
-      '{units:["PONDOK_SEHAT"], namaInstansi:"Prudential"} berarti "kunjungan check-up YANG DIBAYAR ' +
+      '{units:["Pondok Sehat"], namaInstansi:"Prudential"} berarti "kunjungan check-up YANG DIBAYAR ' +
       'Prudential" — bukan "orang yang pernah check-up dan kebetulan punya Prudential di kunjungan lain". ' +
       'Kalau maksud admin yang kedua, cari terpisah lalu jelaskan bedanya. Sebaliknya, kriteria antar-sumber ' +
       '(kunjungan vs kegiatan vs tag vs atribut orang) digabung di tingkat ORANG.\n' +
@@ -120,7 +120,7 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        units:         { type: 'array', items: { type: 'string', enum: ['RAWAT_JALAN', 'RAWAT_INAP', 'PENUNJANG', 'PONDOK_SEHAT', 'ONE_DAY_CARE', 'HOME_CARE'] }, description: 'Unit kunjungan. PONDOK_SEHAT = paket check-up (Check Up Gold, Deteksi Diabetes, dll) — target marketing utama.' },
+        units:         { type: 'array', items: { type: 'string' }, description: 'Kelompok unit kunjungan, mis. "Rawat Jalan", "Penunjang", "Pondok Sehat". Nilainya beda tiap RS — WAJIB panggil daftar_nilai_dimensi(dimensi:"kelompok_unit") dulu, jangan menebak.' },
         icdCodes:      { type: 'array', items: { type: 'string' }, description: 'Kode ICD yang sudah diverifikasi lewat cari_kode_icd' },
         tindakanKodes: { type: 'array', items: { type: 'string' }, description: 'Kode layanan/tindakan (kode_barang) hasil cari_layanan' },
         periodeAwal:   { type: 'string', description: 'YYYY-MM-DD — periode kunjungan SIMRS' },
@@ -253,12 +253,26 @@ export async function executeAiPartnerTool(slug: string, call: AiToolCall): Prom
       return rows.map((r: any) => ({ nilai: r[kolom], jumlah_orang: r._count._all }))
     }
 
+    // Unit & kelompok dibaca dari MASTER (unit library), bukan dari distinct
+    // nilai kunjungan. Alasannya: master itu otoritatif — memuat juga unit yang
+    // valid tapi belum pernah ada kunjungannya, sehingga AI tidak menyimpulkan
+    // "unit itu tidak ada" hanya karena datanya belum masuk.
+    const dariUnitLibrary = (kolom: 'nama' | 'kelompok') => async () => {
+      const rows = await db.simrsUnitLibrary.groupBy({
+        by: [kolom] as any,
+        where: { tenant_slug: slug, aktif: true },
+        _count: { _all: true },
+      })
+      return rows.map((r: any) => ({ nilai: r[kolom], jumlah_unit: r._count._all }))
+    }
+
     const peta: Record<string, () => Promise<any[]>> = {
       jenis_kegiatan:  dariKegiatan('jenis'),
       penyelenggara:   dariKegiatan('penyelenggara'),
       lokasi_kegiatan: dariKegiatan('lokasi'),
-      poli:            dariVisit('poli'),
-      unit:            dariVisit('unit'),
+      poli:            dariUnitLibrary('nama'),
+      unit:            dariUnitLibrary('kelompok'),   // alias lama
+      kelompok_unit:   dariUnitLibrary('kelompok'),
       dokter:          dariVisit('dokter'),
       penjamin:        dariVisit('nama_instansi'),
       kota:            dariPerson('kota'),

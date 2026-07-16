@@ -19,24 +19,8 @@ interface PersonRow {
 
 interface Meta { page: number; perPage: number; total: number; totalPages: number }
 
-const UNIT_OPTIONS = [
-  { value: '',              label: 'Semua Unit' },
-  { value: 'RAWAT_JALAN',  label: 'Rawat Jalan' },
-  { value: 'RAWAT_INAP',   label: 'Rawat Inap' },
-  { value: 'PENUNJANG',    label: 'Penunjang' },
-  { value: 'PONDOK_SEHAT', label: 'Pondok Sehat' },
-  { value: 'ONE_DAY_CARE', label: 'One Day Care' },
-  { value: 'HOME_CARE',    label: 'Home Care' },
-]
-
-const UNIT_COLOR: Record<string, { bg: string; color: string }> = {
-  RAWAT_JALAN:  { bg: '#E0F4F4', color: '#006E89' },
-  RAWAT_INAP:   { bg: '#EDE7F6', color: '#512DA8' },
-  PENUNJANG:    { bg: '#FFF8E1', color: '#92400E' },
-  PONDOK_SEHAT: { bg: '#E8F5E9', color: '#278B58' },
-  ONE_DAY_CARE: { bg: '#E3F2FD', color: '#1565C0' },
-  HOME_CARE:    { bg: '#FCE4EC', color: '#AD1457' },
-}
+// Pilihan unit TIDAK di-hardcode — dimuat dari unit library tenant (tiap RS beda).
+interface KelompokUnit { nama: string; warna: string }
 
 export default function PasienTable({ slug }: { slug: string }) {
   const [persons, setPersons]   = useState<PersonRow[]>([])
@@ -47,6 +31,18 @@ export default function PasienTable({ slug }: { slug: string }) {
   const [page, setPage]         = useState(1)
   const [debouncedQ, setDebouncedQ] = useState('')
   const [isMobile, setIsMobile] = useState(false)
+  const [kelompokList, setKelompokList] = useState<KelompokUnit[]>([])
+
+  // Warna badge diambil dari library tenant; null = UnitBadge pakai warna default/netral
+  const warnaKelompok = (nama: string) => kelompokList.find(k => k.nama === nama)?.warna ?? null
+
+  // Kelompok unit dimuat dari library tenant — bukan daftar tetap di kode
+  useEffect(() => {
+    fetch(`/api/${slug}/unit-library`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j?.kelompok) setKelompokList(j.kelompok) })
+      .catch(() => {})
+  }, [slug])
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)')
@@ -112,7 +108,8 @@ export default function PasienTable({ slug }: { slug: string }) {
           flexShrink: 0,
         }}
       >
-        {UNIT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <option value="">Semua Unit</option>
+        {kelompokList.map(k => <option key={k.nama} value={k.nama}>{k.nama}</option>)}
       </select>
 
       {meta && (
@@ -190,7 +187,6 @@ export default function PasienTable({ slug }: { slug: string }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {persons.map(p => {
               const lv = lastVisit(p)
-              const uc = UNIT_COLOR[lv?.unit ?? '']
               const initials = p.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
               return (
                 <Link
@@ -244,15 +240,7 @@ export default function PasienTable({ slug }: { slug: string }) {
                       {/* Kunjungan terakhir + unit */}
                       {lv ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: p.tags.length > 0 ? 8 : 0, flexWrap: 'wrap' }}>
-                          {uc && (
-                            <span style={{
-                              fontSize: 11, fontWeight: 600,
-                              padding: '2px 8px', borderRadius: 99,
-                              background: uc.bg, color: uc.color,
-                            }}>
-                              {lv.unit.replace('_', ' ')}
-                            </span>
-                          )}
+                          {lv.unit && <UnitBadge unit={lv.unit} warna={warnaKelompok(lv.unit)} />}
                           {lv.poli && (
                             <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{lv.poli}</span>
                           )}

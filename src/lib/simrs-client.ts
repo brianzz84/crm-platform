@@ -83,7 +83,7 @@ function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
       alamat:           `Jl. Contoh No. ${i + 1}, Surabaya`,
       tanggal,
       poli:             MOCK_POLI[i % MOCK_POLI.length],
-      unit:             i % 3 === 0 ? 'RAWAT_INAP' : 'RAWAT_JALAN',
+      unit:             i % 3 === 0 ? 'Rawat Inap' : 'Rawat Jalan',
       dokter:           `dr. Dokter ${String.fromCharCode(65 + (i % 10))}`,
       diagnosa_icd:     MOCK_ICD[i % MOCK_ICD.length],
       diagnosa_nama:    'Diagnosis Mock',

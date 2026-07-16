@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   // Satu baris contoh
   const example = [
     'Budi Santoso', '081234567890', 'RM-0001', 'budi@email.com', '1985-06-15',
-    'RAWAT_JALAN', 'Poli Umum', 'dr. Ahmad', '2025-01-10',
+    'Rawat Jalan', 'Umum', 'dr. Ahmad', '2025-01-10',
     'J06.9', 'ISPA', 'Pemeriksaan umum',
   ]
 

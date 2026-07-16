@@ -23,8 +23,7 @@ interface SearchResult {
 interface TagItem { id: string; name: string; warna: string; total_pasien: number; aktif: boolean }
 interface PersonRow { id: string; name: string; no_hp: string | null; no_rm: string | null }
 
-const UNIT_LABELS: Record<string, string> = { RAWAT_JALAN: 'Rawat Jalan', RAWAT_INAP: 'Rawat Inap', PENUNJANG: 'Penunjang' }
-const ALL_UNITS = ['RAWAT_JALAN', 'RAWAT_INAP', 'PENUNJANG']
+// Kelompok unit dimuat dari unit library tenant — tiap RS punya struktur sendiri.
 
 const MODES: { key: Mode; icon: string; label: string; desc: string }[] = [
   { key: 'ai',     icon: '🤖', label: 'Dengan AI',     desc: 'Ketik bahasa natural, AI ekstrak filter' },
@@ -55,6 +54,15 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
   const [mode, setMode]       = useState<Mode | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
+
+  // Kelompok unit dari library tenant — bukan daftar tetap di kode
+  const [kelompokUnit, setKelompokUnit] = useState<string[]>([])
+  useEffect(() => {
+    fetch(`/api/${slug}/unit-library`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j?.kelompok) setKelompokUnit(j.kelompok.map((k: any) => k.nama)) })
+      .catch(() => {})
+  }, [slug])
 
   // AI
   const [query, setQuery]       = useState('')
@@ -267,13 +275,13 @@ export default function BuatSegmenClient({ slug }: { slug: string }) {
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--font-size-sm)', marginBottom: 8 }}>Unit Layanan</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {ALL_UNITS.map(u => (
+              {kelompokUnit.map(u => (
                 <button key={u} onClick={() => toggleUnit(u)} style={{
                   padding: '6px 14px', borderRadius: 'var(--r-md)', border: '2px solid',
                   borderColor: form.units.includes(u) ? 'var(--c-secondary)' : 'var(--c-border)',
                   background: form.units.includes(u) ? 'var(--c-secondary)' : 'transparent',
                   color: form.units.includes(u) ? 'white' : 'var(--c-text)', fontWeight: 600, fontSize: 'var(--font-size-sm)', cursor: 'pointer',
-                }}>{UNIT_LABELS[u]}</button>
+                }}>{u}</button>
               ))}
             </div>
             {form.units.length === 0 && <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', marginTop: 4 }}>Tidak dipilih = semua unit</p>}

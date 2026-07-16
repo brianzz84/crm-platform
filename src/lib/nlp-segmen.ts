@@ -1,7 +1,7 @@
 import { getAiProviderForTenant } from '@/lib/ai-provider'
 
 export interface SimrsParams {
-  units: string[]           // e.g. ['RAWAT_INAP', 'RAWAT_JALAN']
+  units: string[]           // kelompok unit, mis. ['Rawat Inap', 'Rawat Jalan'] — nilainya milik tenant
   icdCodes: string[]        // e.g. ['E10', 'E11', 'E13']
   periodeAwal?: string      // YYYY-MM-DD
   periodeAkhir?: string     // YYYY-MM-DD
@@ -18,7 +18,7 @@ const SYSTEM_PROMPT = `Kamu adalah sistem ekstraktor parameter pencarian pasien 
 Tugasmu: ubah query bahasa natural menjadi parameter terstruktur untuk query ke sistem SIMRS.
 
 Aturan:
-- Identifikasi unit layanan: RAWAT_INAP, RAWAT_JALAN, PENUNJANG (bisa lebih dari satu)
+- Identifikasi kelompok unit layanan, mis. "Rawat Inap", "Rawat Jalan", "Penunjang", "Pondok Sehat" (bisa lebih dari satu). Tulis persis seperti label itu.
 - Identifikasi kode ICD-10 yang relevan (misal: E10 untuk diabetes tipe 1, E11 untuk tipe 2)
 - Identifikasi periode waktu (konversi ke tanggal absolut dalam format YYYY-MM-DD)
 - Tanggal hari ini: ${new Date().toISOString().slice(0, 10)}

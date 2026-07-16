@@ -63,13 +63,23 @@ function parseDate(raw: string | null | undefined): Date | null {
   return null
 }
 
-function mapUnit(raw: string | null): 'RAWAT_JALAN' | 'RAWAT_INAP' | 'PENUNJANG' | null {
-  if (!raw) return null
-  const u = raw.toUpperCase().trim()
-  if (u === 'RAWAT_JALAN' || u === 'RAWAT JALAN' || u === 'RJ') return 'RAWAT_JALAN'
-  if (u === 'RAWAT_INAP'  || u === 'RAWAT INAP'  || u === 'RI') return 'RAWAT_INAP'
-  if (u === 'PENUNJANG'   || u === 'LAB'          || u === 'PJ') return 'PENUNJANG'
-  return null
+/**
+ * Normalisasi tulisan unit dari Excel ke label kelompok yang dipakai sistem.
+ * Menerima singkatan & ejaan lama (termasuk nilai enum sebelum refactor) supaya
+ * file impor lama tetap jalan. Nilai di luar daftar dikembalikan apa adanya
+ * (rapi-kan kapitalisasinya) — tenant lain bisa punya kelompok sendiri, jadi
+ * jangan dibuang jadi null hanya karena tidak dikenal di sini.
+ */
+function mapUnit(raw: string | null): string | null {
+  if (!raw?.trim()) return null
+  const u = raw.toUpperCase().trim().replace(/\s+/g, ' ')
+  if (u === 'RAWAT_JALAN'  || u === 'RAWAT JALAN' || u === 'RJ') return 'Rawat Jalan'
+  if (u === 'RAWAT_INAP'   || u === 'RAWAT INAP'  || u === 'RI') return 'Rawat Inap'
+  if (u === 'PENUNJANG'    || u === 'LAB'         || u === 'PJ') return 'Penunjang'
+  if (u === 'PONDOK_SEHAT' || u === 'PONDOK SEHAT')              return 'Pondok Sehat'
+  if (u === 'ONE_DAY_CARE' || u === 'ONE DAY CARE' || u === 'ODC') return 'One Day Care'
+  if (u === 'HOME_CARE'    || u === 'HOME CARE')                 return 'Home Care'
+  return raw.trim()
 }
 
 export function parseExcelBuffer(buffer: Buffer): ExcelImportRow[] {
@@ -298,7 +308,7 @@ async function insertVisit(
       data: {
         person_id:    personId,
         tanggal,
-        unit:         unit ?? 'RAWAT_JALAN',
+        unit:         unit ?? 'Rawat Jalan',
         poli:         row.poli        || null,
         dokter:       row.dokter      || null,
         diagnosa_icd: row.diagnosa_icd || null,
