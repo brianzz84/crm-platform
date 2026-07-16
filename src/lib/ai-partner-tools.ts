@@ -125,7 +125,7 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
         tindakanKodes: { type: 'array', items: { type: 'string' }, description: 'Kode layanan/tindakan (kode_barang) hasil cari_layanan' },
         periodeAwal:   { type: 'string', description: 'YYYY-MM-DD — periode kunjungan SIMRS' },
         periodeAkhir:  { type: 'string', description: 'YYYY-MM-DD — periode kunjungan SIMRS' },
-        poli:          { type: 'string', description: 'Nama poli — cek dulu lewat daftar_nilai_dimensi' },
+        poli:          { type: 'string', description: 'Nama poli PERSIS seperti hasil daftar_nilai_dimensi(dimensi:"poli") — mis. "Anak", bukan "Poli Anak". Jangan tambah/ubah kata.' },
         dokter:        { type: 'string', description: 'Nama dokter — cek dulu lewat daftar_nilai_dimensi' },
         namaInstansi:  { type: 'string', description: 'Nama penjamin kunjungan. Bisa BPJS ("BPJS Kesehatan"), asuransi ("Prudential", "Allianz"), atau perusahaan yang menjamin karyawannya ("PT Unilever Indonesia"). Cek nilai nyatanya lewat daftar_nilai_dimensi dimensi=penjamin.' },
         jenisPembayaranKunjungan: { type: 'string', enum: ['TUNAI', 'NON_TUNAI'], description: 'Cara bayar pada kunjungan. NON_TUNAI = ada penjamin (dijamin/klaim); TUNAI = bayar sendiri. Gabungkan dengan namaInstansi untuk pertanyaan seperti "pasien non-tunai dari Prudential".' },

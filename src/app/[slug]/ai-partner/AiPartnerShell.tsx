@@ -46,14 +46,51 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
 }
 
-function findLastPreviewFilter(messages: Message[]): any | null {
+// Ringkasan filter dalam bahasa manusia — supaya admin tahu persis apa yang disimpan.
+function ringkasFilter(f: any): string {
+  if (!f || typeof f !== 'object') return '(tanpa kriteria)'
+  const bagian: string[] = []
+  if (f.units?.length)              bagian.push(`Unit: ${f.units.join(', ')}`)
+  if (f.poli)                       bagian.push(`Poli: ${f.poli}`)
+  if (f.dokter)                     bagian.push(`Dokter: ${f.dokter}`)
+  if (f.icdCodes?.length)           bagian.push(`ICD: ${f.icdCodes.join(', ')}`)
+  if (f.tindakanKodes?.length)      bagian.push(`Tindakan: ${f.tindakanKodes.length} kode`)
+  if (f.namaInstansi)               bagian.push(`Penjamin: ${f.namaInstansi}`)
+  if (f.namaInstansiList?.length)   bagian.push(`Penjamin: ${f.namaInstansiList.join(', ')}`)
+  if (f.jenisPembayaranKunjungan)   bagian.push(f.jenisPembayaranKunjungan === 'TUNAI' ? 'Tunai' : 'Non-Tunai')
+  if (f.tagIds?.length)             bagian.push(`${f.tagIds.length} tag`)
+  if (f.pekerjaanContains)          bagian.push(`Pekerjaan: ${f.pekerjaanContains}`)
+  if (f.usiaMin != null || f.usiaMax != null) bagian.push(`Usia ${f.usiaMin ?? '?'}–${f.usiaMax ?? '?'}`)
+  if (f.kota)                       bagian.push(`Kota: ${f.kota}`)
+  if (f.kecamatan)                  bagian.push(`Kecamatan: ${f.kecamatan}`)
+  if (f.jenisKegiatan)              bagian.push(`Kegiatan: ${f.jenisKegiatan}`)
+  if (f.namaKegiatanContains)       bagian.push(`Kegiatan: "${f.namaKegiatanContains}"`)
+  if (f.penyelenggara)              bagian.push(`Penyelenggara: ${f.penyelenggara}`)
+  if (f.lokasiKegiatan)             bagian.push(`Lokasi: ${f.lokasiKegiatan}`)
+  if (f.kegiatanTahunMulai || f.kegiatanTahunSelesai) bagian.push(`Tahun ${f.kegiatanTahunMulai ?? '?'}–${f.kegiatanTahunSelesai ?? '?'}`)
+  if (f.minKunjunganSimrs)          bagian.push(`min ${f.minKunjunganSimrs}× kunjungan`)
+  if (f.minKegiatanDiikuti)         bagian.push(`min ${f.minKegiatanDiikuti}× kegiatan`)
+  return bagian.length ? bagian.join(' · ') : '(semua orang)'
+}
+
+// Kumpulkan SEMUA filter preview dari percakapan, terbaru dulu, tanpa duplikat.
+// Admin memilih sendiri — jangan menebak "yang terakhir" karena AI sering
+// membuat breakdown sempit setelah query utama (mis. total 25 lalu rincian 5).
+function collectPreviewFilters(messages: Message[]): any[] {
+  const out: any[] = []
+  const seen = new Set<string>()
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m.role !== 'ASSISTANT' || !m.tool_calls) continue
-    const call = [...m.tool_calls].reverse().find(c => c.name === 'preview_jumlah_pasien')
-    if (call) return call.input
+    for (const c of [...m.tool_calls].reverse()) {
+      if (c.name !== 'preview_jumlah_pasien') continue
+      const key = JSON.stringify(c.input ?? {})
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(c.input)
+    }
   }
-  return null
+  return out
 }
 
 export default function AiPartnerShell({ slug, initialSessions }: Props) {
@@ -65,8 +102,12 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
   const [loadingSession, setLoadingSession] = useState(false)
   const [error,          setError]          = useState('')
 
-  const [saveForm, setSaveForm] = useState<{ open: boolean; nama: string; filter: any; saving: boolean; error: string; done: boolean }>({
-    open: false, nama: '', filter: null, saving: false, error: '', done: false,
+  const [saveForm, setSaveForm] = useState<{
+    open: boolean; nama: string; kandidat: any[]; pilih: number;
+    counts: Record<number, number | 'loading' | 'error'>;
+    saving: boolean; error: string; done: boolean
+  }>({
+    open: false, nama: '', kandidat: [], pilih: 0, counts: {}, saving: false, error: '', done: false,
   })
 
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -85,7 +126,7 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
 
   function startNewSession() {
     setActiveId(null); setMessages([]); setError(''); setDraft('')
-    setSaveForm({ open: false, nama: '', filter: null, saving: false, error: '', done: false })
+    setSaveForm({ open: false, nama: '', kandidat: [], pilih: 0, counts: {}, saving: false, error: '', done: false })
   }
 
   async function sendMessage() {
@@ -129,19 +170,43 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
+  // Hitung ulang jumlah live untuk sebuah kandidat filter (agar admin lihat
+  // angka yang benar sebelum menyimpan — bukan menebak dari teks AI).
+  const recount = useCallback(async (idx: number, filter: any) => {
+    setSaveForm(f => ({ ...f, counts: { ...f.counts, [idx]: 'loading' } }))
+    try {
+      const res  = await fetch(`/api/${slug}/segmen/search`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body:   JSON.stringify(filter),
+      })
+      const json = await res.json()
+      setSaveForm(f => ({ ...f, counts: { ...f.counts, [idx]: res.ok ? (json.data?.total ?? 0) : 'error' } }))
+    } catch {
+      setSaveForm(f => ({ ...f, counts: { ...f.counts, [idx]: 'error' } }))
+    }
+  }, [slug])
+
   function openSaveForm() {
-    const filter = findLastPreviewFilter(messages)
-    if (!filter) return
-    setSaveForm({ open: true, nama: '', filter, saving: false, error: '', done: false })
+    const kandidat = collectPreviewFilters(messages)
+    if (!kandidat.length) return
+    setSaveForm({ open: true, nama: '', kandidat, pilih: 0, counts: {}, saving: false, error: '', done: false })
+    recount(0, kandidat[0])   // hitung otomatis kandidat pertama (paling baru)
+  }
+
+  function pilihKandidat(idx: number) {
+    setSaveForm(f => ({ ...f, pilih: idx }))
+    if (saveForm.counts[idx] === undefined) recount(idx, saveForm.kandidat[idx])
   }
 
   async function confirmSaveSegment() {
     if (!saveForm.nama.trim()) { setSaveForm(f => ({ ...f, error: 'Nama segmen wajib diisi' })); return }
+    const filter = saveForm.kandidat[saveForm.pilih]
+    if (!filter) { setSaveForm(f => ({ ...f, error: 'Pilih dulu kriteria yang akan disimpan' })); return }
     setSaveForm(f => ({ ...f, saving: true, error: '' }))
     try {
       const searchRes  = await fetch(`/api/${slug}/segmen/search`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body:   JSON.stringify(saveForm.filter),
+        body:   JSON.stringify(filter),
       })
       const searchJson = await searchRes.json()
       if (!searchRes.ok) { setSaveForm(f => ({ ...f, saving: false, error: searchJson.error || 'Gagal mencari pasien' })); return }
@@ -151,7 +216,7 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
         body: JSON.stringify({
           nama: saveForm.nama.trim(),
           tipe: 'AI',
-          simrs_params: saveForm.filter,
+          simrs_params: filter,
           person_ids: searchJson.data.person_ids,
         }),
       })
@@ -171,7 +236,7 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
     background: 'var(--c-bg)', color: 'var(--c-text)',
   }
 
-  const lastAssistantHasPreview = messages.length > 0 && findLastPreviewFilter(messages) !== null
+  const lastAssistantHasPreview = messages.length > 0 && collectPreviewFilters(messages).length > 0
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, borderTop: '1px solid var(--c-border)' }}>
@@ -289,8 +354,36 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
               {saveForm.open && !saveForm.done && (
                 <div style={{
                   border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)',
-                  background: 'var(--c-surface)', maxWidth: 420,
+                  background: 'var(--c-surface)', maxWidth: 520,
                 }}>
+                  {/* Pilih kriteria mana yang disimpan — AI sering membuat beberapa
+                      perhitungan; jangan biarkan tersimpan yang salah tanpa sadar. */}
+                  <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, marginBottom: 6, color: 'var(--c-text)' }}>
+                    Kriteria yang disimpan
+                    {saveForm.kandidat.length > 1 && <span style={{ color: 'var(--c-text-faint)', fontWeight: 400 }}> — pilih salah satu ({saveForm.kandidat.length} pencarian di percakapan ini)</span>}
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                    {saveForm.kandidat.map((f, idx) => {
+                      const cnt = saveForm.counts[idx]
+                      const dipilih = saveForm.pilih === idx
+                      return (
+                        <label key={idx} style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', cursor: 'pointer',
+                          border: `1.5px solid ${dipilih ? 'var(--c-secondary)' : 'var(--c-border)'}`,
+                          borderRadius: 'var(--r-sm)', background: dipilih ? 'var(--c-bg)' : 'transparent',
+                        }}>
+                          <input type="radio" checked={dipilih} onChange={() => pilihKandidat(idx)} style={{ marginTop: 3, cursor: 'pointer', flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text)' }}>{ringkasFilter(f)}</div>
+                            <div style={{ fontSize: 11, marginTop: 2, color: cnt === 'error' ? '#DC2626' : 'var(--c-secondary)', fontWeight: 600 }}>
+                              {cnt === 'loading' ? 'menghitung…' : cnt === 'error' ? 'gagal menghitung' : cnt === undefined ? '' : `${cnt} orang`}
+                            </div>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+
                   <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, marginBottom: 4, color: 'var(--c-text)' }}>
                     Nama Segmen
                   </label>
