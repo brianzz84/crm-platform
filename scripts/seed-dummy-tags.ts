@@ -40,7 +40,11 @@ const UNIT_KE_TAG: Record<string, string> = {
   RAWAT_INAP:   'Rawat Inap',
   RAWAT_JALAN:  'Rawat Jalan',
 }
-const ASURANSI_SWASTA = ['Prudential', 'Allianz', 'AXA Mandiri']
+// CATATAN PENTING: jangan menurunkan tag dari penjamin kunjungan.
+// Tag "Asuransi" di RKZ berarti ORANG DARI AGENCY ASURANSI (semua 115 pemiliknya
+// adalah peserta event "Agency Final Sprint (Prudential)") — bukan "pasien yang
+// dijamin asuransi". Makna tag itu milik tenant; jangan ditebak dari nama tag.
+// Penjamin sudah bisa dicari lewat namaInstansi, tidak perlu tag.
 
 async function main() {
   console.log(DRY_RUN ? '[DRY_RUN] tidak akan menulis apa pun\n' : '')
@@ -49,7 +53,7 @@ async function main() {
   const tagId = new Map(tags.map(t => [t.name, t.id]))
 
   // Pastikan semua tag yang akan dipakai memang ada — jangan buat tag baru.
-  const dibutuhkan = [...new Set([...Object.values(POLI_KE_TAG), ...Object.values(UNIT_KE_TAG), 'Nakes', 'Awam', 'Geriatri', 'Asuransi'])]
+  const dibutuhkan = [...new Set([...Object.values(POLI_KE_TAG), ...Object.values(UNIT_KE_TAG), 'Nakes', 'Awam', 'Geriatri'])]
   const hilang = dibutuhkan.filter(n => !tagId.has(n))
   if (hilang.length) throw new Error(`Tag tidak ada di master: ${hilang.join(', ')} — batal.`)
 
@@ -78,12 +82,12 @@ async function main() {
       if (usia > 60) namaTag.add('Geriatri')
     }
 
-    // 3. Turunan dari kunjungan: unit, poli, asuransi
+    // 3. Turunan dari kunjungan: unit & poli saja (penjamin sengaja TIDAK jadi tag —
+    //    lihat catatan di atas)
     for (const v of p.visits) {
       const tUnit = UNIT_KE_TAG[v.unit as string]
       if (tUnit) namaTag.add(tUnit)
       if (v.poli && POLI_KE_TAG[v.poli]) namaTag.add(POLI_KE_TAG[v.poli])
-      if (v.nama_instansi && ASURANSI_SWASTA.includes(v.nama_instansi)) namaTag.add('Asuransi')
     }
 
     for (const n of namaTag) {

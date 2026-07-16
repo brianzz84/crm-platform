@@ -171,15 +171,23 @@ async function main() {
     for (let i = 0; i < jumlah; i++) {
       const u = rnd()
       const tanggal = tanggalKunjungan()
-      const bpjs = rnd() < 0.62
+
+      // Aturan nyata: ada penjamin (BPJS/asuransi/perusahaan) => NON_TUNAI (klaim).
+      // Bayar sendiri => TUNAI dan tanpa penjamin. Tidak boleh TUNAI + penjamin.
+      const pj = rnd()
+      const penjamin =
+        pj < 0.62 ? 'BPJS Kesehatan' :
+        pj < 0.71 ? pick(['Prudential', 'Allianz', 'AXA Mandiri']) :
+        pj < 0.75 ? pick(['PT Unilever Indonesia', 'PT Astra International']) :  // penjamin perusahaan
+        null
       const base = {
         person_id: p.id,
         tanggal,
         aktif: true,
         status_kunjungan: 'SELESAI',
         simrs_visit_id: `DUMMY-${no++}`,
-        jenis_pembayaran: bpjs ? 'NON_TUNAI' : 'TUNAI',
-        nama_instansi: bpjs ? 'BPJS Kesehatan' : (rnd() < 0.3 ? pick(['Prudential', 'Allianz', 'AXA Mandiri']) : null),
+        jenis_pembayaran: penjamin ? 'NON_TUNAI' : 'TUNAI',
+        nama_instansi: penjamin,
       }
 
       if (u < 0.55) {
@@ -199,13 +207,17 @@ async function main() {
         const l = pick(layananRad)
         visits.push({ ...base, unit: 'PENUNJANG', poli: 'Radiologi', dokter: pick(['dr. Sinta Wibowo, Sp.Rad','dr. Eko Prasetyo, Sp.Rad']), tindakan: l.nama, tindakan_kode: l.kode_barang })
       } else if (u < 0.95) {
-        const l = pick(layananPondok)
+        // Pondok Sehat = paket check-up. BPJS tidak menjamin, tapi MCU perusahaan
+        // umum terjadi (perusahaan jadi penjamin) — selain pasien bayar sendiri.
+        const l  = pick(layananPondok)
+        const mcu = rnd() < 0.35 ? pick(['PT Unilever Indonesia', 'PT Astra International']) : null
         visits.push({
           ...base, unit: 'PONDOK_SEHAT', poli: 'Pondok Sehat',
           dokter: pick(['dr. Andi Wijaya, Sp.PD','dr. Ratna Kusuma, Sp.PD']),
           diagnosa_icd: 'Z00.00', diagnosa_nama: 'Pemeriksaan kesehatan umum',
           tindakan: l.nama, tindakan_kode: l.kode_barang,
-          jenis_pembayaran: 'TUNAI', nama_instansi: null,   // paket check-up umumnya tidak dijamin BPJS
+          jenis_pembayaran: mcu ? 'NON_TUNAI' : 'TUNAI',
+          nama_instansi: mcu,
         })
       } else {
         const poli = pick(['Poli Penyakit Dalam','Poli Anak','Poli Bedah','Poli Kandungan'])

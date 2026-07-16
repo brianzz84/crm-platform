@@ -12,10 +12,14 @@ const schema = z.object({
   periodeAkhir: z.string().optional(),
   poli:         z.string().optional(),
   dokter:       z.string().optional(),
+  namaInstansi:             z.string().optional(),  // penjamin: BPJS | asuransi | perusahaan
+  jenisPembayaranKunjungan: z.string().optional(),  // "TUNAI" | "NON_TUNAI" — level kunjungan
   // filter tingkat pasien (Person)
   tagIds:            z.array(z.string()).optional(),
-  jenisPembayaran:   z.string().optional(),  // "TUNAI" | "NON_TUNAI"
-  namaInstansi:      z.string().optional(),  // penjamin: "BPJS Kesehatan", "Prudential", dll
+  // Catatan: Person.jenis_pembayaran hanya cache kunjungan TERAKHIR. Untuk pertanyaan
+  // seperti "non-tunai dari Prudential", pakai jenisPembayaranKunjungan + namaInstansi
+  // supaya keduanya dinilai pada kunjungan yang sama.
+  jenisPembayaran:   z.string().optional(),  // "TUNAI" | "NON_TUNAI" — level Person (cache)
   nameQuery:         z.string().optional(),
   pekerjaanContains: z.string().optional(),  // mis. "nakes", "dokter", "perawat"
   jenisKelamin:      z.string().optional(),  // "L" | "P"
@@ -46,7 +50,8 @@ export type SegmenSearchInput = z.infer<typeof schema>
 export async function runSegmenSearch(db: any, slug: string, p: SegmenSearchInput) {
   const hasVisitFilter = !!(
     p.units?.length || p.icdCodes?.length || p.tindakanKodes?.length ||
-    p.periodeAwal || p.periodeAkhir || p.poli || p.dokter || p.namaInstansi
+    p.periodeAwal || p.periodeAkhir || p.poli || p.dokter ||
+    p.namaInstansi || p.jenisPembayaranKunjungan
   )
 
   const personWhere: any = { tenant_slug: slug, aktif: true }
@@ -111,6 +116,7 @@ export async function runSegmenSearch(db: any, slug: string, p: SegmenSearchInpu
     if (p.poli)         w.poli   = { contains: p.poli, mode: 'insensitive' }
     if (p.dokter)       w.dokter = { contains: p.dokter, mode: 'insensitive' }
     if (p.namaInstansi) w.nama_instansi = { contains: p.namaInstansi, mode: 'insensitive' }
+    if (p.jenisPembayaranKunjungan) w.jenis_pembayaran = p.jenisPembayaranKunjungan
     return w
   }
 

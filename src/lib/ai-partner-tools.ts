@@ -78,7 +78,11 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
       '"Parenting"). WAJIB dipakai untuk kategori orang seperti profesi/minat/segmen — JANGAN pakai ' +
       'kata kunci bebas untuk hal ini, karena field teks bebas seperti pekerjaan seringkali kosong di ' +
       'data nyata, sedangkan tag sudah terisi konsisten. Kembalikan tagId yang lalu dipakai di ' +
-      'parameter tagIds pada preview_jumlah_pasien.',
+      'parameter tagIds pada preview_jumlah_pasien.\n' +
+      'PENTING: makna sebuah tag ditentukan tenant, JANGAN disimpulkan dari namanya. Contoh nyata: tag ' +
+      '"Asuransi" di RKZ berisi orang dari agency asuransi (peserta event agency), BUKAN pasien yang ' +
+      'dijamin asuransi — untuk penjamin, pakai namaInstansi. Kalau makna sebuah tag menentukan jawaban ' +
+      'dan kamu tidak yakin, konfirmasi dulu ke admin daripada menebak.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -123,7 +127,8 @@ export const AI_PARTNER_TOOLS: AiTool[] = [
         periodeAkhir:  { type: 'string', description: 'YYYY-MM-DD — periode kunjungan SIMRS' },
         poli:          { type: 'string', description: 'Nama poli — cek dulu lewat daftar_nilai_dimensi' },
         dokter:        { type: 'string', description: 'Nama dokter — cek dulu lewat daftar_nilai_dimensi' },
-        namaInstansi:  { type: 'string', description: 'Penjamin, mis. "BPJS Kesehatan" atau asuransi swasta ("Prudential"). Asuransi swasta biasanya segmen bernilai tinggi.' },
+        namaInstansi:  { type: 'string', description: 'Nama penjamin kunjungan. Bisa BPJS ("BPJS Kesehatan"), asuransi ("Prudential", "Allianz"), atau perusahaan yang menjamin karyawannya ("PT Unilever Indonesia"). Cek nilai nyatanya lewat daftar_nilai_dimensi dimensi=penjamin.' },
+        jenisPembayaranKunjungan: { type: 'string', enum: ['TUNAI', 'NON_TUNAI'], description: 'Cara bayar pada kunjungan. NON_TUNAI = ada penjamin (dijamin/klaim); TUNAI = bayar sendiri. Gabungkan dengan namaInstansi untuk pertanyaan seperti "pasien non-tunai dari Prudential".' },
         minKunjunganSimrs:  { type: 'number', description: 'Minimal berapa kali berkunjung (mengikuti kriteria kunjungan lain yang diisi). Mis. 5 = pasien loyal.' },
         minKegiatanDiikuti: { type: 'number', description: 'Minimal berapa kali ikut kegiatan. Mis. 2 = pernah ikut lebih dari 1x.' },
         tagIds:               { type: 'array', items: { type: 'string' }, description: 'ID tag hasil cari_tag — cara utama filter kategori orang (profesi, minat, segmen)' },
@@ -294,8 +299,9 @@ export async function executeAiPartnerTool(slug: string, call: AiToolCall): Prom
       periodeAwal:          i.periodeAwal,
       periodeAkhir:         i.periodeAkhir,
       poli:                 i.poli,
-      dokter:               i.dokter,
-      namaInstansi:         i.namaInstansi,
+      dokter:                   i.dokter,
+      namaInstansi:             i.namaInstansi,
+      jenisPembayaranKunjungan: i.jenisPembayaranKunjungan,
       minKunjunganSimrs:    i.minKunjunganSimrs,
       minKegiatanDiikuti:   i.minKegiatanDiikuti,
       tagIds:               i.tagIds,
