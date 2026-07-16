@@ -165,11 +165,24 @@ body {
 a { color: var(--c-secondary); text-decoration: none; }
 a:hover { color: var(--c-secondary-dark); }
 
+/* AI Partner — tinggi terkunci viewport agar hanya percakapan yang scroll */
+.ai-partner-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ── Mobile responsive layout ── */
 @media (max-width: 768px) {
   /* Padding untuk konten halaman biasa (bukan inbox) */
   .tenant-main {
     padding-top: 56px;
+  }
+
+  /* Di mobile, topbar 56px fixed + padding-top main; kurangi dari tinggi halaman */
+  .ai-partner-page {
+    height: calc(100dvh - 56px);
   }
 
   /* Prevent iOS zoom saat focus input */

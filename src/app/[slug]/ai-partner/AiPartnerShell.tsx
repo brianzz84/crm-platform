@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Markdown from './Markdown'
 
 interface SessionSummary {
   id:         string
@@ -288,7 +289,7 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
       </div>
 
       {/* ── Jendela chat ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-5)' }}>
           {messages.length === 0 && !loadingSession && (
             <div style={{ textAlign: 'center', color: 'var(--c-text-faint)', fontSize: 'var(--font-size-sm)', marginTop: 'var(--sp-6)' }}>
@@ -315,13 +316,15 @@ export default function AiPartnerShell({ slug, initialSessions }: Props) {
                     </div>
                   )}
                   <div style={{
-                    maxWidth: '75%', padding: '9px 14px', borderRadius: 'var(--r-lg)',
-                    fontSize: 'var(--font-size-sm)', lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                    maxWidth: isUser ? '75%' : '88%', padding: '9px 14px', borderRadius: 'var(--r-lg)',
+                    fontSize: 'var(--font-size-sm)', lineHeight: 1.5,
+                    ...(isUser ? { whiteSpace: 'pre-wrap' as const } : {}),
                     background: isUser ? 'var(--c-secondary)' : 'var(--c-surface)',
                     color: isUser ? 'white' : 'var(--c-text)',
                     border: isUser ? 'none' : '1px solid var(--c-border)',
                   }}>
-                    {m.content}
+                    {/* Pesan user tampil apa adanya; balasan AI dirender sebagai markdown */}
+                    {isUser ? m.content : <Markdown text={m.content} />}
                   </div>
                 </div>
               )

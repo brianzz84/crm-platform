@@ -26,8 +26,10 @@ export default async function AiPartnerPage({ params }: { params: { slug: string
   }))
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1 }}>
-      <div style={{ padding: 'var(--sp-5) var(--sp-6) var(--sp-3)' }}>
+    // Tinggi terkunci ke viewport (pola sama dengan Inbox) supaya HANYA area
+    // percakapan yang scroll — header & input bar tetap di tempat.
+    <div className="ai-partner-page">
+      <div style={{ padding: 'var(--sp-5) var(--sp-6) var(--sp-3)', flexShrink: 0 }}>
         <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 800, color: 'var(--c-primary)', marginBottom: 4 }}>
           🤖 AI Partner
         </h1>
