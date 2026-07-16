@@ -16,10 +16,9 @@ const schema = z.object({
   jenisPembayaranKunjungan: z.string().optional(),  // "TUNAI" | "NON_TUNAI" — level kunjungan
   // filter tingkat pasien (Person)
   tagIds:            z.array(z.string()).optional(),
-  // Catatan: Person.jenis_pembayaran hanya cache kunjungan TERAKHIR. Untuk pertanyaan
-  // seperti "non-tunai dari Prudential", pakai jenisPembayaranKunjungan + namaInstansi
-  // supaya keduanya dinilai pada kunjungan yang sama.
-  jenisPembayaran:   z.string().optional(),  // "TUNAI" | "NON_TUNAI" — level Person (cache)
+  // Penjamin dinilai HANYA di level kunjungan (namaInstansi + jenisPembayaranKunjungan),
+  // supaya "non-tunai dari Prudential" dinilai pada kunjungan yang sama. Tidak ada lagi
+  // filter penjamin level-Person — field itu sudah dihapus dari skema.
   nameQuery:         z.string().optional(),
   pekerjaanContains: z.string().optional(),  // mis. "nakes", "dokter", "perawat"
   jenisKelamin:      z.string().optional(),  // "L" | "P"
@@ -58,9 +57,6 @@ export async function runSegmenSearch(db: any, slug: string, p: SegmenSearchInpu
 
   if (p.tagIds?.length) {
     personWhere.tags = { some: { tag_id: { in: p.tagIds }, aktif: true } }
-  }
-  if (p.jenisPembayaran) {
-    personWhere.jenis_pembayaran = p.jenisPembayaran
   }
   if (p.jenisKelamin) {
     personWhere.jenis_kelamin = p.jenisKelamin

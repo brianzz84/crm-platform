@@ -154,10 +154,10 @@ model Person {
   kecamatan          String?             // kecamatan — field terstruktur terpisah dari alamat bebas
   pekerjaan          String?
   agama              String?             // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
-  jenis_pembayaran   String?             // "TUNAI" | "NON_TUNAI" — diisi dari kunjungan terakhir
-  nama_instansi      String?             // nama penjamin: "BPJS Kesehatan", "PT Prudential", dll
-  kode_instansi      String?             // kode master instansi dari SIMRS
-  no_bpjs            String?             // nomor kartu BPJS (jika penjamin BPJS)
+  // CATATAN: penjamin (jenis_pembayaran/nama_instansi/kode_instansi) TIDAK di sini —
+  // itu milik tiap KUNJUNGAN (SimrsVisit), bukan orang. Satu orang bisa BPJS di satu
+  // kunjungan dan asuransi swasta di kunjungan lain. Ambil dari kunjungan saat perlu.
+  no_bpjs            String?             // nomor kartu BPJS — ini memang atribut ORANG, tetap di sini
   kategori           String?             // "umum" | "pasien" | "keluarga" — legacy, digantikan sumber
   sumber             PersonSumber        @default(MANUAL) // asal data person
   is_pasien_simrs    Boolean             @default(false)  // true jika sudah tercatat di SIMRS (punya no_rm)

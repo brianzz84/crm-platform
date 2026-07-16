@@ -77,6 +77,22 @@ export default async function PasienDetailPage({ params }: Props) {
   if (!person) notFound()
 
   const lastVisit = person.visits[0]
+
+  // Rekap SEMUA penjamin yang pernah dipakai orang ini (dari kunjungannya), bukan
+  // cuma yang terakhir — satu orang bisa BPJS di satu kunjungan, asuransi di lain.
+  // Semua bisa jadi jaminan aktif → peluang market. Diurut dari yang paling sering.
+  const penjaminRekap = (() => {
+    const m = new Map<string, { nama: string; jenis: string | null; jumlah: number }>()
+    for (const v of person.visits as any[]) {
+      const nama  = v.nama_instansi?.trim() || (v.jenis_pembayaran === 'TUNAI' ? 'Tunai / Bayar Sendiri' : null)
+      if (!nama) continue
+      const key = nama.toLowerCase()
+      const e = m.get(key) ?? { nama, jenis: v.jenis_pembayaran ?? null, jumlah: 0 }
+      e.jumlah++
+      m.set(key, e)
+    }
+    return Array.from(m.values()).sort((a, b) => b.jumlah - a.jumlah)
+  })()
   const initials  = person.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   const CHANNEL_COLOR: Record<string, string> = { WA: '#25D366', IG: '#E040FB', FB: '#1877F2' }
@@ -180,28 +196,34 @@ export default async function PasienDetailPage({ params }: Props) {
                 <UnitBadge unit={lastVisit.unit} />
               </div>
             )}
-            {/* Pembayaran */}
-            {(person as any).jenis_pembayaran && (
+            {/* Penjamin — semua yang pernah dipakai (dari riwayat kunjungan) */}
+            {(penjaminRekap.length > 0 || (person as any).no_bpjs) && (
               <>
                 <div style={{ borderTop: '1px solid var(--c-border)', margin: '8px 0 6px' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, gap: 8 }}>
-                  <span style={{ color: 'var(--c-text-muted)', flexShrink: 0 }}>Pembayaran</span>
-                  <span style={{
-                    fontWeight: 600, fontSize: 11, padding: '1px 7px', borderRadius: 99,
-                    background: (person as any).jenis_pembayaran === 'TUNAI' ? '#F0FDF4' : '#EFF6FF',
-                    color: (person as any).jenis_pembayaran === 'TUNAI' ? '#166534' : '#1D4ED8',
-                  }}>
-                    {(person as any).jenis_pembayaran === 'TUNAI' ? 'Tunai' : 'Non-Tunai'}
-                  </span>
-                </div>
-                {(person as any).nama_instansi && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, gap: 8 }}>
-                    <span style={{ color: 'var(--c-text-muted)', flexShrink: 0 }}>Penjamin</span>
-                    <span style={{ color: 'var(--c-text)', fontWeight: 500, textAlign: 'right' }}>{(person as any).nama_instansi}</span>
+                {penjaminRekap.length > 0 && (
+                  <div style={{ marginBottom: 5, fontSize: 12 }}>
+                    <span style={{ color: 'var(--c-text-muted)', display: 'block', marginBottom: 4 }}>
+                      Penjamin dipakai {penjaminRekap.length > 1 ? `(${penjaminRekap.length} jenis)` : ''}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {penjaminRekap.map(pj => {
+                        const tunai = pj.jenis === 'TUNAI'
+                        return (
+                          <div key={pj.nama} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                            <span style={{
+                              fontWeight: 600, fontSize: 11, padding: '1px 7px', borderRadius: 99,
+                              background: tunai ? '#F0FDF4' : '#EFF6FF',
+                              color: tunai ? '#166534' : '#1D4ED8',
+                            }}>{pj.nama}</span>
+                            <span style={{ color: 'var(--c-text-faint)', fontSize: 11, flexShrink: 0 }}>{pj.jumlah}×</span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
                 {(person as any).no_bpjs && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8, marginTop: 4 }}>
                     <span style={{ color: 'var(--c-text-muted)', flexShrink: 0 }}>No. BPJS</span>
                     <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{(person as any).no_bpjs}</span>
                   </div>

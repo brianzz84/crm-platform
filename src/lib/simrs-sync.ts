@@ -104,9 +104,9 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             agama:            k.agama ?? undefined,
             is_pasien_simrs:  true,
             sumber:           'SIMRS',
-            jenis_pembayaran: k.jenis_pembayaran ?? undefined,
-            nama_instansi:    k.nama_instansi ?? undefined,
-            kode_instansi:    k.kode_instansi ?? undefined,
+            // Penjamin TIDAK ditulis ke person — itu atribut kunjungan (lihat di bawah,
+            // saat upsert SimrsVisit). Menulisnya ke sini berarti menimpa dengan penjamin
+            // kunjungan terakhir yang diproses = arbitrer & menyesatkan.
           },
         })
         personId = existingPerson.id
@@ -142,9 +142,7 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             sumber:           'SIMRS',
             is_pasien_simrs:  true,
             aktif:            true,
-            jenis_pembayaran: k.jenis_pembayaran ?? null,
-            nama_instansi:    k.nama_instansi ?? null,
-            kode_instansi:    k.kode_instansi ?? null,
+            // Penjamin tidak di person — hanya di kunjungan (upsert SimrsVisit di bawah).
           },
         })
         personId = newPerson.id

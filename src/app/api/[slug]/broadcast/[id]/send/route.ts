@@ -123,10 +123,11 @@ async function sendBatchAsync(
     const persons = await db.person.findMany({
       where:  { id: { in: batch.map(r => r.person_id) } },
       select: {
-        id: true, name: true, no_rm: true, no_hp: true, agama: true,
-        jenis_pembayaran: true, nama_instansi: true, no_bpjs: true,
+        id: true, name: true, no_rm: true, no_hp: true, agama: true, no_bpjs: true,
+        // Penjamin diambil dari kunjungan TERAKHIR (bukan cache person) — lebih akurat.
         visits: { where: { aktif: true }, orderBy: { tanggal: 'desc' }, take: 1,
-          select: { poli: true, dokter: true, diagnosa_nama: true, tanggal: true } },
+          select: { poli: true, dokter: true, diagnosa_nama: true, tanggal: true,
+            jenis_pembayaran: true, nama_instansi: true } },
       },
     })
     const personMap = new Map<string, any>(persons.map(p => [p.id, p]))
@@ -134,11 +135,13 @@ async function sendBatchAsync(
     await Promise.all(batch.map(async (r) => {
       try {
         const pRow = personMap.get(r.person_id)
+        const lv   = pRow?.visits?.[0] ?? null
         const person: PersonForTemplate = {
           name: r.nama ?? pRow?.name, no_rm: pRow?.no_rm, no_hp: r.no_hp ?? pRow?.no_hp,
-          agama: pRow?.agama, jenis_pembayaran: pRow?.jenis_pembayaran,
-          nama_instansi: pRow?.nama_instansi, no_bpjs: pRow?.no_bpjs,
-          lastVisit: pRow?.visits?.[0] ?? null,
+          agama: pRow?.agama, no_bpjs: pRow?.no_bpjs,
+          jenis_pembayaran: lv?.jenis_pembayaran ?? null,
+          nama_instansi: lv?.nama_instansi ?? null,
+          lastVisit: lv,
         }
         const components = buildMetaComponents(template, person, templateParams)
         const msgId = await sendMetaTemplateMessage(
