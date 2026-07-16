@@ -31,6 +31,8 @@ const TOOL_LABEL: Record<string, (input: any) => string> = {
   cari_kode_icd:         (i) => `Mencari kode ICD: "${i?.query ?? ''}"`,
   cari_layanan:          (i) => `Mencari layanan: "${i?.query ?? ''}"`,
   cari_tag:              (i) => `Mencari tag: "${i?.query ?? ''}"`,
+  daftar_kegiatan:       (i) => i?.cari ? `Membuka daftar kegiatan: "${i.cari}"` : 'Membuka daftar kegiatan',
+  daftar_nilai_dimensi:  (i) => `Mengecek nilai tersedia: ${String(i?.dimensi ?? '').replace(/_/g, ' ')}`,
   preview_jumlah_pasien: () => 'Menghitung jumlah pasien yang cocok...',
 }
 
