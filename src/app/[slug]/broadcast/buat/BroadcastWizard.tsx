@@ -20,6 +20,7 @@ interface FormState {
   nama:            string
   jadwal_type:     'sekarang' | 'jadwal'
   jadwal_kirim:    string   // ISO string
+  kirim_dua_nomor: boolean
 }
 
 /* Ambil semua variabel statis (perlu diisi manual) dari sebuah template */
@@ -99,7 +100,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
   const [step, setStep]       = useState(0)
   const [form, setForm]       = useState<FormState>({
     segment_id: defaultSegmentId || '', channel: 'WA', template_id: '', template_params: {},
-    nama: '', jadwal_type: 'sekarang', jadwal_kirim: '',
+    nama: '', jadwal_type: 'sekarang', jadwal_kirim: '', kirim_dua_nomor: false,
   })
   const [segments, setSegments]   = useState<Segment[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
@@ -167,6 +168,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
         template_id:     form.template_id || null,
         template_params: form.template_params,
         jadwal_kirim:    form.jadwal_type === 'jadwal' ? form.jadwal_kirim : null,
+        kirim_dua_nomor: form.kirim_dua_nomor,
       }
       const res  = await fetch(`/api/${slug}/broadcast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json()
@@ -272,6 +274,20 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
             <FieldWrap label="Nama Campaign">
               <input value={form.nama} onChange={e => upd('nama', e.target.value)}
                 placeholder="Contoh: Reminder Kontrol Jantung - Juli 2026" style={inputStyle} />
+            </FieldWrap>
+
+            <FieldWrap label="Opsi Pengiriman">
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.kirim_dua_nomor}
+                  onChange={e => upd('kirim_dua_nomor', e.target.checked)}
+                  style={{ marginTop: 3, width: 16, height: 16, accentColor: 'var(--c-secondary)', cursor: 'pointer' }} />
+                <span>
+                  <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--c-text)' }}>Kirim juga ke nomor alternatif</span>
+                  <div style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 2 }}>
+                    Kalau pasien punya nomor HP kedua (mis. milik keluarga/wali), pesan ini juga dikirim ke nomor tersebut.
+                  </div>
+                </span>
+              </label>
             </FieldWrap>
 
             <FieldWrap label="Template Pesan" hint="Hanya template berstatus Approved yang bisa dipakai.">
@@ -390,6 +406,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
                 { label: 'Segmen',        val: selectedSegment ? `${selectedSegment.nama} (${selectedSegment._count.segment_persons.toLocaleString('id-ID')} pasien)` : '—' },
                 { label: 'Channel',       val: CHANNEL_OPT.find(c => c.val === form.channel)?.label ?? form.channel },
                 { label: 'Template',      val: selectedTemplate ? `${selectedTemplate.nama}` : '(belum dipilih)' },
+                { label: 'Nomor Alternatif', val: form.kirim_dua_nomor ? 'Ya, dikirim juga ke nomor kedua (kalau ada)' : 'Tidak, hanya nomor utama' },
                 { label: 'Jadwal',        val: form.jadwal_type === 'jadwal' ? new Date(form.jadwal_kirim).toLocaleString('id-ID') : 'Disimpan sebagai Draft' },
               ].map(row => (
                 <div key={row.label} style={{

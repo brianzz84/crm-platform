@@ -55,6 +55,7 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
       title: 'Manajemen',
       items: [
         { href: `${base}/kegiatan`, label: 'Kegiatan', icon: '📅', feature: 'manageKegiatan' },
+        { href: `${base}/pasien/duplikat`, label: 'Duplikat Pasien', icon: '🔗', feature: 'mergePatients' },
         { href: `${base}/tags`,     label: 'Tag',      icon: '🏷',  feature: 'manageTagRules' },
         { href: `${base}/sapaan`,   label: 'Sapaan',   icon: '🎉',  feature: 'manageSapaan' },
         { href: `${base}/library`,  label: 'Library',  icon: '📚',  feature: 'icdLibrary' },

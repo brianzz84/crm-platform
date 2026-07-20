@@ -34,17 +34,6 @@ export async function POST(
         kategori:       kategori        || 'pasien',
         tanggal_lahir:  tanggal_lahir   ? new Date(tanggal_lahir) : null,
         aktif: true,
-        ...(no_hp?.trim() ? {
-          contacts: {
-            create: {
-              tenant_slug: params.slug,
-              jenis:       'WA',
-              nilai:       no_hp.trim(),
-              is_primary:  true,
-              is_wa_aktif: true,
-            },
-          },
-        } : {}),
       },
     })
 
@@ -106,11 +95,6 @@ export async function GET(
             take: 1,
             select: { tanggal: true, poli: true, unit: true, diagnosa_nama: true },
           },
-          contacts: {
-            where: { is_primary: true },
-            select: { jenis: true, nilai: true, is_wa_aktif: true },
-            take: 1,
-          },
           _count: {
             select: { conversations: true, campaign_recipients: true },
           },
@@ -119,15 +103,9 @@ export async function GET(
       db.person.count({ where }),
     ])
 
-    // Normalisasi: sertakan no_hp dari primary contact sebagai fallback
-    const data = persons.map(p => ({
-      ...p,
-      no_hp: p.no_hp ?? p.contacts[0]?.nilai ?? null,
-    }))
-
     return NextResponse.json({
       success: true,
-      data,
+      data: persons,
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     })
   } catch (err) {

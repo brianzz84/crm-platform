@@ -4,6 +4,7 @@ import { getTenantDb } from '@/lib/tenant'
 import { sendMetaTemplateMessage } from '@/lib/meta-client'
 import { recomputeCampaignCounters } from '@/lib/campaign'
 import { resolveTemplateField, type PersonForTemplate } from '@/lib/template-fields'
+import { BUKAN_PERSON_UJI } from '@/lib/test-data-guard'
 import { BROADCAST_BATCH_SIZE, BROADCAST_DELAY_MS } from '@/constants'
 
 type Ctx = { params: { slug: string; id: string } }
@@ -45,41 +46,38 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       data:  { status: 'RUNNING', started_at: new Date() },
     })
 
-    // Ambil semua anggota segmen yang belum dijadikan recipient
+    // Ambil semua anggota segmen
     const segmentPersons = await db.segmentPerson.findMany({
-      where:   { segment_id: campaign.segment_id! },
-      include: { segment: false },
+      where:  { segment_id: campaign.segment_id! },
+      select: { person_id: true },
     })
+    const personIds = segmentPersons.map(sp => sp.person_id)
 
-    // Buat CampaignRecipient rows (bulk, skip duplikat)
-    const existingIds = new Set(
-      (await db.campaignRecipient.findMany({
-        where:  { campaign_id: params.id },
-        select: { person_id: true },
-      })).map(r => r.person_id)
-    )
-
-    const personIds = segmentPersons.map(sp => sp.person_id).filter(id => !existingIds.has(id))
+    // Buat CampaignRecipient rows (bulk, skip duplikat via unique constraint
+    // campaign_id+person_id+no_hp — aman dipanggil ulang untuk mode kirim ulang)
     if (personIds.length > 0) {
+      // BUKAN_PERSON_UJI: pasien dummy tidak pernah jadi penerima kiriman nyata,
+      // walaupun ikut tersaring masuk segmen. Lihat src/lib/test-data-guard.ts.
       const persons = await db.person.findMany({
-        where:  { id: { in: personIds } },
-        select: {
-          id: true, no_hp: true, name: true,
-          contacts: { where: { is_primary: true, is_wa_aktif: true }, take: 1 },
-        },
+        where:  { id: { in: personIds }, AND: [BUKAN_PERSON_UJI] },
+        select: { id: true, no_hp: true, no_hp_2: true, name: true },
       })
-      await db.campaignRecipient.createMany({
-        data: persons
-          .map(p => ({
-            campaign_id: params.id,
-            person_id:   p.id,
-            no_hp:       p.no_hp ?? p.contacts[0]?.nilai ?? '',
-            nama:        p.name,
-            status:      'PENDING' as const,
-          }))
-          .filter(r => r.no_hp),  // skip person tanpa nomor WA
-        skipDuplicates: true,
+      const dilewati = personIds.length - persons.length
+      if (dilewati > 0) console.warn(`[broadcast/send] ${dilewati} person data uji dilewati (tidak dikirimi)`)
+
+      const rows = persons.flatMap(p => {
+        const r: { campaign_id: string; person_id: string; no_hp: string; nomor_ke: string; nama: string; status: 'PENDING' }[] = []
+        if (p.no_hp) {
+          r.push({ campaign_id: params.id, person_id: p.id, no_hp: p.no_hp, nomor_ke: 'utama', nama: p.name, status: 'PENDING' })
+        }
+        // Kirim juga ke nomor alternatif kalau toggle campaign diaktifkan dan nomornya beda
+        if (campaign.kirim_dua_nomor && p.no_hp_2 && p.no_hp_2 !== p.no_hp) {
+          r.push({ campaign_id: params.id, person_id: p.id, no_hp: p.no_hp_2, nomor_ke: 'alternatif', nama: p.name, status: 'PENDING' })
+        }
+        return r
       })
+
+      await db.campaignRecipient.createMany({ data: rows, skipDuplicates: true })
     }
 
     // Update total_penerima

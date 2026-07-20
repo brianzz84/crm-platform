@@ -28,7 +28,6 @@ interface PesertaRow {
     name: string
     no_hp: string | null
     kegiatanCount: number
-    contactNilai: string | null
   }
 }
 
@@ -117,7 +116,7 @@ export default function KegiatanDetailClient({ slug, kegiatan: k, peserta, page,
   const pesertaCards = (
     <div className="kg-peserta-cards" style={{ flexDirection: 'column', gap: 1 }}>
       {peserta.map((row) => {
-        const noHp = row.person.contactNilai || row.person.no_hp || '—'
+        const noHp = row.person.no_hp || '—'
         const initials = row.person.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
         return (
           <div key={row.id} style={{ padding: '12px var(--sp-4)', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -174,7 +173,7 @@ export default function KegiatanDetailClient({ slug, kegiatan: k, peserta, page,
       </thead>
       <tbody>
         {peserta.map((row, i) => {
-          const noHp = row.person.contactNilai || row.person.no_hp || '—'
+          const noHp = row.person.no_hp || '—'
           return (
             <tr key={row.id} style={{ borderBottom: i < peserta.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
               <td style={{ padding: '13px 16px' }}>

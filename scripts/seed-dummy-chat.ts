@@ -71,21 +71,31 @@ async function main() {
   await pg.connect()
   console.log('✓ PostgreSQL terhubung')
 
-  // Ambil beberapa person yang sudah ada
+  // HANYA person dummy. Versi lama skrip ini memakai `no_hp IS NOT NULL LIMIT 10`,
+  // yang menempelkan percakapan karangan ke rekam PASIEN SUNGGUHAN (Anita,
+  // Alexandra, Anni, Bertha di production kena akibatnya). Jangan diulang.
   const { rows: persons } = await pg.query(
-    `SELECT id, name, no_hp FROM crm_persons WHERE tenant_slug=$1 AND no_hp IS NOT NULL LIMIT 10`,
+    `SELECT id, name, no_hp FROM crm_persons
+      WHERE tenant_slug=$1 AND simrs_patient_id LIKE 'DUMMY-%' AND no_hp IS NOT NULL
+      ORDER BY simrs_patient_id LIMIT 10`,
     [TENANT_SLUG]
   )
+  if (persons.length < DUMMY_CONVS.length) {
+    throw new Error(
+      `Butuh ${DUMMY_CONVS.length} person dummy ber-no_hp, hanya ada ${persons.length}. ` +
+      `Jalankan scripts/backfill-hp-dummy.ts dulu. Batal — tidak menempel ke pasien asli.`
+    )
+  }
 
   let convCount = 0, msgCount = 0
 
   for (let i = 0; i < DUMMY_CONVS.length; i++) {
     const d = DUMMY_CONVS[i]
-    // Pakai person dari DB kalau ada, fallback ke dummy
-    const person = persons[i] || null
-    const personId = person?.id || null
-    const namaDisplay = person?.name || d.nama
-    const noHp = person?.no_hp || d.no_hp
+    // Selalu person dummy — tanpa fallback ke nomor hardcode di DUMMY_CONVS,
+    // karena nomor-nomor itu berformat nyata dan bisa saja milik orang lain.
+    const person = persons[i]
+    const personId = person.id
+    const noHp = person.no_hp
 
     const convId = randomUUID()
     const lastMsg = d.messages[d.messages.length - 1]

@@ -44,9 +44,6 @@ export default async function PasienDetailPage({ params }: Props) {
         include: { tag: true },
         orderBy: { assigned_at: 'desc' },
       },
-      contacts: {
-        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-      },
       visits: {
         where: { aktif: true },
         orderBy: { tanggal: 'desc' },
@@ -150,11 +147,13 @@ export default async function PasienDetailPage({ params }: Props) {
                 🎂 {fmtDateLong(person.tanggal_lahir.toISOString())}
               </span>
             )}
-            {person.contacts.filter(c => !c.is_primary).map(c => (
-              <span key={c.id} style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>
-                📱 {c.nilai} <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>(alt)</span>
+            {person.no_hp_2 && (
+              <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>
+                📱 {person.no_hp_2} <span style={{ fontSize: 10, color: 'var(--c-text-faint)' }}>
+                  ({person.no_hp_2_label || 'alt'})
+                </span>
               </span>
-            ))}
+            )}
           </div>
 
           {/* Tags */}

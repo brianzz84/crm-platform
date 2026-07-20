@@ -138,13 +138,40 @@ model PushSubscription {
 model Person {
   id                 String    @id @default(uuid())
   tenant_slug        String
-  no_hp              String?             // cache dari kontak primary — untuk backward compat
+  // SUMBER KEBENARAN TUNGGAL untuk nomor kontak — melekat di Person, bukan tabel
+  // terpisah. Semua sumber input (SIMRS sync, import Excel, simpan kontak dari
+  // chat) WAJIB menulis ke sini. Alasan keputusan ini didokumentasikan di commit
+  // yang menambahkan field ini — singkatnya: tabel terpisah (PersonContact lama)
+  // sudah terbukti punya 1.745 baris yatim di production karena tidak konsisten
+  // ditulis oleh semua sumber; melekat di Person struktural mencegah itu.
+  no_hp              String?             // nomor utama
+  no_hp_2            String?             // nomor alternatif (mis. milik keluarga/anak)
+  no_hp_2_label      String?             // keterangan no_hp_2, mis. "HP Anak", "HP Istri"
   name               String
   email              String?
   tanggal_lahir      DateTime?
-  no_rm              String?             // nomor rekam medis dari SIMRS
+  // KUNCI IDENTITAS dari SIMRS, sekaligus satu-satunya penghubung antara API data
+  // pasien dan API data kunjungan. Dijamin unik per tenant (lihat @@unique di bawah).
+  // CATATAN PENTING: no_rm unik per BARIS, tapi BUKAN identitas permanen seorang
+  // manusia — RKZ selalu menerbitkan RM baru, dan satu orang bisa terlanjur punya
+  // beberapa RM (mis. kasir keliru membuat RM baru untuk pasien lama). Penyatuannya
+  // ditangani lewat penggabungan manual: lihat digabung_ke_person_id.
+  no_rm              String?
   simrs_patient_id   String?
   last_simrs_sync_at DateTime?
+  // Baris "rintisan": dibuat saat kunjungan SIMRS tiba lebih dulu daripada data
+  // pasiennya (dua API, dua jadwal). Isinya baru no_rm; dilengkapi saat data pasien
+  // menyusul. Dikecualikan dari pengiriman pesan — lihat src/lib/test-data-guard.ts.
+  is_rintisan        Boolean   @default(false)
+  // ── Penggabungan orang ganda (baris nisan) ──
+  // Baris yang kalah TIDAK dihapus: ia tetap memegang no_rm lamanya dan menunjuk ke
+  // baris yang bertahan. Ini penting karena SIMRS tidak memberi tahu kita saat terjadi
+  // penggabungan dan akan terus mengirim kunjungan memakai RM lama — kunjungan itu
+  // tetap ketemu barisnya, lalu diarahkan ke penyintas lewat penunjuk ini.
+  digabung_ke_person_id String?
+  digabung_at           DateTime?
+  digabung_oleh         String?          // AppUser.id petugas yang menggabungkan
+  digabung_alasan       String?
   akar_id            String?             // ID dari sistem AKAR lama
   // Field identitas tambahan
   nik                String?             // NIK KTP, kunci identitas utama
@@ -170,20 +197,75 @@ model Person {
   visits                   SimrsVisit[]
   conversations            Conversation[]
   campaign_recipients      CampaignRecipient[]
-  contacts                 PersonContact[]
   kegiatan_diikuti         KegiatanPeserta[]
   kontak_langsung          KontakLangsung[]
   loyalty_transactions     LoyaltyTransaction[]
   sapaan_logs              SapaanLog[]
 
+  // Relasi mandiri untuk baris nisan — pakai FK sungguhan supaya penunjuk gabungan
+  // tidak bisa menggantung ke baris yang tidak ada (pelajaran dari baris yatim
+  // PersonContact: tanpa FK, ketidakkonsistenan menumpuk diam-diam).
+  digabung_ke        Person?  @relation("PenggabunganPerson", fields: [digabung_ke_person_id], references: [id], onDelete: Restrict)
+  digabungkan_dari   Person[] @relation("PenggabunganPerson")
+
+  @@unique([tenant_slug, no_rm])
   @@index([tenant_slug])
   @@index([tenant_slug, no_hp])
+  @@index([tenant_slug, no_hp_2])
   @@index([no_rm])
+  @@index([digabung_ke_person_id])
   @@index([nik])
   @@index([akar_kode])
   @@index([sumber])
   @@index([is_pasien_simrs])
   @@map("crm_persons")
+}
+
+/// Catatan audit penggabungan dua Person yang ternyata orang yang sama.
+///
+/// Penggabungan dilakukan MANUAL oleh petugas di sistem ini saja — SIMRS tidak
+/// mengirim pemberitahuan penggabungan, dan sistem ini tidak menulis balik ke SIMRS.
+/// Karena itu penggabungan di sini murni lapisan pemasaran, dan harus bisa dibatalkan.
+///
+/// `dipindahkan` menyimpan cuplikan APA SAJA yang berpindah (id kunjungan, percakapan,
+/// dsb.) — tanpa itu pembatalan tidak mungkin dilakukan dengan benar, karena sebagian
+/// baris bisa jadi memang sudah milik penyintas sejak awal.
+model PersonMergeLog {
+  id                String    @id @default(uuid())
+  tenant_slug       String
+  person_sumber_id  String    // baris yang dilebur (jadi baris nisan)
+  person_tujuan_id  String    // baris yang bertahan
+  alasan            String
+  dipindahkan       Json      @default("{}")
+  dilakukan_oleh    String    // AppUser.id
+  dilakukan_at      DateTime  @default(now())
+  dibatalkan_at     DateTime?
+  dibatalkan_oleh   String?
+
+  @@index([tenant_slug])
+  @@index([person_tujuan_id])
+  @@index([person_sumber_id])
+  @@map("crm_person_merge_logs")
+}
+
+/// Pasangan Person yang sudah dinilai petugas BUKAN orang yang sama.
+///
+/// Tanpa ini antrean tinjauan tidak pernah menyusut — pasangan yang sengaja
+/// dibiarkan (mis. ibu dan anak yang berbagi satu nomor HP) akan muncul lagi tiap
+/// deteksi dijalankan. Pasangan disimpan terurut (id terkecil sebagai person_a)
+/// supaya (A,B) dan (B,A) tidak tercatat dua kali.
+model PersonDuplikatDiabaikan {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  person_a_id String
+  person_b_id String
+  alasan      String?
+  oleh        String   // AppUser.id
+  created_at  DateTime @default(now())
+
+  @@unique([tenant_slug, person_a_id, person_b_id], map: "crm_person_duplikat_diabaikan_pasangan_key")
+  @@index([tenant_slug])
+  @@map("crm_person_duplikat_diabaikan")
 }
 
 model Tag {
@@ -254,12 +336,17 @@ model SimrsVisit {
   nama_instansi    String?   // nama penjamin kunjungan ini
   kode_instansi    String?   // kode master instansi dari SIMRS
   simrs_visit_id   String?   // ID asli dari SIMRS (untuk dedup delta sync)
+  // No. RM MENTAH seperti dikirim SIMRS, disimpan apa adanya di sebelah person_id
+  // hasil resolusi. Tanpa ini, kalau resolusi keliru atau orangnya digabung, tidak
+  // ada jalan menelusuri balik atau menautkan ulang kunjungan ini.
+  no_rm_sumber     String?
   aktif            Boolean   @default(true)   // TIDAK PERNAH DELETE
 
   person Person @relation(fields: [person_id], references: [id])
 
   @@unique([person_id, simrs_visit_id])
   @@index([person_id])
+  @@index([no_rm_sumber])
   @@index([tanggal])
   @@index([diagnosa_icd])
   @@map("crm_simrs_visits")
@@ -463,6 +550,7 @@ model Campaign {
   // Params untuk template: { "1": "nama", "2": "tanggal" } (V1) atau diganti dari components
   template_params Json           @default("{}")
   segment_id      String?
+  kirim_dua_nomor Boolean        @default(false) // kirim ke no_hp DAN no_hp_2 (kalau ada), bukan cuma no_hp
   jadwal_kirim    DateTime?
   started_at      DateTime?
   finished_at     DateTime?
@@ -494,6 +582,7 @@ model CampaignRecipient {
   campaign_id       String
   person_id         String
   no_hp             String        // snapshot saat campaign dibuat (immutable)
+  nomor_ke          String        @default("utama") // "utama" | "alternatif" — nomor mana yang dipakai
   nama              String        // snapshot nama pasien
   status            MessageStatus @default(PENDING)
   wappin_message_id String?       @unique   // dari response Wappin → kunci korelasi webhook
@@ -507,7 +596,10 @@ model CampaignRecipient {
   campaign Campaign @relation(fields: [campaign_id], references: [id])
   person   Person   @relation(fields: [person_id], references: [id])
 
-  @@unique([campaign_id, person_id])
+  // Diubah dari [campaign_id, person_id]: admin bisa pilih kirim ke DUA nomor
+  // (utama & alternatif) untuk satu campaign — jadi satu person bisa punya 2
+  // baris recipient dalam campaign yang sama, dibedakan oleh no_hp.
+  @@unique([campaign_id, person_id, no_hp])
   @@index([campaign_id])
   @@index([wappin_message_id])
   @@index([no_hp])
@@ -601,23 +693,23 @@ model SapaanLog {
 // Nomor HP, WA, email, telepon per-person
 // ─────────────────────────────────────────────
 
-model PersonContact {
-  id          String       @id @default(uuid())
+// ARSIP — DIGANTIKAN Person.no_hp/no_hp_2. Tidak dipakai kode aktif mana pun,
+// tidak ada relasi Prisma ke Person lagi (person_id jadi plain string, bukan FK
+// hidup). Dipertahankan (bukan DROP) untuk audit: tabel ini sempat punya 1.745
+// baris yatim di production karena inkonsisten ditulis — lihat riwayat migrasi
+// 20260717000001_person_kontak_langsung untuk detail temuan & alasan keputusan.
+model PersonContactArsip {
+  id          String   @id
   person_id   String
   tenant_slug String
-  jenis       ContactJenis // HP | WA | EMAIL | TELEPON_RUMAH
-  nilai       String       // nomor atau alamat email
-  label       String?      // "HP Pribadi" | "HP Anak" | dll
-  is_primary  Boolean      @default(false)
-  is_wa_aktif Boolean      @default(false) // apakah nomor ini aktif untuk WA broadcast/sapaan
-  created_at  DateTime     @default(now())
+  jenis       String
+  nilai       String
+  label       String?
+  is_primary  Boolean
+  is_wa_aktif Boolean
+  created_at  DateTime
 
-  person Person @relation(fields: [person_id], references: [id])
-
-  @@unique([person_id, nilai])
-  @@index([tenant_slug, nilai])
-  @@index([person_id])
-  @@map("crm_person_contacts")
+  @@map("crm_person_contacts_deprecated")
 }
 
 // ─────────────────────────────────────────────
@@ -931,13 +1023,6 @@ enum ImportStatus {
   PROCESSING
   DONE
   FAILED
-}
-
-enum ContactJenis {
-  HP
-  WA
-  EMAIL
-  TELEPON_RUMAH
 }
 
 enum PersonSumber {

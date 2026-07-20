@@ -188,35 +188,33 @@ export async function processImport(
       const nama  = normalizeName(row.nama)
       const email = normalizeEmail(row.email)
 
-      // ── Cari person existing via hierarki: nik → no_rm → no_hp via PersonContact ──
-      let existing: { id: string; email: string | null; tanggal_lahir: Date | null; no_rm: string | null } | null = null
+      // ── Cari person existing via hierarki: nik → no_rm → no_hp/no_hp_2 di Person langsung ──
+      let existing: { id: string; email: string | null; tanggal_lahir: Date | null; no_rm: string | null; no_hp: string | null; no_hp_2: string | null } | null = null
 
       // 1. Cek by nik (belum ada di Excel row — placeholder untuk masa depan)
       // 2. Cek by no_rm jika ada
       if (row.no_rm) {
         existing = await db.person.findFirst({
           where: { tenant_slug: tenantSlug, no_rm: row.no_rm },
-          select: { id: true, email: true, tanggal_lahir: true, no_rm: true },
+          select: { id: true, email: true, tanggal_lahir: true, no_rm: true, no_hp: true, no_hp_2: true },
         })
       }
 
-      // 3. Fallback: cari by no_hp via PersonContact
+      // 3. Fallback: cari by no_hp atau no_hp_2 langsung di Person (sumber kebenaran tunggal kontak)
       if (!existing) {
-        const contact = await db.personContact.findFirst({
-          where: { tenant_slug: tenantSlug, nilai: noHp },
-          select: { person_id: true },
+        existing = await db.person.findFirst({
+          where: { tenant_slug: tenantSlug, OR: [{ no_hp: noHp }, { no_hp_2: noHp }] },
+          select: { id: true, email: true, tanggal_lahir: true, no_rm: true, no_hp: true, no_hp_2: true },
         })
-        if (contact) {
-          existing = await db.person.findUnique({
-            where: { id: contact.person_id },
-            select: { id: true, email: true, tanggal_lahir: true, no_rm: true },
-          })
-        }
       }
 
       let personId: string
 
       if (existing) {
+        // Kalau nomor ini sudah tersimpan sebagai no_hp_2 (bukan no_hp utama), jangan
+        // dipromosikan jadi utama secara diam-diam — biarkan slotnya seperti semula.
+        const matchedViaAltOnly = existing.no_hp !== noHp && existing.no_hp_2 === noHp
+
         await db.person.update({
           where: { id: existing.id },
           data: {
@@ -224,7 +222,7 @@ export async function processImport(
             email:         email ?? existing.email,
             tanggal_lahir: parseDate(row.tanggal_lahir) ?? existing.tanggal_lahir,
             no_rm:         row.no_rm || existing.no_rm,
-            no_hp:         noHp,  // update cache
+            no_hp:         matchedViaAltOnly ? undefined : noHp,  // update cache
             updated_at:    new Date(),
           },
         })
@@ -253,23 +251,6 @@ export async function processImport(
           await insertVisit(db, personId, row, rowNum, result)
         }
       }
-
-      // ── Upsert PersonContact untuk no_hp ini ──
-      await db.personContact.upsert({
-        where: { person_id_nilai: { person_id: personId, nilai: noHp } },
-        create: {
-          person_id:   personId,
-          tenant_slug: tenantSlug,
-          jenis:       'WA',
-          nilai:       noHp,
-          is_primary:  true,
-          is_wa_aktif: true,
-        },
-        update: {
-          is_primary:  true,
-          is_wa_aktif: true,
-        },
-      })
 
       result.processedRows++
 

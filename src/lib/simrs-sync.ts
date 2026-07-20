@@ -15,6 +15,7 @@
 
 import { masterDb, getTenantDb } from '@/lib/tenant'
 import { getKunjunganByTanggal, type SimrsClientConfig } from '@/lib/simrs-client'
+import { cariPersonByRm } from '@/lib/person-identity'
 import { randomUUID } from 'crypto'
 
 export interface SyncResult {
@@ -85,49 +86,43 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
     const kunjungans = await getKunjunganByTanggal(simrsCfg, tanggal)
 
     for (const k of kunjungans) {
-      // 1. Upsert Person by no_rm
-      const existingPerson = await db.person.findFirst({
-        where: { tenant_slug: tenantSlug, no_rm: k.no_rm },
-        select: { id: true },
-      })
+      // 1. Cari Person lewat no_rm. cariPersonByRm() mengikuti rantai penggabungan,
+      //    jadi kalau RM ini pernah dilebur ke orang lain, datanya mendarat di baris
+      //    yang BERTAHAN — bukan menghidupkan lagi baris nisan. Ini penting karena
+      //    SIMRS tidak tahu soal penggabungan kita dan akan terus memakai RM lama.
+      const existingPerson = await cariPersonByRm(db as any, tenantSlug, k.no_rm)
 
       let personId: string
 
+      // Nomor HP alternatif dari SIMRS hanya ditulis ke no_hp_2 kalau beda dari no_hp utama
+      const noHpAlt = (k.no_hp_alternatif && k.no_hp_alternatif !== k.no_hp) ? k.no_hp_alternatif : null
+
       if (existingPerson) {
-        // Update data demografi jika ada yang baru
+        // Update data demografi jika ada yang baru.
+        // no_rm SENGAJA tidak ikut ditulis: kalau kita sampai di sini lewat rantai
+        // penggabungan, RM penyintas berbeda dari k.no_rm dan tidak boleh tertimpa.
         await db.person.update({
           where: { id: existingPerson.id },
           data: {
+            // Baris rintisan (dibuat saat kunjungan tiba duluan) kini terisi data asli
+            is_rintisan:      false,
             name:             k.nama_pasien,
             tanggal_lahir:    k.tanggal_lahir ? new Date(k.tanggal_lahir) : undefined,
             jenis_kelamin:    k.jenis_kelamin ?? undefined,
             agama:            k.agama ?? undefined,
             is_pasien_simrs:  true,
             sumber:           'SIMRS',
+            // Kontak: satu-satunya sumber kebenaran adalah kolom Person.no_hp/no_hp_2.
+            // Hanya ditulis kalau SIMRS mengirim nilai — kalau kosong, jangan timpa
+            // nomor yang sudah tersimpan (mis. hasil save contact dari chat).
+            no_hp:            k.no_hp || undefined,
+            no_hp_2:          noHpAlt || undefined,
             // Penjamin TIDAK ditulis ke person — itu atribut kunjungan (lihat di bawah,
             // saat upsert SimrsVisit). Menulisnya ke sini berarti menimpa dengan penjamin
             // kunjungan terakhir yang diproses = arbitrer & menyesatkan.
           },
         })
         personId = existingPerson.id
-
-        // Upsert no_hp_alternatif untuk person yang sudah ada
-        if (k.no_hp_alternatif && k.no_hp_alternatif !== k.no_hp) {
-          const altExists = await db.personContact.findFirst({
-            where: { person_id: personId, nilai: k.no_hp_alternatif },
-          })
-          if (!altExists) {
-            await db.personContact.create({
-              data: {
-                id:         randomUUID(),
-                person_id:  personId,
-                jenis:      'WA',
-                nilai:      k.no_hp_alternatif,
-                is_primary: false,
-              },
-            }).catch(() => {})
-          }
-        }
       } else {
         // Buat person baru dari data SIMRS
         const newPerson = await db.person.create({
@@ -136,6 +131,8 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             tenant_slug:      tenantSlug,
             no_rm:            k.no_rm,
             name:             k.nama_pasien,
+            no_hp:            k.no_hp || null,
+            no_hp_2:          noHpAlt,
             tanggal_lahir:    k.tanggal_lahir ? new Date(k.tanggal_lahir) : null,
             jenis_kelamin:    k.jenis_kelamin ?? null,
             agama:            k.agama ?? null,
@@ -146,49 +143,30 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
           },
         })
         personId = newPerson.id
-
-        // Simpan nomor HP primer
-        if (k.no_hp) {
-          await db.personContact.create({
-            data: {
-              id:         randomUUID(),
-              person_id:  personId,
-              jenis:      'WA',
-              nilai:      k.no_hp,
-              is_primary: true,
-            },
-          }).catch(() => {})
-        }
-
-        // Simpan nomor HP alternatif
-        if (k.no_hp_alternatif && k.no_hp_alternatif !== k.no_hp) {
-          await db.personContact.create({
-            data: {
-              id:         randomUUID(),
-              person_id:  personId,
-              jenis:      'WA',
-              nilai:      k.no_hp_alternatif,
-              is_primary: false,
-            },
-          }).catch(() => {})
-        }
-
         jumlah_baru++
       }
 
-      // 2. Upsert SimrsVisit by simrs_visit_id
+      // 2. Upsert SimrsVisit by simrs_visit_id — unique key sebenarnya gabungan
+      //    [person_id, simrs_visit_id] (simrs_visit_id sendirian bukan @unique di
+      //    schema), findUnique dengan where datar sebelumnya selalu gagal di runtime.
       if (k.kunjungan_id) {
         const existing = await db.simrsVisit.findUnique({
-          where: { simrs_visit_id: k.kunjungan_id },
+          where: { person_id_simrs_visit_id: { person_id: personId, simrs_visit_id: k.kunjungan_id } },
           select: { id: true },
         })
 
+        // Catatan: SimrsVisit TIDAK punya kolom tenant_slug — tenant-nya ikut lewat
+        // relasi ke Person. Mengirimkannya bikin Prisma melempar 'Unknown argument'
+        // saat runtime (tidak tertangkap tsc karena objek ini dipakai lewat spread).
         const visitData = {
           person_id:        personId,
-          tenant_slug:      tenantSlug,
+          // RM mentah dari SIMRS, disimpan di sebelah person_id hasil resolusi. Kalau
+          // orangnya belakangan digabung (atau resolusinya keliru), inilah satu-satunya
+          // jejak untuk menautkan ulang kunjungan ini.
+          no_rm_sumber:     k.no_rm,
           tanggal:          new Date(k.tanggal),
           poli:             k.poli ?? null,
-          unit:             k.unit ?? null,
+          unit:             k.unit || 'Rawat Jalan',  // unit wajib diisi (non-null di skema)
           dokter:           k.dokter ?? null,
           diagnosa_icd:     k.diagnosa_icd ?? null,
           diagnosa_nama:    k.diagnosa_nama ?? null,

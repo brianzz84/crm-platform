@@ -141,6 +141,9 @@ export const ROLE_CAN = {
   configSystem:       ['SUPER_ADMIN', 'ADMIN_IT'],
   icdLibrary:         ['SUPER_ADMIN', 'ADMIN_IT'],
   viewPatients:       ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
+  // Menggabungkan dua data pasien yang ternyata orang yang sama. Hanya berlaku di
+  // sistem pemasaran ini — tidak pernah menulis balik ke SIMRS.
+  mergePatients:      ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   importExcel:        ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   manageTagRules:     ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   manageSegments:     ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],

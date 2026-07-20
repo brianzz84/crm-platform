@@ -2,6 +2,7 @@
  * Shared handler untuk pesan masuk ke inbox — dipakai oleh webhook Wappin & Meta.
  */
 import { sendPushToTenant } from './push'
+import { cariPersonByNomor } from './person-identity'
 
 interface IncomingMessage {
   senderNumber: string
@@ -19,9 +20,11 @@ export async function handleIncomingMessage(
 ) {
   const { senderNumber, content, externalId, timestamp, mediaUrl, mediaType } = msg
 
-  const person = await db.person.findFirst({
-    where: { tenant_slug: slug, no_hp: senderNumber },
-  })
+  // Pengirim bisa jadi kontak alternatif (mis. orang tua/wali pasien), dan nomornya
+  // bisa menempel di baris yang sudah digabungkan ke orang lain. cariPersonByNomor()
+  // menangani keduanya: cocokkan ke no_hp ATAU no_hp_2, lalu ikuti rantai penggabungan
+  // sampai baris yang bertahan.
+  const person = await cariPersonByNomor(db, slug, senderNumber)
 
   let conversation = await db.conversation.findUnique({
     where: {

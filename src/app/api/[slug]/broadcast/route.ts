@@ -11,6 +11,7 @@ const CreateSchema = z.object({
   template_params: z.record(z.string(), z.string()).default({}),
   segment_id:      z.string().uuid(),
   jadwal_kirim:    z.string().datetime().optional().nullable(),
+  kirim_dua_nomor: z.boolean().default(false),
 })
 
 export async function GET(req: NextRequest, { params }: { params: { slug: string } }) {
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
         template_params: parsed.data.template_params as any,
         segment_id:      parsed.data.segment_id,
         jadwal_kirim:    parsed.data.jadwal_kirim ? new Date(parsed.data.jadwal_kirim) : null,
+        kirim_dua_nomor: parsed.data.kirim_dua_nomor,
         total_penerima:  totalPenerima,
         status:          parsed.data.jadwal_kirim ? 'SCHEDULED' : 'DRAFT',
         created_by:      session!.userId,

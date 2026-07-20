@@ -94,24 +94,14 @@ export interface TenantConfig {
 // PERSON (unified AKAR customer + SIMRS patient)
 // ─────────────────────────────────────────────
 
-export type ContactJenis = 'HP' | 'WA' | 'EMAIL' | 'TELEPON_RUMAH'
-
-export interface PersonContact {
-  id:         string
-  personId:   PersonId
-  tenantSlug: TenantSlug
-  jenis:      ContactJenis
-  nilai:      string       // nomor atau alamat email
-  label:      string | null
-  isPrimary:  boolean
-  isWaAktif:  boolean
-  createdAt:  Date
-}
-
 export interface Person {
   id:              PersonId
   tenantSlug:      TenantSlug
-  noHp:            string | null  // cache dari kontak primary — untuk backward compat
+  // Sumber kebenaran tunggal untuk kontak — melekat di Person, bukan tabel
+  // terpisah (PersonContact lama sudah diarsipkan, lihat catatan di schema.prisma).
+  noHp:            string | null  // nomor utama
+  noHp2:           string | null  // nomor alternatif
+  noHp2Label:      string | null  // mis. "HP Anak", "HP Istri"
   name:            string
   email:           string | null
   tanggalLahir:    Date | null
@@ -137,7 +127,6 @@ export interface Person {
   // relations (optional — dari include)
   tags?:           PersonTag[]
   visits?:         SimrsVisit[]
-  contacts?:       PersonContact[]
 }
 
 export interface PersonTag {

@@ -14,21 +14,18 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const db = await getTenantDb(params.slug)
 
-  // Cari via PersonContact
-  const contact = await db.personContact.findFirst({
-    where: { tenant_slug: params.slug, nilai: { contains: noHp } },
+  // Cari via Person.no_hp atau no_hp_2 langsung (sumber kebenaran tunggal kontak)
+  const p = await db.person.findFirst({
+    where: {
+      tenant_slug: params.slug,
+      OR: [{ no_hp: { contains: noHp } }, { no_hp_2: { contains: noHp } }],
+    },
     include: {
-      person: {
-        include: {
-          _count: { select: { kegiatan_diikuti: true } },
-        },
-      },
+      _count: { select: { kegiatan_diikuti: true } },
     },
   })
 
-  if (!contact?.person) return NextResponse.json({ found: false })
-
-  const p = contact.person
+  if (!p) return NextResponse.json({ found: false })
 
   // Cek apakah sudah terdaftar di kegiatan ini
   const sudahDaftar = await db.kegiatanPeserta.findFirst({
@@ -41,7 +38,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     person: {
       id:              p.id,
       name:            p.name,
-      no_hp:           contact.nilai,
+      no_hp:           p.no_hp?.includes(noHp) ? p.no_hp : p.no_hp_2,
       total_kegiatan:  p._count.kegiatan_diikuti,
     },
   })

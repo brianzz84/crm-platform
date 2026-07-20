@@ -36,8 +36,7 @@ export default async function DetailKegiatanPage({
     include: {
       person: {
         include: {
-          contacts: { where: { is_primary: true }, take: 1 },
-          _count:   { select: { kegiatan_diikuti: true } },
+          _count: { select: { kegiatan_diikuti: true } },
         },
       },
     },
@@ -72,7 +71,6 @@ export default async function DetailKegiatanPage({
           name:          row.person.name,
           no_hp:         row.person.no_hp,
           kegiatanCount: row.person._count.kegiatan_diikuti,
-          contactNilai:  row.person.contacts[0]?.nilai ?? null,
         },
       }))}
       page={page}

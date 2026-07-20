@@ -11,6 +11,7 @@ import { Job } from 'bullmq'
 import { QUEUE_SAPAAN } from '@/lib/queue'
 import { getTenantDb, masterDb } from '@/lib/tenant'
 import { getWappinToken, sendWaMessage } from '@/lib/wappin-client'
+import { BUKAN_PERSON_UJI } from '@/lib/test-data-guard'
 
 const DRY_RUN = process.env.SAPAAN_DRY_RUN === 'true'
 
@@ -99,35 +100,34 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
         tenant_slug:   tenantSlug,
         aktif:         true,
         tanggal_lahir: { not: null },
-      },
-      include: {
-        contacts: { where: { is_wa_aktif: true, is_primary: true } },
+        // Pasien dummy punya tanggal lahir juga — tanpa ini cron ultah akan
+        // mengirimi mereka. Lihat src/lib/test-data-guard.ts.
+        AND: [BUKAN_PERSON_UJI],
       },
     })
     targets = persons
       .filter(p => {
         if (!p.tanggal_lahir) return false
-        if (p.contacts.length === 0) return false
+        if (!p.no_hp) return false
         const d  = new Date(p.tanggal_lahir)
         const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         return md === todayMd
       })
-      .map(p => ({ id: p.id, name: p.name, no_hp: p.contacts[0].nilai }))
+      .map(p => ({ id: p.id, name: p.name, no_hp: p.no_hp! }))
 
     job.log(`[ULTAH] Ditemukan ${targets.length} pasien berulang tahun hari ini`)
 
   } else if (type === 'HARI_RAYA') {
     // Semua pasien aktif yang punya kontak WA aktif
     const persons = await db.person.findMany({
-      where:   { tenant_slug: tenantSlug, aktif: true },
-      include: { contacts: { where: { is_wa_aktif: true, is_primary: true } } },
+      where: { tenant_slug: tenantSlug, aktif: true, AND: [BUKAN_PERSON_UJI] },
     })
     targets = persons
-      .filter(p => p.contacts.length > 0)
+      .filter(p => !!p.no_hp)
       .map(p => ({
         id:    p.id,
         name:  p.name,
-        no_hp: p.contacts[0].nilai,
+        no_hp: p.no_hp!,
         meta:  { hari_raya: hariRaya || 'Hari Raya' },
       }))
     job.log(`[HARI_RAYA] Kirim ke ${targets.length} pasien`)
