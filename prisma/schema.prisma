@@ -396,6 +396,60 @@ model SimrsDiagnostikLog {
   @@map("crm_simrs_diagnostik_logs")
 }
 
+/// Anotasi Admin IT per field kontrak SIMRS (menu Pengaturan > Integrasi SIMRS).
+///
+/// `field_nama` SENGAJA hanya boleh berisi nama yang benar-benar ada di
+/// SimrsKunjungan/SimrsPasien (simrs-client.ts) — supaya dokumentasi ini tidak
+/// pernah menyimpang dari kontrak tipe yang sungguhan dipakai kode. Status
+/// (Wajib/Penting/Opsional) SENGAJA TIDAK disimpan di sini — itu dihitung dari
+/// WAJIB_KUNJUNGAN/PENTING_KUNJUNGAN dkk di simrs-diagnostik.ts, satu-satunya
+/// sumber kebenaran yang juga dipakai tools diagnostik untuk validasi
+/// sungguhan. Kalau status ikut disimpan di sini, dokumentasi dan validasi
+/// nyata bisa bercerai tanpa siapa pun sadar.
+model SimrsKontrakField {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  endpoint    String   // 'kunjungan' | 'pasien'
+  field_nama  String
+  contoh      String?
+  catatan     String?
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, endpoint, field_nama])
+  @@map("crm_simrs_kontrak_fields")
+}
+
+/// Baris bebas yang bisa ditambah/edit/hapus penuh oleh Admin IT — tiga bagian
+/// dokumen yang TIDAK terikat ke field kode: aturan non-fungsional (rate limit,
+/// timezone, dst.), kesepakatan yang sudah dikonfirmasi tim IT, dan pertanyaan
+/// yang masih terbuka.
+model SimrsKontrakItem {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  bagian      String   // 'non_fungsional' | 'kesepakatan' | 'pertanyaan_terbuka'
+  judul       String?  // dipakai 'non_fungsional' (nama aspek); kosong untuk bagian lain
+  isi         String
+  status      String?  // 'non_fungsional': teks bebas; 'pertanyaan_terbuka': 'terbuka' | 'terjawab'
+  urutan      Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([tenant_slug, bagian])
+  @@map("crm_simrs_kontrak_items")
+}
+
+/// Satu blok catatan bebas per tenant — ringkasan/autentikasi/proses perubahan
+/// kontrak, ditulis sebagai teks (markdown ringan), diedit Admin IT langsung
+/// dari halaman Pengaturan.
+model SimrsKontrakCatatan {
+  id           String   @id @default(uuid())
+  tenant_slug  String   @unique
+  catatan_umum String   @default("")
+  updated_at   DateTime @updatedAt
+
+  @@map("crm_simrs_kontrak_catatan")
+}
+
 model SimrsLayananLibrary {
   id           String  @id @default(uuid())
   kode_barang  String  @unique

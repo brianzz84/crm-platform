@@ -23,23 +23,25 @@ export type JenisDiagnostik = 'kunjungan' | 'pasien'
 
 // Field WAJIB: tanpa ini, satu baris tidak bisa diproses sync sama sekali.
 export const WAJIB_KUNJUNGAN = ['kunjungan_id', 'no_rm', 'nama_pasien', 'tanggal'] as const
-const WAJIB_PASIEN     = ['no_rm', 'nama'] as const
+export const WAJIB_PASIEN    = ['no_rm', 'nama'] as const
 
 // Field PENTING: bisa diproses tanpanya, tapi fitur tertentu jadi pincang kalau kosong.
 export const PENTING_KUNJUNGAN = ['tindakan_kode', 'unit', 'no_hp', 'status_kunjungan', 'jadwal_kontrol'] as const
-const PENTING_PASIEN    = ['no_hp', 'nik'] as const
+export const PENTING_PASIEN    = ['no_hp', 'nik'] as const
 
 // Semua field yang KITA KENAL — di luar ini dianggap "asing" (bukan berarti salah,
 // cuma berarti kita belum pakai; berguna buat ketahuan kalau IT kirim nama field beda).
+// PENTING: kalau menambah field baru ke SimrsKunjungan/SimrsPasien (simrs-client.ts),
+// tambahkan juga di sini — kalau lupa, tools diagnostik akan salah menandainya "asing".
 export const DIKENAL_KUNJUNGAN = [
   ...WAJIB_KUNJUNGAN, ...PENTING_KUNJUNGAN,
-  'tanggal_lahir', 'jenis_kelamin', 'no_hp_alternatif', 'agama', 'alamat', 'nik',
+  'tanggal_lahir', 'jenis_kelamin', 'no_hp_alternatif', 'agama', 'alamat', 'kota', 'kecamatan', 'nik',
   'poli', 'dokter', 'diagnosa_icd', 'diagnosa_nama', 'diagnosa_sekunder',
   'jenis_pembayaran', 'nama_instansi', 'kode_instansi',
 ]
-const DIKENAL_PASIEN = [
+export const DIKENAL_PASIEN = [
   ...WAJIB_PASIEN, ...PENTING_PASIEN,
-  'tanggal_lahir', 'jenis_kelamin', 'no_hp_alternatif', 'agama', 'alamat',
+  'tanggal_lahir', 'jenis_kelamin', 'no_hp_alternatif', 'agama', 'alamat', 'kota', 'kecamatan',
   'jenis_pembayaran', 'nama_instansi', 'kode_instansi', 'no_bpjs',
 ]
 
