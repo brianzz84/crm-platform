@@ -4,6 +4,7 @@ import { getTenantDb } from '@/lib/tenant'
 import { notFound } from 'next/navigation'
 import CampaignActions from './CampaignActions'
 import CampaignAutoRefresh from './CampaignAutoRefresh'
+import EvaluasiCampaign from './EvaluasiCampaign'
 
 interface Props { params: { slug: string; id: string } }
 
@@ -142,6 +143,9 @@ export default async function CampaignDetailPage({ params }: Props) {
           </div>
         </div>
       )}
+
+      {/* Evaluasi */}
+      <EvaluasiCampaign slug={params.slug} campaignId={campaign.id} />
 
       {/* Recipients table */}
       {campaign.recipients.length > 0 && (

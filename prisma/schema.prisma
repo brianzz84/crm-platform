@@ -551,6 +551,12 @@ model Campaign {
   template_params Json           @default("{}")
   segment_id      String?
   kirim_dua_nomor Boolean        @default(false) // kirim ke no_hp DAN no_hp_2 (kalau ada), bukan cuma no_hp
+  // Kode layanan (SimrsLayananLibrary.kode_barang) yang DIPROMOSIKAN campaign ini.
+  // Dipakai evaluasi untuk membedakan konversi LANGSUNG (kunjungan pakai kode ini)
+  // dari konversi ke PRODUK LAIN (kunjungan lain di luar kode ini). Tanpa field ini
+  // sistem tidak tahu apa yang sebenarnya dijual, jadi kedua jenis konversi tidak
+  // bisa dibedakan.
+  kode_layanan_promo String[]     @default([])
   jadwal_kirim    DateTime?
   started_at      DateTime?
   finished_at     DateTime?
@@ -592,6 +598,13 @@ model CampaignRecipient {
   delivered_at      DateTime?
   read_at           DateTime?
   replied_at        DateTime?
+  // Hasil klasifikasi AI atas balasan chat — dihitung sekali via tombol "Hitung
+  // ulang sentimen" (bukan tiap halaman dibuka), supaya angkanya stabil dan tidak
+  // memanggil AI berulang. sentimen_alasan berisi 1 kalimat alasan supaya admin
+  // bisa menilai wajar-tidaknya klasifikasi, bukan percaya buta ke AI.
+  sentimen          String?   // 'tertarik' | 'tanya' | 'menolak' | 'komplain' | 'salah_sasaran' | 'lainnya'
+  sentimen_alasan   String?
+  sentimen_at       DateTime?
 
   campaign Campaign @relation(fields: [campaign_id], references: [id])
   person   Person   @relation(fields: [person_id], references: [id])

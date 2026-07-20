@@ -21,7 +21,9 @@ interface FormState {
   jadwal_type:     'sekarang' | 'jadwal'
   jadwal_kirim:    string   // ISO string
   kirim_dua_nomor: boolean
+  kode_layanan_promo: string[]
 }
+interface LayananOpt { kode_barang: string; nama: string; kelompok: string }
 
 /* Ambil semua variabel statis (perlu diisi manual) dari sebuah template */
 function flatParams(t: Template | undefined): TmplParam[] {
@@ -100,7 +102,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
   const [step, setStep]       = useState(0)
   const [form, setForm]       = useState<FormState>({
     segment_id: defaultSegmentId || '', channel: 'WA', template_id: '', template_params: {},
-    nama: '', jadwal_type: 'sekarang', jadwal_kirim: '', kirim_dua_nomor: false,
+    nama: '', jadwal_type: 'sekarang', jadwal_kirim: '', kirim_dua_nomor: false, kode_layanan_promo: [],
   })
   const [segments, setSegments]   = useState<Segment[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
@@ -108,6 +110,11 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState('')
   const [successId, setSuccessId]   = useState('')
+
+  // Pencarian layanan untuk "produk yang dipromosikan"
+  const [qLayanan, setQLayanan]       = useState('')
+  const [hasilLayanan, setHasilLayanan] = useState<LayananOpt[]>([])
+  const [layananTerpilih, setLayananTerpilih] = useState<LayananOpt[]>([])
 
   // Character counter ref
 
@@ -121,6 +128,30 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
       .then(j => { if (j.success) setTemplates((j.data || []).filter((t: Template) => t.meta_status === 'APPROVED')) })
       .catch(() => {})
   }, [slug])
+
+  useEffect(() => {
+    if (!qLayanan.trim()) { setHasilLayanan([]); return }
+    const t = setTimeout(() => {
+      fetch(`/api/${slug}/broadcast/layanan?q=${encodeURIComponent(qLayanan.trim())}`)
+        .then(r => r.json())
+        .then(j => { if (j.success) setHasilLayanan(j.data ?? []) })
+        .catch(() => {})
+    }, 300)
+    return () => clearTimeout(t)
+  }, [slug, qLayanan])
+
+  function tambahLayanan(l: LayananOpt) {
+    if (layananTerpilih.some(x => x.kode_barang === l.kode_barang)) return
+    const next = [...layananTerpilih, l]
+    setLayananTerpilih(next)
+    upd('kode_layanan_promo', next.map(x => x.kode_barang))
+    setQLayanan(''); setHasilLayanan([])
+  }
+  function hapusLayanan(kode: string) {
+    const next = layananTerpilih.filter(x => x.kode_barang !== kode)
+    setLayananTerpilih(next)
+    upd('kode_layanan_promo', next.map(x => x.kode_barang))
+  }
 
   const upd = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }))
 
@@ -169,6 +200,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
         template_params: form.template_params,
         jadwal_kirim:    form.jadwal_type === 'jadwal' ? form.jadwal_kirim : null,
         kirim_dua_nomor: form.kirim_dua_nomor,
+        kode_layanan_promo: form.kode_layanan_promo,
       }
       const res  = await fetch(`/api/${slug}/broadcast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json()
@@ -288,6 +320,51 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
                   </div>
                 </span>
               </label>
+            </FieldWrap>
+
+            <FieldWrap label="Produk yang Dipromosikan" hint="Untuk mengukur konversi kunjungan nanti — bisa dilewati kalau campaign ini bukan promosi produk tertentu.">
+              <div style={{ position: 'relative' }}>
+                <input value={qLayanan} onChange={e => setQLayanan(e.target.value)}
+                  placeholder="Cari nama atau kode layanan…" style={inputStyle} />
+                {hasilLayanan.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 10,
+                    background: 'white', border: '1.5px solid var(--c-border)', borderRadius: 'var(--r-md)',
+                    boxShadow: 'var(--shadow-md)', maxHeight: 220, overflowY: 'auto',
+                  }}>
+                    {hasilLayanan.map(l => (
+                      <button key={l.kode_barang} type="button" onClick={() => tambahLayanan(l)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
+                          border: 'none', borderBottom: '1px solid var(--c-border)', background: 'white',
+                          fontFamily: 'inherit', fontSize: 13, cursor: 'pointer', color: 'var(--c-text)',
+                        }}>
+                        <strong>{l.nama}</strong>
+                        <span style={{ color: 'var(--c-text-muted)', marginLeft: 6, fontSize: 11 }}>
+                          {l.kode_barang} · {l.kelompok}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {layananTerpilih.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {layananTerpilih.map(l => (
+                    <span key={l.kode_barang} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '4px 10px', borderRadius: 99, fontSize: 12,
+                      background: 'var(--c-secondary)18', color: 'var(--c-secondary)', fontWeight: 600,
+                    }}>
+                      {l.nama}
+                      <button type="button" onClick={() => hapusLayanan(l.kode_barang)}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontWeight: 800, padding: 0, lineHeight: 1 }}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </FieldWrap>
 
             <FieldWrap label="Template Pesan" hint="Hanya template berstatus Approved yang bisa dipakai.">

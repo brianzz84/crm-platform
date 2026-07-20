@@ -232,6 +232,10 @@ async function main() {
       tenant_slug: SLUG, nama: NAMA_CAMPAIGN, status: 'DONE', channel: 'WA',
       template_id: template.id, segment_id: segmen.id,
       kirim_dua_nomor: true,
+      // Yang benar-benar dipromosikan (pesannya "Suntik Vitamin B Kompleks" = injeksi).
+      // KODE_INFUS (Multivitamin Infus) SENGAJA tidak ikut — itu produk lain yang
+      // dikonversi salah satu penerima, bukan yang dipromosikan.
+      kode_layanan_promo: [KODE_VIT_B],
       template_params: {},
       jadwal_kirim: KIRIM, started_at: KIRIM, finished_at: menit(18),
       created_by: admin.id,
