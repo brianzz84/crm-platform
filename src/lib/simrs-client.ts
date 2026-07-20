@@ -24,7 +24,9 @@ export interface SimrsKunjungan {
   no_hp:            string | null
   no_hp_alternatif: string | null
   agama:            string | null
-  alamat:           string | null
+  alamat:           string | null   // alamat bebas (nama jalan, no. rumah, dst)
+  kota:             string | null   // kota/kabupaten — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
+  kecamatan:        string | null   // kecamatan — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
   nik:              string | null   // NIK KTP — dikonfirmasi tersedia di SIMRS RKZ, dipakai untuk deteksi duplikat pasien
   tanggal:          string       // YYYY-MM-DD tanggal kunjungan
   poli:             string | null
@@ -49,7 +51,9 @@ export interface SimrsPasien {
   no_hp:            string | null
   no_hp_alternatif: string | null
   agama:            string | null
-  alamat:           string | null
+  alamat:           string | null   // alamat bebas (nama jalan, no. rumah, dst)
+  kota:             string | null   // kota/kabupaten — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
+  kecamatan:        string | null   // kecamatan — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
   nik:              string | null   // NIK KTP — dikonfirmasi tersedia di SIMRS RKZ
   jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI"
   nama_instansi:    string | null
@@ -89,10 +93,15 @@ const MOCK_POLI   = ['Poli Umum', 'Poli Dalam', 'Poli Anak', 'Poli Bedah', 'Poli
 const MOCK_ICD    = ['J06.9', 'K29.7', 'I10', 'E11.9', 'J18.9', 'K35.9', 'A09', 'N39.0']
 const MOCK_NAMES  = ['Budi Santoso', 'Siti Rahayu', 'Ahmad Fauzi', 'Dewi Lestari', 'Rudi Hermawan',
                      'Ani Kurniawati', 'Bambang Wibowo', 'Sri Mulyani', 'Hendra Gunawan', 'Rina Susanti']
+const MOCK_KOTA_KEC: [string, string][] = [
+  ['Surabaya', 'Tenggilis Mejoyo'], ['Surabaya', 'Gubeng'], ['Surabaya', 'Rungkut'],
+  ['Sidoarjo', 'Waru'], ['Gresik', 'Kebomas'],
+]
 
 function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
   return Array.from({ length: n }, (_, i) => {
     const noRm = `RM${String(100000 + i + Math.floor(Math.random() * 500)).padStart(6, '0')}`
+    const [kota, kecamatan] = MOCK_KOTA_KEC[i % MOCK_KOTA_KEC.length]
     return {
       kunjungan_id:     `KJG-${tanggal.replace(/-/g, '')}-${String(i + 1).padStart(4, '0')}`,
       no_rm:            noRm,
@@ -101,7 +110,9 @@ function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
       jenis_kelamin:    i % 2 === 0 ? 'L' : 'P',
       no_hp:            `0812${String(10000000 + i).slice(0, 8)}`,
       agama:            ['Islam', 'Kristen', 'Katolik', 'Hindu', 'Budha'][i % 5],
-      alamat:           `Jl. Contoh No. ${i + 1}, Surabaya`,
+      alamat:           `Jl. Contoh No. ${i + 1}`,
+      kota,
+      kecamatan,
       nik:              `35${String(1000000000000 + i).slice(0, 14)}`,
       tanggal,
       poli:             MOCK_POLI[i % MOCK_POLI.length],

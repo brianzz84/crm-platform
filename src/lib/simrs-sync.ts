@@ -91,6 +91,9 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             jenis_kelamin:    k.jenis_kelamin ?? undefined,
             agama:            k.agama ?? undefined,
             nik:              k.nik || undefined,   // dipakai deteksi duplikat pasien, lihat person-merge.ts
+            alamat:           k.alamat || undefined,
+            kota:             k.kota || undefined,
+            kecamatan:        k.kecamatan || undefined,
             is_pasien_simrs:  true,
             sumber:           'SIMRS',
             // Kontak: satu-satunya sumber kebenaran adalah kolom Person.no_hp/no_hp_2.
@@ -118,6 +121,9 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             jenis_kelamin:    k.jenis_kelamin ?? null,
             agama:            k.agama ?? null,
             nik:              k.nik ?? null,
+            alamat:           k.alamat ?? null,
+            kota:             k.kota ?? null,
+            kecamatan:        k.kecamatan ?? null,
             sumber:           'SIMRS',
             is_pasien_simrs:  true,
             aktif:            true,
