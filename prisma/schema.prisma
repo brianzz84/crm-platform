@@ -370,6 +370,32 @@ model SimrsSyncLog {
   @@map("crm_simrs_sync_logs")
 }
 
+/// Jejak audit tools diagnostik API SIMRS (Pengaturan > Integrasi SIMRS).
+///
+/// SENGAJA tidak menyimpan respons mentah dari SIMRS — itu bisa berisi PII pasien
+/// sungguhan (nama, HP, NIK), dan menyimpannya di sini berarti duplikasi data
+/// sensitif di luar tabel Person/SimrsVisit yang sudah diatur aksesnya. Yang
+/// disimpan hanya RINGKASAN hasil validasi (field apa yang hilang/asing) — cukup
+/// untuk audit "siapa menguji apa kapan" tanpa menimbun data pasien baru.
+model SimrsDiagnostikLog {
+  id             String   @id @default(uuid())
+  tenant_slug    String
+  jenis          String   // 'kunjungan' | 'pasien'
+  parameter      Json     // { tanggal: '...' } atau { no_rm: '...' } — bukan data pasien
+  berhasil       Boolean
+  http_status    Int?
+  durasi_ms      Int
+  jumlah_baris   Int?     // untuk 'kunjungan': berapa baris dikembalikan API
+  field_hilang   String[] // field WAJIB yang tidak ada di respons
+  field_asing    String[] // field di respons yang tidak kita kenali
+  pesan_error    String?
+  dilakukan_oleh String   // AppUser.id
+  created_at     DateTime @default(now())
+
+  @@index([tenant_slug, created_at])
+  @@map("crm_simrs_diagnostik_logs")
+}
+
 model SimrsLayananLibrary {
   id           String  @id @default(uuid())
   kode_barang  String  @unique

@@ -4,6 +4,7 @@ import { getSessionFromHeaders } from '@/lib/auth'
 import { canDo } from '@/constants'
 import { masterDb } from '@/lib/tenant'
 import SimrsConfigForm from './SimrsConfigForm'
+import SimrsDiagnostikTool from './SimrsDiagnostikTool'
 
 export const metadata: Metadata = { title: 'Integrasi SIMRS' }
 
@@ -93,6 +94,10 @@ export default async function SimrsPage({ params }: { params: { slug: string } }
         canSync={canSync}
         initialData={initialData}
       />
+
+      {/* Diagnostik hanya untuk yang bisa mengubah konfigurasi (SUPER_ADMIN/ADMIN_IT) —
+          bukan ADMIN_OPS lewat canSync, karena ini menyentuh kredensial & respons API mentah. */}
+      {canConfig && <SimrsDiagnostikTool slug={params.slug} />}
     </div>
   )
 }

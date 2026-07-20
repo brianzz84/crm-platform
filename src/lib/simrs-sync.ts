@@ -14,7 +14,7 @@
  */
 
 import { masterDb, getTenantDb } from '@/lib/tenant'
-import { getKunjunganByTanggal, type SimrsClientConfig } from '@/lib/simrs-client'
+import { getKunjunganByTanggal, getSimrsConfig } from '@/lib/simrs-client'
 import { cariPersonByRm } from '@/lib/person-identity'
 import { randomUUID } from 'crypto'
 
@@ -26,26 +26,6 @@ export interface SyncResult {
 }
 
 // ──────────────────────────────────────────────
-// Ambil config SIMRS dari master DB
-// ──────────────────────────────────────────────
-
-async function getSimrsConfig(tenantSlug: string): Promise<SimrsClientConfig | null> {
-  const tenant = await masterDb.tenant.findUnique({
-    where:  { slug: tenantSlug },
-    select: { config: { select: { simrs_base_url: true, simrs_api_key: true } } },
-  })
-
-  const cfg = tenant?.config
-  const MOCK = process.env.SIMRS_MOCK === 'true'
-
-  // Mock mode: tidak perlu base_url/api_key
-  if (MOCK) return { base_url: 'mock', api_key: 'mock' }
-
-  if (!cfg?.simrs_base_url || !cfg?.simrs_api_key) return null
-  return { base_url: cfg.simrs_base_url, api_key: cfg.simrs_api_key }
-}
-
-// ──────────────────────────────────────────────
 // Sinkronisasi satu tanggal
 // ──────────────────────────────────────────────
 
@@ -54,7 +34,7 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
   const startedAt = new Date()
 
   const db     = await getTenantDb(tenantSlug)
-  const simrsCfg = await getSimrsConfig(tenantSlug)
+  const simrsCfg = await getSimrsConfig(masterDb, tenantSlug)
 
   if (!simrsCfg) {
     const err = 'Konfigurasi SIMRS belum diisi (base_url / api_key)'
@@ -110,6 +90,7 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             tanggal_lahir:    k.tanggal_lahir ? new Date(k.tanggal_lahir) : undefined,
             jenis_kelamin:    k.jenis_kelamin ?? undefined,
             agama:            k.agama ?? undefined,
+            nik:              k.nik || undefined,   // dipakai deteksi duplikat pasien, lihat person-merge.ts
             is_pasien_simrs:  true,
             sumber:           'SIMRS',
             // Kontak: satu-satunya sumber kebenaran adalah kolom Person.no_hp/no_hp_2.
@@ -136,6 +117,7 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
             tanggal_lahir:    k.tanggal_lahir ? new Date(k.tanggal_lahir) : null,
             jenis_kelamin:    k.jenis_kelamin ?? null,
             agama:            k.agama ?? null,
+            nik:              k.nik ?? null,
             sumber:           'SIMRS',
             is_pasien_simrs:  true,
             aktif:            true,

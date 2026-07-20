@@ -25,17 +25,18 @@ export interface SimrsKunjungan {
   no_hp_alternatif: string | null
   agama:            string | null
   alamat:           string | null
+  nik:              string | null   // NIK KTP — dikonfirmasi tersedia di SIMRS RKZ, dipakai untuk deteksi duplikat pasien
   tanggal:          string       // YYYY-MM-DD tanggal kunjungan
   poli:             string | null
-  unit:             string | null   // RAWAT_JALAN | RAWAT_INAP | PENUNJANG
+  unit:             string | null   // nama KELOMPOK unit, mis. "Pondok Sehat" — cocok ke SimrsUnitLibrary.kelompok
   dokter:           string | null
   diagnosa_icd:     string | null   // kode ICD utama, misal "J06.9"
   diagnosa_nama:    string | null
   diagnosa_sekunder: string[]       // array kode ICD sekunder
-  tindakan_kode:    string | null
+  tindakan_kode:    string | null   // WAJIB cocok dengan SimrsLayananLibrary.kode_barang — dasar pencocokan evaluasi campaign
   jadwal_kontrol:   string | null   // YYYY-MM-DD
-  status_kunjungan: string | null   // SELESAI | BATAL | dll
-  jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI"
+  status_kunjungan: string | null   // SELESAI | BATAL | dll — RKZ mengonfirmasi kunjungan BATAL sudah difilter di sisi API mereka
+  jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI" — atribut KUNJUNGAN ini, bukan pasien
   nama_instansi:    string | null   // nama penjamin
   kode_instansi:    string | null   // kode master instansi dari SIMRS
 }
@@ -49,6 +50,7 @@ export interface SimrsPasien {
   no_hp_alternatif: string | null
   agama:            string | null
   alamat:           string | null
+  nik:              string | null   // NIK KTP — dikonfirmasi tersedia di SIMRS RKZ
   jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI"
   nama_instansi:    string | null
   kode_instansi:    string | null
@@ -58,6 +60,25 @@ export interface SimrsPasien {
 export interface SimrsClientConfig {
   base_url: string
   api_key:  string
+}
+
+/**
+ * Ambil konfigurasi SIMRS tenant dari master DB. Dipakai bersama oleh sync
+ * terjadwal (simrs-sync.ts) dan tools diagnostik (simrs-diagnostik.ts) — satu
+ * tempat, supaya keduanya selalu memakai kredensial yang sama persis.
+ */
+export async function getSimrsConfig(masterDb: any, tenantSlug: string): Promise<SimrsClientConfig | null> {
+  const tenant = await masterDb.tenant.findUnique({
+    where:  { slug: tenantSlug },
+    select: { config: { select: { simrs_base_url: true, simrs_api_key: true } } },
+  })
+
+  const cfg = tenant?.config
+  const MOCK = process.env.SIMRS_MOCK === 'true'
+
+  if (MOCK) return { base_url: 'mock', api_key: 'mock' }
+  if (!cfg?.simrs_base_url || !cfg?.simrs_api_key) return null
+  return { base_url: cfg.simrs_base_url, api_key: cfg.simrs_api_key }
 }
 
 // ──────────────────────────────────────────────
@@ -81,6 +102,7 @@ function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
       no_hp:            `0812${String(10000000 + i).slice(0, 8)}`,
       agama:            ['Islam', 'Kristen', 'Katolik', 'Hindu', 'Budha'][i % 5],
       alamat:           `Jl. Contoh No. ${i + 1}, Surabaya`,
+      nik:              `35${String(1000000000000 + i).slice(0, 14)}`,
       tanggal,
       poli:             MOCK_POLI[i % MOCK_POLI.length],
       unit:             i % 3 === 0 ? 'Rawat Inap' : 'Rawat Jalan',
@@ -181,6 +203,69 @@ export async function getPasienByNoRm(
     return json.data ?? json ?? null
   } catch {
     return null
+  }
+}
+
+// ──────────────────────────────────────────────
+// Diagnostik — SATU panggilan, mengembalikan status & waktu tempuh mentah.
+// Beda tujuan dari getKunjunganByTanggal/getPasienByNoRm di atas: fungsi itu untuk
+// SYNC (paginasi penuh, gagal diam kalau error), ini untuk ADMIN MENGUJI KONEKSI
+// (satu halaman saja, error & status HTTP harus terlihat apa adanya di layar).
+// ──────────────────────────────────────────────
+
+export interface HasilPanggilanMentah {
+  statusHttp: number | null   // null = gagal terhubung sama sekali (bukan status HTTP)
+  durasiMs:   number
+  raw:        unknown          // body respons apa adanya, untuk ditampilkan & divalidasi
+  errorPesan: string | null
+}
+
+export async function panggilKunjunganMentah(
+  cfg: SimrsClientConfig,
+  tanggal: string,
+  perPage: number,
+): Promise<HasilPanggilanMentah> {
+  const mulai = Date.now()
+
+  if (MOCK_MODE) {
+    const data = mockKunjungan(tanggal, Math.min(perPage, 20))
+    return { statusHttp: 200, durasiMs: Date.now() - mulai, raw: { data, meta: { total: data.length, page: 1, per_page: perPage } }, errorPesan: null }
+  }
+
+  try {
+    const url = `${cfg.base_url}/kunjungan/delta?tanggal=${tanggal}&page=1&per_page=${perPage}`
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${cfg.api_key}`, 'Accept': 'application/json' },
+      signal:  AbortSignal.timeout(30_000),
+    })
+    const durasiMs = Date.now() - mulai
+    const raw = await res.json().catch(() => null)
+    return { statusHttp: res.status, durasiMs, raw, errorPesan: res.ok ? null : `HTTP ${res.status}` }
+  } catch (e) {
+    return { statusHttp: null, durasiMs: Date.now() - mulai, raw: null, errorPesan: e instanceof Error ? e.message : 'Gagal terhubung' }
+  }
+}
+
+export async function panggilPasienMentah(
+  cfg: SimrsClientConfig,
+  noRm: string,
+): Promise<HasilPanggilanMentah> {
+  const mulai = Date.now()
+
+  if (MOCK_MODE) {
+    return { statusHttp: 200, durasiMs: Date.now() - mulai, raw: { data: null }, errorPesan: 'Mode mock tidak menyimulasikan data pasien tunggal' }
+  }
+
+  try {
+    const res = await fetch(`${cfg.base_url}/pasien/${encodeURIComponent(noRm)}`, {
+      headers: { 'Authorization': `Bearer ${cfg.api_key}`, 'Accept': 'application/json' },
+      signal:  AbortSignal.timeout(10_000),
+    })
+    const durasiMs = Date.now() - mulai
+    const raw = await res.json().catch(() => null)
+    return { statusHttp: res.status, durasiMs, raw, errorPesan: res.ok ? null : `HTTP ${res.status}` }
+  } catch (e) {
+    return { statusHttp: null, durasiMs: Date.now() - mulai, raw: null, errorPesan: e instanceof Error ? e.message : 'Gagal terhubung' }
   }
 }
 
