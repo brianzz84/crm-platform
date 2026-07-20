@@ -28,11 +28,6 @@ const CH_ICON: Record<string, string> = { WA: '📱', IG: '📸', FB: '📘' }
 function fmtDate(d: Date) { return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) }
 function fmtDateTime(d: Date) { return d.toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 
-function pct(num: number, den: number) {
-  if (!den) return '—'
-  return Math.round((num / den) * 100) + '%'
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
     const db = await getTenantDb(params.slug)
@@ -101,29 +96,8 @@ export default async function CampaignDetailPage({ params }: Props) {
             <CampaignAutoRefresh status={campaign.status} />
           </div>
         </div>
-
-        {/* Stats row */}
-        {campaign.total_penerima > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 'var(--sp-3)' }}>
-            {[
-              { label: 'Penerima',  val: campaign.total_penerima, sub: null,                                     color: 'var(--c-primary)' },
-              { label: 'Terkirim',  val: campaign.total_terkirim, sub: pct(campaign.total_terkirim, campaign.total_penerima), color: 'var(--c-secondary)' },
-              { label: 'Diterima',  val: campaign.total_diterima, sub: pct(campaign.total_diterima, campaign.total_terkirim), color: '#7B5EA7' },
-              { label: 'Dibaca',    val: campaign.total_dibaca,   sub: pct(campaign.total_dibaca,   campaign.total_terkirim), color: '#278B58' },
-              { label: 'Dibalas',   val: campaign.total_dibalas,  sub: pct(campaign.total_dibalas,  campaign.total_terkirim), color: '#E8A800' },
-              { label: 'Gagal',     val: (campaign as any).total_gagal || 0, sub: pct((campaign as any).total_gagal || 0, campaign.total_penerima), color: '#EF4444' },
-            ].map(s => (
-              <div key={s.label} style={{
-                background: 'var(--c-bg)', borderRadius: 'var(--r-md)',
-                padding: 'var(--sp-4)', textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.val.toLocaleString('id-ID')}</div>
-                {s.sub && <div style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.sub}</div>}
-                <div style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 2 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Stats row dipindah ke tab Evaluasi (bagian "Funnel Pengiriman") — dulu
+            dobel ditampilkan di sini dan di sana persis dengan angka yang sama. */}
       </div>
 
       {/* Template Info */}
