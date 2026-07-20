@@ -34,6 +34,11 @@ export interface FunnelEvaluasi {
   diterima: number
   dibaca: number
   dibalas: number
+  // terkirim - dibalas. AMAN dihitung begini (bukan lewat query terpisah) karena
+  // inbox-handler.ts hanya men-set replied_at pada baris berstatus SENT/DELIVERED/
+  // READ, tidak pernah pada FAILED — jadi dibalas selalu subset dari terkirim,
+  // hasilnya tidak akan pernah negatif.
+  tidakMembalas: number
   gagal: number
   errorBreakdown: { kode: string; jumlah: number }[]
 }
@@ -93,7 +98,7 @@ export interface EvaluasiCampaignResult {
 const KATEGORI_VALID: KategoriSentimen[] = ['tertarik', 'tanya', 'menolak', 'komplain', 'salah_sasaran', 'lainnya']
 
 function kosongkanFunnel(): FunnelEvaluasi {
-  return { totalPenerima: 0, terkirim: 0, diterima: 0, dibaca: 0, dibalas: 0, gagal: 0, errorBreakdown: [] }
+  return { totalPenerima: 0, terkirim: 0, diterima: 0, dibaca: 0, dibalas: 0, tidakMembalas: 0, gagal: 0, errorBreakdown: [] }
 }
 
 function kosongkanRingkasanKonversi(): RingkasanKonversi {
@@ -147,6 +152,10 @@ export async function hitungEvaluasiCampaign(
     diterima:       recipients.filter(r => !!r.delivered_at).length,
     dibaca:         recipients.filter(r => !!r.read_at).length,
     dibalas:        recipients.filter(r => !!r.replied_at).length,
+    // Dihitung langsung dari baris (bukan terkirim - dibalas) supaya tidak bergantung
+    // pada definisi "terkirim" di atas tetap sama persis — tetap benar walau salah
+    // satunya berubah nanti.
+    tidakMembalas:  recipients.filter(r => r.status !== 'FAILED' && !r.replied_at).length,
     gagal:          recipients.filter(r => r.status === 'FAILED').length,
     errorBreakdown: Array.from(errMap, ([kode, jumlah]) => ({ kode, jumlah })),
   }

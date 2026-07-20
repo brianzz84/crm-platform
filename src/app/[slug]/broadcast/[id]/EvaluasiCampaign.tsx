@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
 interface FunnelData {
-  totalPenerima: number; terkirim: number; diterima: number; dibaca: number; dibalas: number; gagal: number
+  totalPenerima: number; terkirim: number; diterima: number; dibaca: number; dibalas: number
+  tidakMembalas: number; gagal: number
   errorBreakdown: { kode: string; jumlah: number }[]
 }
 interface SentimenRow { kategori: string; jumlah: number }
@@ -57,6 +58,10 @@ const kartu: React.CSSProperties = {
 }
 const judulKartu: React.CSSProperties = {
   fontSize: 13, fontWeight: 700, color: 'var(--c-primary)', marginBottom: 'var(--sp-4)',
+}
+const subJudul: React.CSSProperties = {
+  fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase',
+  letterSpacing: '0.5px', marginBottom: 'var(--sp-2)',
 }
 
 export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; campaignId: string }) {
@@ -159,14 +164,17 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
       {/* ── Funnel (seumur hidup — tidak dipengaruhi jendela) ── */}
       <div style={kartu}>
         <div style={judulKartu}>Funnel Pengiriman <span style={{ fontWeight: 400, color: 'var(--c-text-muted)', textTransform: 'none' }}>(seumur hidup campaign, tidak dibatasi jendela)</span></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 'var(--sp-3)' }}>
+        <p style={{ fontSize: 13, color: 'var(--c-text)', marginBottom: 'var(--sp-4)', lineHeight: 1.6 }}>
+          Dari {data.funnel.totalPenerima} penerima, {data.funnel.terkirim} berhasil terkirim ({data.funnel.gagal} gagal).
+          Dari yang terkirim, {data.funnel.dibalas} membalas dan {data.funnel.tidakMembalas} tidak membalas.
+        </p>
+
+        <div style={subJudul}>Hasil Pengiriman <span style={{ fontWeight: 400 }}>(persen dari Penerima)</span></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 'var(--sp-3)', marginBottom: 'var(--sp-4)' }}>
           {[
             { label: 'Penerima', val: data.funnel.totalPenerima, sub: null,                                          color: 'var(--c-primary)' },
-            { label: 'Terkirim',  val: data.funnel.terkirim,      sub: pct(data.funnel.terkirim, data.funnel.totalPenerima), color: 'var(--c-secondary)' },
-            { label: 'Diterima',  val: data.funnel.diterima,      sub: pct(data.funnel.diterima, data.funnel.terkirim),      color: '#7B5EA7' },
-            { label: 'Dibaca',    val: data.funnel.dibaca,        sub: pct(data.funnel.dibaca,   data.funnel.terkirim),      color: '#278B58' },
-            { label: 'Dibalas',   val: data.funnel.dibalas,       sub: pct(data.funnel.dibalas,  data.funnel.terkirim),      color: '#E8A800' },
-            { label: 'Gagal',     val: data.funnel.gagal,         sub: pct(data.funnel.gagal,    data.funnel.totalPenerima), color: '#EF4444' },
+            { label: 'Terkirim', val: data.funnel.terkirim,       sub: pct(data.funnel.terkirim, data.funnel.totalPenerima), color: 'var(--c-secondary)' },
+            { label: 'Gagal',    val: data.funnel.gagal,          sub: pct(data.funnel.gagal,    data.funnel.totalPenerima), color: '#EF4444' },
           ].map(s => (
             <div key={s.label} style={{ background: 'var(--c-bg)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val.toLocaleString('id-ID')}</div>
@@ -175,6 +183,23 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
             </div>
           ))}
         </div>
+
+        <div style={subJudul}>Respons dari yang Terkirim <span style={{ fontWeight: 400 }}>(persen dari Terkirim, {data.funnel.terkirim})</span></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 'var(--sp-3)' }}>
+          {[
+            { label: 'Diterima',       val: data.funnel.diterima,      sub: pct(data.funnel.diterima,      data.funnel.terkirim), color: '#7B5EA7' },
+            { label: 'Dibaca',         val: data.funnel.dibaca,        sub: pct(data.funnel.dibaca,        data.funnel.terkirim), color: '#278B58' },
+            { label: 'Dibalas',        val: data.funnel.dibalas,       sub: pct(data.funnel.dibalas,       data.funnel.terkirim), color: '#E8A800' },
+            { label: 'Tidak Membalas', val: data.funnel.tidakMembalas, sub: pct(data.funnel.tidakMembalas, data.funnel.terkirim), color: '#6B7B8D' },
+          ].map(s => (
+            <div key={s.label} style={{ background: 'var(--c-bg)', borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val.toLocaleString('id-ID')}</div>
+              {s.sub && <div style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{s.sub}</div>}
+              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
         {data.funnel.errorBreakdown.length > 0 && (
           <div style={{ marginTop: 'var(--sp-4)', fontSize: 12, color: 'var(--c-text-muted)' }}>
             <strong style={{ color: 'var(--c-text)' }}>Rincian gagal</strong> (kualitas data kontak, bukan kegagalan pesan):

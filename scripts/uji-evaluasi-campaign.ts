@@ -42,6 +42,10 @@ async function main() {
   // Dihitung persis dari RENCANA di seed-dummy-campaign.ts: idx dengan `balas` terisi
   // = 0,2,3,5,6,7,8,9,10,11,12,13 → 12 baris. idx1 (py alt) & idx4 SENGAJA tanpa balasan.
   periksa('dibalas persis 12 (dihitung dari RENCANA di seed)', hasil.funnel.dibalas === 12, `(dapat ${hasil.funnel.dibalas})`)
+  periksa('tidakMembalas persis terkirim - dibalas (27)', hasil.funnel.tidakMembalas === hasil.funnel.terkirim - hasil.funnel.dibalas,
+    `(dapat ${hasil.funnel.tidakMembalas}, terkirim=${hasil.funnel.terkirim}, dibalas=${hasil.funnel.dibalas})`)
+  periksa('dibalas + tidakMembalas = terkirim (tidak ada yang tercecer/dobel hitung)',
+    hasil.funnel.dibalas + hasil.funnel.tidakMembalas === hasil.funnel.terkirim)
   periksa('ada rincian error 131026', hasil.funnel.errorBreakdown.some(e => e.kode === 'meta_error'))
 
   console.log('\n=== KONVERSI (satu baris PER KUNJUNGAN — populasi dummy 450 orang punya ~126')
