@@ -209,22 +209,23 @@ function SapaanCard({
       {expanded && (
         <div style={{ borderTop: '1px solid var(--c-border)' }}>
 
-          {/* KONTROL_REMINDER: banner pending SIMRS */}
+          {/* KONTROL_REMINDER: info sumber data + tautan ke daftar */}
           {jenis === 'KONTROL_REMINDER' && (
             <div style={{
               display: 'flex', alignItems: 'flex-start', gap: 12,
               padding: '14px var(--sp-5)',
-              background: '#FFF7ED', borderBottom: '1px solid #FED7AA',
+              background: '#EFF6FF', borderBottom: '1px solid #BFDBFE',
             }}>
-              <span style={{ fontSize: 20, flexShrink: 0 }}>⏳</span>
+              <span style={{ fontSize: 20, flexShrink: 0 }}>🗓️</span>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: '#92400E' }}>
-                  Fitur ini menunggu integrasi SIMRS
+                <div style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: '#1E40AF' }}>
+                  Sumber data: jadwal kontrol dari SIMRS
                 </div>
-                <div style={{ fontSize: 12, color: '#B45309', marginTop: 3 }}>
-                  Pengingat kontrol H-3 / H-1 membutuhkan data <strong>jadwal kontrol</strong> dari SIMRS
-                  — bukan dari riwayat kunjungan. Konfigurasi template bisa disimpan sekarang, tetapi
-                  pesan belum akan dikirim sampai integrasi SIMRS selesai.
+                <div style={{ fontSize: 12, color: '#1D4ED8', marginTop: 3 }}>
+                  Pengingat H-3 / H-1 memakai <strong>jadwal kontrol</strong> yang ditarik dari SIMRS
+                  (bukan riwayat kunjungan). Saat toggle di bawah aktif, pesan dikirim otomatis pada jam
+                  yang dipilih. Daftar jadwal &amp; status kirimnya bisa dipantau di menu{' '}
+                  <a href={`/${slug}/rencana-kontrol`} style={{ color: '#1E40AF', fontWeight: 700 }}>Rencana Kontrol</a>.
                 </div>
               </div>
             </div>

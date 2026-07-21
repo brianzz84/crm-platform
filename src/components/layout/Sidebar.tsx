@@ -58,6 +58,7 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         { href: `${base}/pasien/duplikat`, label: 'Duplikat Pasien', icon: '🔗', feature: 'mergePatients' },
         { href: `${base}/tags`,     label: 'Tag',      icon: '🏷',  feature: 'manageTagRules' },
         { href: `${base}/sapaan`,   label: 'Sapaan',   icon: '🎉',  feature: 'manageSapaan' },
+        { href: `${base}/rencana-kontrol`, label: 'Rencana Kontrol', icon: '🗓️', feature: 'manageSapaan' },
         { href: `${base}/library`,  label: 'Library',  icon: '📚',  feature: 'icdLibrary' },
       ],
     },

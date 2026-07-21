@@ -95,8 +95,25 @@ export async function runScanner(job: Job) {
           job.log(`[scanner] Enqueue ULTAH untuk ${tenant.slug}`)
         }
 
-        // KONTROL_REMINDER: aktif jika data SIMRS sudah tersinkron (jadwal_kontrol tersedia)
-        // TODO: aktifkan setelah modul SIMRS live
+        // KONTROL_REMINDER: satu job per horizon (H-3 & H-1) per tenant per hari.
+        // Handler membaca tabel SimrsRencanaKontrol; kalau belum ada data yang jatuh
+        // di H-3/H-1, job selesai tanpa mengirim apa pun (aman untuk dijalankan rutin).
+        if (cfg.jenis === 'KONTROL_REMINDER') {
+          const tgl = nowWib.toISOString().slice(0, 10)
+          for (const h of ['H-3', 'H-1'] as const) {
+            await queue.add('sapaan', {
+              type:       'KONTROL_REMINDER',
+              tenantSlug: tenant.slug,
+              horizon:    h,
+            }, {
+              jobId: `kontrol-${tenant.slug}-${tgl}-${h}`,
+              removeOnComplete: 30,
+              removeOnFail:     50,
+            })
+            enqueued++
+          }
+          job.log(`[scanner] Enqueue KONTROL_REMINDER (H-3 & H-1) untuk ${tenant.slug}`)
+        }
       }
 
       // SIMRS SYNC: cek jam sinkronisasi per tenant

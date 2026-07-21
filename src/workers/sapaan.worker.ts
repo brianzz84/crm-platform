@@ -52,6 +52,9 @@ function today(): string {
 // ──────────────────────────────────────────────
 async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResult> {
   const { type, tenantSlug, hariRaya, horizon } = job.data
+  // Kolom stempel per-rencana untuk KONTROL_REMINDER — sekaligus sumber idempotency
+  // (jadi H-3 dan H-1 dilacak terpisah, tidak saling menutup seperti kalau pakai SapaanLog).
+  const kolomReminder = horizon === 'H-1' ? 'reminder_h1_at' as const : 'reminder_h3_at' as const
 
   const db  = await getTenantDb(tenantSlug)
   const now = new Date()
@@ -89,7 +92,7 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
   const profile = await db.tenantProfile.findUnique({ where: { tenant_slug: tenantSlug } })
   const namaRs  = profile?.nama_rs ?? tenantSlug
 
-  let targets: { id: string; name: string; no_hp: string; meta?: Record<string, string> }[] = []
+  let targets: { id: string; name: string; no_hp: string; rencanaId?: string; meta?: Record<string, string> }[] = []
 
   // ── Kumpulkan target berdasarkan jenis ──
   if (type === 'ULTAH') {
@@ -144,16 +147,18 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
         tenant_slug:     tenantSlug,
         status:          'terjadwal',
         tanggal_rencana: { gte: target, lt: targetAkhir },
+        [kolomReminder]: null,   // hanya yang belum diingatkan untuk horizon ini
         person: { aktif: true, AND: [BUKAN_PERSON_UJI] },
       },
-      select: { tanggal_rencana: true, poli: true, unit: true, person: { select: { id: true, name: true, no_hp: true } } },
+      select: { id: true, tanggal_rencana: true, poli: true, unit: true, person: { select: { id: true, name: true, no_hp: true } } },
     })
     targets = rencanas
       .filter(r => !!r.person.no_hp)
       .map(r => ({
-        id:    r.person.id,
-        name:  r.person.name,
-        no_hp: r.person.no_hp!,
+        id:        r.person.id,
+        name:      r.person.name,
+        no_hp:     r.person.no_hp!,
+        rencanaId: r.id,
         meta:  {
           horizon:     horizon || 'H-3',
           tgl_kontrol: r.tanggal_rencana.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
@@ -171,16 +176,20 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
   let sent = 0, failed = 0, skipped = 0
 
   for (const target of targets) {
-    // Cek sudah dikirim hari ini untuk jenis ini (idempotent)
-    const alreadySent = await db.sapaanLog.findFirst({
-      where: {
-        tenant_slug: tenantSlug,
-        person_id:   target.id,
-        jenis:       type,
-        sent_at:     { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) },
-      },
-    })
-    if (alreadySent) { skipped++; continue }
+    // Idempotency. KONTROL_REMINDER dilacak per-rencana lewat kolom reminder_hX_at
+    // (sudah difilter null di query, jadi tidak perlu cek lagi di sini). Jenis lain
+    // dilacak per-person-per-hari lewat SapaanLog.
+    if (type !== 'KONTROL_REMINDER') {
+      const alreadySent = await db.sapaanLog.findFirst({
+        where: {
+          tenant_slug: tenantSlug,
+          person_id:   target.id,
+          jenis:       type,
+          sent_at:     { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) },
+        },
+      })
+      if (alreadySent) { skipped++; continue }
+    }
 
     // Render template
     const vars: Record<string, string> = {
@@ -209,7 +218,17 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
       },
     })
 
-    if (result.ok) { sent++ } else { failed++ }
+    if (result.ok) {
+      sent++
+      // Stempel rencana ini sebagai sudah-diingatkan untuk horizon ini. Hanya saat
+      // sukses, supaya yang gagal ikut ditarik lagi di run berikutnya.
+      if (type === 'KONTROL_REMINDER' && target.rencanaId) {
+        await db.simrsRencanaKontrol.update({
+          where: { id: target.rencanaId },
+          data:  { [kolomReminder]: now },
+        })
+      }
+    } else { failed++ }
 
     // Rate limit: jeda kecil antar pesan
     await new Promise(r => setTimeout(r, 200))
