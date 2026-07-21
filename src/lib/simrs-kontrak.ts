@@ -24,6 +24,10 @@ import {
   WAJIB_KUNJUNGAN, PENTING_KUNJUNGAN, DIKENAL_KUNJUNGAN,
   WAJIB_PASIEN, PENTING_PASIEN, DIKENAL_PASIEN,
 } from './simrs-diagnostik'
+import {
+  SIMRS_PER_PAGE, SIMRS_ENDPOINT_KUNJUNGAN, SIMRS_ENDPOINT_PASIEN,
+  type SimrsEndpointSpec,
+} from './simrs-client'
 
 export type StatusField = 'wajib' | 'penting' | 'opsional'
 export type Bagian = 'non_fungsional' | 'kesepakatan' | 'pertanyaan_terbuka'
@@ -45,7 +49,17 @@ export interface ItemKontrak {
   urutan: number
 }
 
+/** Blok endpoint + contoh respons untuk ditampilkan read-only di dokumentasi.
+ * Semuanya diturunkan dari kode (spec endpoint + contoh field) — bukan diedit
+ * bebas, supaya tidak pernah menyimpang dari yang sungguhan dipanggil sync. */
+export interface EndpointDoc {
+  spec: SimrsEndpointSpec
+  contohRespons: string   // JSON siap tampil, dibangun dari contoh tiap field
+}
+
 export interface KontrakDoc {
+  endpointKunjungan: EndpointDoc
+  endpointPasien: EndpointDoc
   fieldsKunjungan: FieldKontrak[]
   fieldsPasien: FieldKontrak[]
   nonFungsional: ItemKontrak[]
@@ -93,14 +107,47 @@ export async function ambilKontrakDoc(db: PrismaClient, tenantSlug: string): Pro
     id: i.id, bagian: i.bagian as Bagian, judul: i.judul, isi: i.isi, status: i.status, urutan: i.urutan,
   })
 
+  const fieldsKunjungan = susunFields('kunjungan', DIKENAL_KUNJUNGAN, WAJIB_KUNJUNGAN, PENTING_KUNJUNGAN)
+  const fieldsPasien    = susunFields('pasien', DIKENAL_PASIEN, WAJIB_PASIEN, PENTING_PASIEN)
+
   return {
-    fieldsKunjungan: susunFields('kunjungan', DIKENAL_KUNJUNGAN, WAJIB_KUNJUNGAN, PENTING_KUNJUNGAN),
-    fieldsPasien: susunFields('pasien', DIKENAL_PASIEN, WAJIB_PASIEN, PENTING_PASIEN),
+    endpointKunjungan: {
+      spec: SIMRS_ENDPOINT_KUNJUNGAN,
+      contohRespons: JSON.stringify(
+        { data: [ contohBaris(fieldsKunjungan) ], meta: { total: 1, page: 1, per_page: SIMRS_PER_PAGE } },
+        null, 2,
+      ),
+    },
+    endpointPasien: {
+      spec: SIMRS_ENDPOINT_PASIEN,
+      // Endpoint pasien mengembalikan satu objek, bukan array — cocok dengan cara
+      // getPasienByNoRm() membacanya (json.data ?? json).
+      contohRespons: JSON.stringify({ data: contohBaris(fieldsPasien) }, null, 2),
+    },
+    fieldsKunjungan,
+    fieldsPasien,
     nonFungsional: items.filter(i => i.bagian === 'non_fungsional').map(keItem),
     kesepakatan: items.filter(i => i.bagian === 'kesepakatan').map(keItem),
     pertanyaanTerbuka: items.filter(i => i.bagian === 'pertanyaan_terbuka').map(keItem),
     catatanUmum: catatan?.catatan_umum ?? '',
   }
+}
+
+/** Bangun satu baris contoh JSON dari nilai "contoh" tiap field. Field yang belum
+ * dianotasi tampil null — jadi contoh respons ikut lengkap begitu Admin IT mengisi
+ * contoh, tanpa blok statis terpisah yang bisa basi. diagnosa_sekunder ditampilkan
+ * sebagai array supaya bentuknya benar. */
+function contohBaris(fields: FieldKontrak[]): Record<string, unknown> {
+  const row: Record<string, unknown> = {}
+  for (const f of fields) {
+    if (f.contoh === null) { row[f.fieldNama] = null; continue }
+    if (f.fieldNama === 'diagnosa_sekunder') {
+      try { row[f.fieldNama] = JSON.parse(f.contoh) } catch { row[f.fieldNama] = [f.contoh] }
+    } else {
+      row[f.fieldNama] = f.contoh
+    }
+  }
+  return row
 }
 
 /** Simpan contoh/catatan untuk satu field. field_nama HARUS ada di DIKENAL_* —

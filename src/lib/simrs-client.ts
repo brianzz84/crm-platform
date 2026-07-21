@@ -4,16 +4,48 @@
  * Mode: SIMRS_MOCK=true → pakai data dummy (sementara menunggu API dari IT RKZ)
  *       SIMRS_MOCK=false → hit API real SIMRS
  *
- * Contract API yang diharapkan dari IT RKZ:
- *  GET /kunjungan/delta?tanggal=YYYY-MM-DD&page=1&per_page=500
- *  GET /pasien/{no_rm}
- *
- * Response kunjungan:
- * {
- *   data: SimrsKunjungan[],
- *   meta: { total: number, page: number, per_page: number }
- * }
+ * Contract API yang diharapkan dari IT RKZ — lihat SIMRS_ENDPOINT_KUNJUNGAN /
+ * SIMRS_ENDPOINT_PASIEN di bawah. Konstanta itu adalah SUMBER KEBENARAN TUNGGAL
+ * yang dipakai bersama oleh fetch sungguhan DAN dokumentasi kontrak (halaman
+ * Pengaturan > Integrasi SIMRS) — jadi keduanya tidak bisa berbeda.
  */
+
+// Batas baris per panggilan yang disepakati tim IT RKZ. Dipakai oleh SEMUA jalur
+// (sync, diagnostik, dokumentasi) — jangan tulis angka literal per_page di tempat
+// lain, supaya batas ini tidak pernah bercabang lagi. (Sebelumnya sync memakai 500
+// diam-diam, melanggar kesepakatan.)
+export const SIMRS_PER_PAGE = 100
+
+export interface SimrsQueryParam {
+  nama:       string
+  contoh:     string
+  keterangan: string
+}
+export interface SimrsEndpointSpec {
+  kunci:      'kunjungan' | 'pasien'
+  method:     string
+  pathContoh: string
+  queryParams: SimrsQueryParam[]
+}
+
+export const SIMRS_ENDPOINT_KUNJUNGAN: SimrsEndpointSpec = {
+  kunci:  'kunjungan',
+  method: 'GET',
+  pathContoh: `/kunjungan/delta?tanggal=2026-03-20&page=1&per_page=${SIMRS_PER_PAGE}&unit=<KODE_PONDOK_SEHAT>`,
+  queryParams: [
+    { nama: 'tanggal',  contoh: '2026-03-20',           keterangan: 'Tanggal kunjungan (YYYY-MM-DD)' },
+    { nama: 'page',     contoh: '1',                     keterangan: 'Nomor halaman, mulai dari 1' },
+    { nama: 'per_page', contoh: String(SIMRS_PER_PAGE),  keterangan: `Baris per halaman — maks ${SIMRS_PER_PAGE} (disepakati tim IT)` },
+    { nama: 'unit',     contoh: '<KODE_PONDOK_SEHAT>',   keterangan: 'Filter unit DI SISI SERVER SIMRS — kode Pondok Sehat dari tim IT' },
+  ],
+}
+
+export const SIMRS_ENDPOINT_PASIEN: SimrsEndpointSpec = {
+  kunci:  'pasien',
+  method: 'GET',
+  pathContoh: '/pasien/{no_rm}',
+  queryParams: [],
+}
 
 export interface SimrsKunjungan {
   kunjungan_id:     string       // ID unik kunjungan di SIMRS
@@ -141,7 +173,7 @@ async function fetchKunjunganPage(
   tanggal: string,
   page: number,
 ): Promise<{ data: SimrsKunjungan[]; total: number }> {
-  const url = `${cfg.base_url}/kunjungan/delta?tanggal=${tanggal}&page=${page}&per_page=500`
+  const url = `${cfg.base_url}/kunjungan/delta?tanggal=${tanggal}&page=${page}&per_page=${SIMRS_PER_PAGE}`
   const res = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${cfg.api_key}`,

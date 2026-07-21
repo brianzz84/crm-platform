@@ -15,7 +15,7 @@
  */
 import type { PrismaClient } from '../generated/prisma/client'
 import {
-  getSimrsConfig, panggilKunjunganMentah, panggilPasienMentah,
+  getSimrsConfig, panggilKunjunganMentah, panggilPasienMentah, SIMRS_PER_PAGE,
   type HasilPanggilanMentah,
 } from './simrs-client'
 
@@ -128,7 +128,7 @@ export async function jalankanDiagnostikSimrs(
 
   if (jenis === 'kunjungan') {
     const p = parameter as { tanggal: string }
-    panggilan = await panggilKunjunganMentah(cfg, p.tanggal, 100)
+    panggilan = await panggilKunjunganMentah(cfg, p.tanggal, SIMRS_PER_PAGE)
     const barisMentah = extractArray(panggilan.raw)
     if (barisMentah) {
       jumlahBarisRespons = barisMentah.length

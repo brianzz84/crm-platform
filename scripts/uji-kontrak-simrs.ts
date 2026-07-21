@@ -34,6 +34,23 @@ async function main() {
   periksa('field kunjungan tetap lengkap walau belum dianotasi (dari kode, bukan DB)',
     docKosong.fieldsKunjungan.some(f => f.fieldNama === 'no_rm') && docKosong.fieldsKunjungan.some(f => f.fieldNama === 'kota'),
     `(dapat ${docKosong.fieldsKunjungan.length} field)`)
+
+  console.log('\n→ Blok endpoint (diturunkan dari kode)...')
+  periksa('endpoint kunjungan bermethod GET', docKosong.endpointKunjungan.spec.method === 'GET')
+  periksa('path kunjungan memuat per_page=100 (batas disepakati, BUKAN 500)',
+    docKosong.endpointKunjungan.spec.pathContoh.includes('per_page=100') && !docKosong.endpointKunjungan.spec.pathContoh.includes('per_page=500'),
+    `(dapat "${docKosong.endpointKunjungan.spec.pathContoh}")`)
+  periksa('path kunjungan memuat param unit (filter Pondok Sehat di server)',
+    docKosong.endpointKunjungan.spec.pathContoh.includes('unit='))
+  periksa('endpoint pasien path /pasien/{no_rm}', docKosong.endpointPasien.spec.pathContoh === '/pasien/{no_rm}')
+
+  console.log('\n→ Contoh respons (auto-generate, JSON valid)...')
+  const respKunjungan = JSON.parse(docKosong.endpointKunjungan.contohRespons)
+  periksa('contoh respons kunjungan JSON valid + ada data[] & meta', Array.isArray(respKunjungan.data) && !!respKunjungan.meta)
+  periksa('meta.per_page = 100 (dari konstanta yang sama)', respKunjungan.meta.per_page === 100, `(dapat ${respKunjungan.meta?.per_page})`)
+  periksa('field belum dianotasi tampil null di contoh respons', respKunjungan.data[0].no_rm === null)
+  const respPasien = JSON.parse(docKosong.endpointPasien.contohRespons)
+  periksa('contoh respons pasien JSON valid (objek tunggal, bukan array)', !!respPasien.data && !Array.isArray(respPasien.data))
   periksa('no_rm berstatus wajib (dari kode)', docKosong.fieldsKunjungan.find(f => f.fieldNama === 'no_rm')?.status === 'wajib')
   periksa('tindakan_kode berstatus penting (dari kode)', docKosong.fieldsKunjungan.find(f => f.fieldNama === 'tindakan_kode')?.status === 'penting')
   periksa('alamat berstatus opsional (dari kode)', docKosong.fieldsKunjungan.find(f => f.fieldNama === 'alamat')?.status === 'opsional')

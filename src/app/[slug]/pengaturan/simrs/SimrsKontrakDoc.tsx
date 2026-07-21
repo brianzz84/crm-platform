@@ -20,7 +20,12 @@ interface ItemKontrak {
   status: string | null
   urutan: number
 }
+interface QueryParam { nama: string; contoh: string; keterangan: string }
+interface EndpointSpec { kunci: 'kunjungan' | 'pasien'; method: string; pathContoh: string; queryParams: QueryParam[] }
+interface EndpointDoc { spec: EndpointSpec; contohRespons: string }
 interface KontrakDoc {
+  endpointKunjungan: EndpointDoc
+  endpointPasien: EndpointDoc
   fieldsKunjungan: FieldKontrak[]
   fieldsPasien: FieldKontrak[]
   nonFungsional: ItemKontrak[]
@@ -44,6 +49,73 @@ const inp: React.CSSProperties = {
   padding: '7px 10px', fontFamily: 'inherit', fontSize: 13,
   border: '1.5px solid var(--c-border)', borderRadius: 'var(--r-sm)',
   outline: 'none', background: 'white', color: 'var(--c-text)', boxSizing: 'border-box', width: '100%',
+}
+
+// Blok kode read-only dengan tombol Salin. Isi endpoint & respons diturunkan dari
+// kode (bukan diedit di sini), supaya dokumentasi tidak bisa menyimpang dari yang
+// sungguhan dipanggil sync.
+function KodeBlok({ teks }: { teks: string }) {
+  const [tersalin, setTersalin] = useState(false)
+  async function salin() {
+    try { await navigator.clipboard.writeText(teks); setTersalin(true); setTimeout(() => setTersalin(false), 1500) } catch {}
+  }
+  return (
+    <div style={{ position: 'relative', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, marginTop: 8, overflowX: 'auto' }}>
+      <button onClick={salin} type="button"
+        style={{ position: 'absolute', top: 6, right: 6, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 5, border: '1px solid var(--c-border)', background: 'white', color: tersalin ? '#278B58' : 'var(--c-text-muted)', cursor: 'pointer', fontFamily: 'inherit' }}>
+        {tersalin ? 'Tersalin ✓' : 'Salin'}
+      </button>
+      <pre style={{ margin: 0, padding: '12px 14px', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6, color: 'var(--c-text)', whiteSpace: 'pre', minWidth: 0 }}>{teks}</pre>
+    </div>
+  )
+}
+
+function EndpointBlok({ judul, endpoint }: { judul: string; endpoint: EndpointDoc }) {
+  const [showRespons, setShowRespons] = useState(false)
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>{judul}</div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: '#E4F2F0', color: '#0E6E66' }}>{endpoint.spec.method}</span>
+        <code style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--c-text)', wordBreak: 'break-all' }}>{endpoint.spec.pathContoh}</code>
+      </div>
+
+      {endpoint.spec.queryParams.length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>{['Parameter', 'Contoh', 'Keterangan'].map(h => (
+                <th key={h} style={{ padding: '5px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', borderBottom: '2px solid var(--c-border)' }}>{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody>
+              {endpoint.spec.queryParams.map(q => (
+                <tr key={q.nama} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                  <td style={{ padding: '5px 10px', fontFamily: 'monospace', fontWeight: 600 }}>{q.nama}</td>
+                  <td style={{ padding: '5px 10px', fontFamily: 'monospace', color: 'var(--c-text-muted)' }}>{q.contoh}</td>
+                  <td style={{ padding: '5px 10px', color: 'var(--c-text-muted)' }}>{q.keterangan}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <button onClick={() => setShowRespons(s => !s)} type="button"
+        style={{ marginTop: 10, fontSize: 12, color: 'var(--c-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontWeight: 600 }}>
+        {showRespons ? '▲ Sembunyikan bentuk respons' : '▼ Lihat bentuk respons (contoh)'}
+      </button>
+      {showRespons && (
+        <>
+          <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 6 }}>
+            Dibangun otomatis dari contoh tiap field di bawah — ikut berubah saat contoh diperbarui.
+          </div>
+          <KodeBlok teks={endpoint.contohRespons} />
+        </>
+      )}
+    </div>
+  )
 }
 
 function FieldTable({
@@ -362,8 +434,13 @@ export default function SimrsKontrakDoc({ slug }: { slug: string }) {
       </div>
 
       <div style={kartu}>
-        <FieldTable judul="Endpoint Kunjungan" fields={doc.fieldsKunjungan} onSave={simpanField} />
-        <FieldTable judul="Endpoint Pasien" fields={doc.fieldsPasien} onSave={simpanField} />
+        <EndpointBlok judul="Endpoint Kunjungan (Delta Harian)" endpoint={doc.endpointKunjungan} />
+        <FieldTable judul="Field Kunjungan" fields={doc.fieldsKunjungan} onSave={simpanField} />
+      </div>
+
+      <div style={kartu}>
+        <EndpointBlok judul="Endpoint Pasien (by No. RM)" endpoint={doc.endpointPasien} />
+        <FieldTable judul="Field Pasien" fields={doc.fieldsPasien} onSave={simpanField} />
       </div>
 
       <DaftarBebas
