@@ -7,8 +7,12 @@ interface InitialData {
   phone_number_id: string
   waba_id:         string | null
   app_id:          string | null
+  page_id:         string | null
+  ig_business_id:  string | null
+  ad_account_id:   string | null
   aktif:           boolean
-  has_token:       boolean
+  has_token:          boolean
+  has_insights_token: boolean
   tested_at:       string | null
 }
 
@@ -17,6 +21,10 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
   const [accessToken,   setAccessToken]   = useState('')
   const [wabaId,        setWabaId]        = useState(initialData?.waba_id ?? '')
   const [appId,         setAppId]         = useState(initialData?.app_id ?? '')
+  const [pageId,        setPageId]        = useState(initialData?.page_id ?? '')
+  const [igBusinessId,  setIgBusinessId]  = useState(initialData?.ig_business_id ?? '')
+  const [adAccountId,   setAdAccountId]   = useState(initialData?.ad_account_id ?? '')
+  const [insightsToken, setInsightsToken] = useState('')
   const [aktif,         setAktif]         = useState(initialData?.aktif ?? true)
   const [saving,        setSaving]        = useState(false)
   const [testing,       setTesting]       = useState(false)
@@ -34,6 +42,10 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
           access_token:    accessToken || undefined,
           waba_id:         wabaId || undefined,
           app_id:          appId || undefined,
+          page_id:         pageId || undefined,
+          ig_business_id:  igBusinessId || undefined,
+          ad_account_id:   adAccountId || undefined,
+          insights_token:  insightsToken || undefined,
           aktif,
         }),
       })
@@ -41,6 +53,7 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
       if (!res.ok) { setMsg({ type: 'error', text: json.error || 'Gagal menyimpan' }); return }
       setMsg({ type: 'success', text: 'Konfigurasi berhasil disimpan.' })
       setAccessToken('') // clear setelah simpan
+      setInsightsToken('')
     } finally { setSaving(false) }
   }
 
@@ -138,6 +151,41 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
             />
             <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
               Diperlukan untuk template dengan header gambar/video/dokumen (unggah contoh media ke Meta). Dari developers.facebook.com → App → Settings.
+            </p>
+          </div>
+
+          {/* ── Analitik Media Sosial (Fase 0) ── */}
+          <div style={{ borderTop: '1px dashed var(--c-border)', paddingTop: 'var(--sp-4)' }}>
+            <div style={{ fontWeight: 800, fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)', marginBottom: 2 }}>
+              📊 Analitik Media Sosial (Facebook &amp; Instagram)
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--c-text-faint)', margin: '0 0 12px' }}>
+              Untuk laporan performa FB/IG. Isi lalu jalankan <b>Probe</b> di bawah untuk memverifikasi izin. Kosongkan jika belum dipakai.
+            </p>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Facebook Page ID</label>
+            <input value={pageId} onChange={e => setPageId(e.target.value)} placeholder="1029384756…" style={inputStyle} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Instagram Business Account ID</label>
+            <input value={igBusinessId} onChange={e => setIgBusinessId(e.target.value)} placeholder="17841400000000000" style={inputStyle} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Ad Account ID</label>
+            <input value={adAccountId} onChange={e => setAdAccountId(e.target.value)} placeholder="act_1234567890" style={inputStyle} />
+            <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>Untuk Marketing API (iklan). Format diawali <code>act_</code>.</p>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Token Insights / Ads</label>
+            <input value={insightsToken} onChange={e => setInsightsToken(e.target.value)} type="password"
+              placeholder={initialData?.has_insights_token ? 'Kosongkan jika tidak ingin mengubah token' : 'Page / System User token ber-scope Insights & Ads'} style={inputStyle} />
+            <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
+              Terpisah dari token WhatsApp. Butuh scope: instagram_manage_insights, pages_read_engagement, read_insights, ads_read.
             </p>
           </div>
 

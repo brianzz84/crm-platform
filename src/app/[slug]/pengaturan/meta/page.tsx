@@ -4,6 +4,7 @@ import { getSessionFromHeaders } from '@/lib/auth'
 import { canDo } from '@/constants'
 import { getTenantDb } from '@/lib/tenant'
 import MetaConfigForm from './MetaConfigForm'
+import MetaSocialDiagnostik from './MetaSocialDiagnostik'
 
 export const metadata: Metadata = { title: 'Integrasi Meta Cloud API' }
 
@@ -88,11 +89,17 @@ export default async function MetaConfigPage({ params }: { params: { slug: strin
           phone_number_id: cfg.phone_number_id,
           waba_id:         cfg.waba_id,
           app_id:          cfg.app_id,
+          page_id:         cfg.page_id,
+          ig_business_id:  cfg.ig_business_id,
+          ad_account_id:   cfg.ad_account_id,
           aktif:           cfg.aktif,
-          has_token:       !!cfg.access_token,
+          has_token:          !!cfg.access_token,
+          has_insights_token: !!cfg.insights_token,
           tested_at:       cfg.tested_at?.toISOString() ?? null,
         } : null}
       />
+
+      <MetaSocialDiagnostik slug={params.slug} />
     </div>
   )
 }

@@ -14,8 +14,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   if (!cfg) return NextResponse.json({ success: true, data: null })
 
-  const { access_token, ...safe } = cfg as any
-  return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token } })
+  const { access_token, insights_token, ...safe } = cfg as any
+  return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token, has_insights_token: !!insights_token } })
 }
 
 const MetaSchema = z.object({
@@ -23,6 +23,10 @@ const MetaSchema = z.object({
   access_token:    z.string().optional(),
   waba_id:         z.string().optional(),
   app_id:          z.string().optional(),
+  page_id:         z.string().optional(),
+  ig_business_id:  z.string().optional(),
+  ad_account_id:   z.string().optional(),
+  insights_token:  z.string().optional(),
   aktif:           z.boolean().default(true),
 })
 
@@ -40,6 +44,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
     const data: any = { ...parsed.data }
     if (!data.access_token) delete data.access_token
+    if (!data.insights_token) delete data.insights_token
 
     const cfg = existing
       ? await db.metaConfig.update({ where: { tenant_slug: params.slug }, data })
