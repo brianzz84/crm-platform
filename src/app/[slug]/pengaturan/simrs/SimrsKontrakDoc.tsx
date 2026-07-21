@@ -72,6 +72,72 @@ function KodeBlok({ teks }: { teks: string }) {
   )
 }
 
+// Narasi cara kerja sync — READ-ONLY. Menggambarkan perilaku cron yang sebenarnya
+// (lihat src/lib/simrs-sync.ts & src/workers/index.ts). Sengaja hidup di kode, bukan
+// di DB yang bisa diedit, supaya penjelasan ini tidak bisa menyimpang dari yang
+// sungguhan dijalankan. Kalau alur sync berubah, ubah teks ini bersama kodenya.
+const LANGKAH_SYNC = [
+  {
+    no: 1,
+    judul: 'Kunjungan (delta harian)',
+    isi: 'Ambil kunjungan kemarin dari endpoint ramping (maks 100 baris/halaman, dipaginasi). Tiap kunjungan → pastikan pasiennya ada di sistem (buat baris rintisan kalau data pasien belum tiba, jadi kunjungan tidak pernah hilang) → simpan kunjungan.',
+  },
+  {
+    no: 2,
+    judul: 'Pasien (selektif)',
+    isi: 'Dari pasien yang muncul hari itu, ambil demografi hanya untuk yang baru atau datanya sudah lebih dari 30 hari — bukan di setiap kunjungan. Inilah alasan endpoint kunjungan dibuat ramping: pasien rutin tidak dikirimi ulang datanya berkali-kali. Nomor HP dinormalisasi (+62 / spasi → 08xx) saat masuk.',
+  },
+  {
+    no: 3,
+    judul: 'Rencana kontrol',
+    isi: 'Ambil seluruh jadwal dalam 90 hari ke depan, lalu rekonsiliasi: rencana yang hilang dari feed ditandai batal (SIMRS tidak memberi tahu pembatalan), yang muncul lagi kembali terjadwal.',
+  },
+]
+const DI_LUAR_CRON = [
+  { label: 'Tombol “Segarkan dari SIMRS” per pasien', ket: 'tarik demografi kapan saja, untuk kasus mendesak.' },
+  { label: 'Pengingat kontrol H-3 / H-1', ket: 'dikirim dari tabel rencana kontrol.' },
+  { label: 'Backfill rentang tanggal', ket: 'sekali jalan, untuk menarik data historis.' },
+  { label: 'Tools Diagnostik', ket: 'uji koneksi manual, dibatasi laju agar tidak membebani SIMRS.' },
+]
+
+function NarasiSync() {
+  return (
+    <div style={kartu}>
+      <div style={judulKartu}>🔄 Cara Kerja Sinkronisasi (Cron)</div>
+      <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 14, lineHeight: 1.6 }}>
+        Cron otomatis berjalan tiap malam (jam yang dikonfigurasi di atas). Kalau ada hari terlewat karena
+        cron gagal, sistem menyusul otomatis sampai 7 hari ke belakang. Setiap kali jalan, tiga langkah ini dikerjakan berurutan:
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        {LANGKAH_SYNC.map(l => (
+          <div key={l.no} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <div style={{
+              flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: '#E4F2F0', color: '#0E6E66',
+              fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{l.no}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text)', marginBottom: 2 }}>{l.judul}</div>
+              <div style={{ fontSize: 13, color: 'var(--c-text-muted)', lineHeight: 1.6 }}>{l.isi}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 8 }}>Di luar cron</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {DI_LUAR_CRON.map(d => (
+          <div key={d.label} style={{ fontSize: 13, color: 'var(--c-text)', lineHeight: 1.6 }}>
+            <span style={{ color: 'var(--c-secondary)', marginRight: 6 }}>•</span>
+            <span style={{ fontWeight: 600 }}>{d.label}</span>
+            <span style={{ color: 'var(--c-text-muted)' }}> — {d.ket}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function EndpointBlok({ judul, endpoint }: { judul: string; endpoint: EndpointDoc }) {
   const [showRespons, setShowRespons] = useState(false)
   return (
@@ -434,6 +500,8 @@ export default function SimrsKontrakDoc({ slug }: { slug: string }) {
           </div>
         )}
       </div>
+
+      <NarasiSync />
 
       <div style={kartu}>
         <EndpointBlok judul="Endpoint Kunjungan (Delta Harian)" endpoint={doc.endpointKunjungan} />

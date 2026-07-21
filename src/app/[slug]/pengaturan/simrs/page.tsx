@@ -68,13 +68,15 @@ export default async function SimrsPage({ params }: { params: { slug: string } }
         </div>
         <div style={{ padding: 'var(--sp-4) var(--sp-5)', display: 'flex', alignItems: 'flex-start', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
           {[
-            { icon: '🕛', label: 'Cron otomatis', sub: 'Setiap malam sesuai jam yang dikonfigurasi' },
+            { icon: '🕛', label: 'Cron otomatis', sub: 'Tiap malam, catchup s/d 7 hari' },
             { arrow: true },
-            { icon: '🏥', label: 'Query SIMRS API', sub: 'Ambil kunjungan delta kemarin' },
+            { icon: '🏥', label: 'Kunjungan delta', sub: 'Ambil kunjungan kemarin (ramping)' },
             { arrow: true },
-            { icon: '💾', label: 'Upsert ke DB lokal', sub: 'Person + SimrsVisit diperbarui' },
+            { icon: '👤', label: 'Pasien selektif', sub: 'Segarkan hanya yang baru / >30 hari' },
             { arrow: true },
-            { icon: '🔍', label: 'Siap disegmentasi', sub: 'Query segmen pakai data lokal' },
+            { icon: '📅', label: 'Rencana kontrol', sub: 'Rekonsiliasi jendela 90 hari' },
+            { arrow: true },
+            { icon: '🔍', label: 'Siap dipakai', sub: 'Segmentasi & pengingat kontrol' },
           ].map((s: any, i) =>
             s.arrow ? (
               <span key={i} style={{ color: 'var(--c-text-faint)', fontSize: 16, paddingTop: 8 }}>→</span>
@@ -87,6 +89,11 @@ export default async function SimrsPage({ params }: { params: { slug: string } }
             )
           )}
         </div>
+        {canConfig && (
+          <div style={{ padding: '0 var(--sp-5) var(--sp-4)', fontSize: 11, color: 'var(--c-text-faint)' }}>
+            Rincian lengkap tiap langkah ada di <b>Dokumentasi Kontrak API SIMRS</b> di bawah.
+          </div>
+        )}
       </div>
 
       <SimrsConfigForm
