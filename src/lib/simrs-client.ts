@@ -47,19 +47,16 @@ export const SIMRS_ENDPOINT_PASIEN: SimrsEndpointSpec = {
   queryParams: [],
 }
 
+/**
+ * KUNJUNGAN — RAMPING. Sengaja TIDAK memuat demografi pasien (nama, HP, NIK,
+ * alamat, dst.). Data person diambil terpisah lewat endpoint Pasien, hanya untuk
+ * no_rm yang datanya baru/berubah — supaya demografi tidak dikirim ulang di tiap
+ * baris kunjungan (pasien rutin bisa punya banyak kunjungan). Penghubung ke person
+ * cukup lewat no_rm.
+ */
 export interface SimrsKunjungan {
   kunjungan_id:     string       // ID unik kunjungan di SIMRS
-  no_rm:            string       // nomor rekam medis
-  nama_pasien:      string
-  tanggal_lahir:    string | null  // YYYY-MM-DD
-  jenis_kelamin:    'L' | 'P' | null
-  no_hp:            string | null
-  no_hp_alternatif: string | null
-  agama:            string | null
-  alamat:           string | null   // alamat bebas (nama jalan, no. rumah, dst)
-  kota:             string | null   // kota/kabupaten — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
-  kecamatan:        string | null   // kecamatan — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
-  nik:              string | null   // NIK KTP — dikonfirmasi tersedia di SIMRS RKZ, dipakai untuk deteksi duplikat pasien
+  no_rm:            string       // nomor rekam medis — SATU-SATUNYA penghubung ke data Pasien
   tanggal:          string       // YYYY-MM-DD tanggal kunjungan
   poli:             string | null
   unit:             string | null   // nama KELOMPOK unit, mis. "Pondok Sehat" — cocok ke SimrsUnitLibrary.kelompok
@@ -71,10 +68,15 @@ export interface SimrsKunjungan {
   jadwal_kontrol:   string | null   // YYYY-MM-DD
   status_kunjungan: string | null   // SELESAI | BATAL | dll — RKZ mengonfirmasi kunjungan BATAL sudah difilter di sisi API mereka
   jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI" — atribut KUNJUNGAN ini, bukan pasien
-  nama_instansi:    string | null   // nama penjamin
+  nama_instansi:    string | null   // nama penjamin kunjungan ini
   kode_instansi:    string | null   // kode master instansi dari SIMRS
 }
 
+/**
+ * PASIEN — sumber tunggal demografi. Penjamin (jenis_pembayaran/nama_instansi/
+ * kode_instansi) SENGAJA TIDAK di sini: itu atribut per-kunjungan (satu orang bisa
+ * beda penjamin di kunjungan berbeda), ada di SimrsKunjungan.
+ */
 export interface SimrsPasien {
   no_rm:            string
   nama:             string
@@ -87,9 +89,6 @@ export interface SimrsPasien {
   kota:             string | null   // kota/kabupaten — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
   kecamatan:        string | null   // kecamatan — TERPISAH dari alamat bebas, dipakai segmentasi wilayah
   nik:              string | null   // NIK KTP — dikonfirmasi tersedia di SIMRS RKZ
-  jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI"
-  nama_instansi:    string | null
-  kode_instansi:    string | null
   no_bpjs:          string | null
 }
 
@@ -130,38 +129,51 @@ const MOCK_KOTA_KEC: [string, string][] = [
   ['Sidoarjo', 'Waru'], ['Gresik', 'Kebomas'],
 ]
 
+// no_rm SENGAJA deterministik dari indeks (bukan acak) supaya pasien yang sama muncul
+// lintas hari — dibutuhkan untuk menguji "pasien berulang tidak di-fetch person ulang".
+function mockNoRm(i: number): string {
+  return `RM${String(100001 + i).padStart(6, '0')}`
+}
+
+// Kunjungan RAMPING — tidak ada demografi person, cuma no_rm + field kunjungan.
 function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
-  return Array.from({ length: n }, (_, i) => {
-    const noRm = `RM${String(100000 + i + Math.floor(Math.random() * 500)).padStart(6, '0')}`
-    const [kota, kecamatan] = MOCK_KOTA_KEC[i % MOCK_KOTA_KEC.length]
-    return {
-      kunjungan_id:     `KJG-${tanggal.replace(/-/g, '')}-${String(i + 1).padStart(4, '0')}`,
-      no_rm:            noRm,
-      nama_pasien:      MOCK_NAMES[i % MOCK_NAMES.length],
-      tanggal_lahir:    `${1960 + (i % 40)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
-      jenis_kelamin:    i % 2 === 0 ? 'L' : 'P',
-      no_hp:            `0812${String(10000000 + i).slice(0, 8)}`,
-      agama:            ['Islam', 'Kristen', 'Katolik', 'Hindu', 'Budha'][i % 5],
-      alamat:           `Jl. Contoh No. ${i + 1}`,
-      kota,
-      kecamatan,
-      nik:              `35${String(1000000000000 + i).slice(0, 14)}`,
-      tanggal,
-      poli:             MOCK_POLI[i % MOCK_POLI.length],
-      unit:             i % 3 === 0 ? 'Rawat Inap' : 'Rawat Jalan',
-      dokter:           `dr. Dokter ${String.fromCharCode(65 + (i % 10))}`,
-      diagnosa_icd:     MOCK_ICD[i % MOCK_ICD.length],
-      diagnosa_nama:    'Diagnosis Mock',
-      diagnosa_sekunder: [],
-      tindakan_kode:    null,
-      jadwal_kontrol:   i % 5 === 0 ? tanggal : null,
-      status_kunjungan: 'SELESAI',
-      no_hp_alternatif: i % 4 === 0 ? `0813${String(20000000 + i).slice(0, 8)}` : null,
-      jenis_pembayaran: i % 3 === 0 ? 'TUNAI' : 'NON_TUNAI',
-      nama_instansi:    i % 3 === 0 ? null : ['BPJS Kesehatan', 'PT Prudential', 'PT Allianz'][i % 3 === 1 ? 0 : 1],
-      kode_instansi:    i % 3 === 0 ? null : ['BPJS-001', 'PRU-001', 'ALZ-001'][i % 3 === 1 ? 0 : 1],
-    }
-  })
+  return Array.from({ length: n }, (_, i) => ({
+    kunjungan_id:     `KJG-${tanggal.replace(/-/g, '')}-${String(i + 1).padStart(4, '0')}`,
+    no_rm:            mockNoRm(i),
+    tanggal,
+    poli:             MOCK_POLI[i % MOCK_POLI.length],
+    unit:             i % 3 === 0 ? 'Rawat Inap' : 'Rawat Jalan',
+    dokter:           `dr. Dokter ${String.fromCharCode(65 + (i % 10))}`,
+    diagnosa_icd:     MOCK_ICD[i % MOCK_ICD.length],
+    diagnosa_nama:    'Diagnosis Mock',
+    diagnosa_sekunder: [],
+    tindakan_kode:    null,
+    jadwal_kontrol:   i % 5 === 0 ? tanggal : null,
+    status_kunjungan: 'SELESAI',
+    jenis_pembayaran: i % 3 === 0 ? 'TUNAI' : 'NON_TUNAI',
+    nama_instansi:    i % 3 === 0 ? null : ['BPJS Kesehatan', 'PT Prudential', 'PT Allianz'][i % 3 === 1 ? 0 : 1],
+    kode_instansi:    i % 3 === 0 ? null : ['BPJS-001', 'PRU-001', 'ALZ-001'][i % 3 === 1 ? 0 : 1],
+  }))
+}
+
+// Demografi pasien deterministik dari no_rm — dipakai mock endpoint Pasien.
+function mockPasien(noRm: string): SimrsPasien {
+  const i = Math.max(0, Number(noRm.replace(/\D/g, '')) - 100001)
+  const [kota, kecamatan] = MOCK_KOTA_KEC[i % MOCK_KOTA_KEC.length]
+  return {
+    no_rm:            noRm,
+    nama:             MOCK_NAMES[i % MOCK_NAMES.length],
+    tanggal_lahir:    `${1960 + (i % 40)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+    jenis_kelamin:    i % 2 === 0 ? 'L' : 'P',
+    no_hp:            `0812${String(10000000 + i).slice(0, 8)}`,
+    no_hp_alternatif: i % 4 === 0 ? `0813${String(20000000 + i).slice(0, 8)}` : null,
+    agama:            ['Islam', 'Kristen', 'Katolik', 'Hindu', 'Budha'][i % 5],
+    alamat:           `Jl. Contoh No. ${i + 1}`,
+    kota,
+    kecamatan,
+    nik:              `35${String(1000000000000 + i).slice(0, 14)}`,
+    no_bpjs:          i % 3 === 0 ? null : `000${String(1234567890 + i).slice(0, 10)}`,
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -209,8 +221,9 @@ export async function getKunjunganByTanggal(
   tanggal: string,
 ): Promise<SimrsKunjungan[]> {
   if (MOCK_MODE) {
-    const n = 20 + Math.floor(Math.random() * 30)
-    return mockKunjungan(tanggal, n)
+    // Jumlah TETAP (bukan acak) supaya uji sync deterministik — pasien yang sama
+    // (no_rm by indeks) muncul konsisten lintas hari. Mock hanya untuk dev.
+    return mockKunjungan(tanggal, 20)
   }
 
   const all: SimrsKunjungan[] = []
@@ -227,14 +240,15 @@ export async function getKunjunganByTanggal(
 }
 
 /**
- * Ambil data pasien by no_rm.
- * Digunakan untuk enrichment data person jika data kunjungan kurang lengkap.
+ * Ambil demografi pasien by no_rm. Sumber TUNGGAL data person sekarang — dipanggil
+ * SELEKTIF oleh sync (hanya untuk no_rm baru/berubah, bukan tiap kunjungan) supaya
+ * demografi tidak ditransfer ulang berulang. Lihat simrs-sync.ts.
  */
 export async function getPasienByNoRm(
   cfg: SimrsClientConfig,
   noRm: string,
 ): Promise<SimrsPasien | null> {
-  if (MOCK_MODE) return null
+  if (MOCK_MODE) return mockPasien(noRm)
 
   try {
     const res = await fetch(`${cfg.base_url}/pasien/${encodeURIComponent(noRm)}`, {
@@ -296,7 +310,7 @@ export async function panggilPasienMentah(
   const mulai = Date.now()
 
   if (MOCK_MODE) {
-    return { statusHttp: 200, durasiMs: Date.now() - mulai, raw: { data: null }, errorPesan: 'Mode mock tidak menyimulasikan data pasien tunggal' }
+    return { statusHttp: 200, durasiMs: Date.now() - mulai, raw: { data: mockPasien(noRm) }, errorPesan: null }
   }
 
   try {

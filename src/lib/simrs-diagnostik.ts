@@ -22,27 +22,28 @@ import {
 export type JenisDiagnostik = 'kunjungan' | 'pasien'
 
 // Field WAJIB: tanpa ini, satu baris tidak bisa diproses sync sama sekali.
-export const WAJIB_KUNJUNGAN = ['kunjungan_id', 'no_rm', 'nama_pasien', 'tanggal'] as const
+// Kunjungan RAMPING — tidak lagi memuat demografi pasien (pindah ke endpoint Pasien).
+export const WAJIB_KUNJUNGAN = ['kunjungan_id', 'no_rm', 'tanggal'] as const
 export const WAJIB_PASIEN    = ['no_rm', 'nama'] as const
 
 // Field PENTING: bisa diproses tanpanya, tapi fitur tertentu jadi pincang kalau kosong.
-export const PENTING_KUNJUNGAN = ['tindakan_kode', 'unit', 'no_hp', 'status_kunjungan', 'jadwal_kontrol'] as const
+export const PENTING_KUNJUNGAN = ['tindakan_kode', 'unit', 'status_kunjungan', 'jadwal_kontrol'] as const
 export const PENTING_PASIEN    = ['no_hp', 'nik'] as const
 
 // Semua field yang KITA KENAL — di luar ini dianggap "asing" (bukan berarti salah,
 // cuma berarti kita belum pakai; berguna buat ketahuan kalau IT kirim nama field beda).
-// PENTING: kalau menambah field baru ke SimrsKunjungan/SimrsPasien (simrs-client.ts),
-// tambahkan juga di sini — kalau lupa, tools diagnostik akan salah menandainya "asing".
+// HARUS cocok dengan interface SimrsKunjungan/SimrsPasien di simrs-client.ts — kalau
+// menambah/menghapus field di sana, sesuaikan di sini juga (kalau lupa, tools
+// diagnostik akan salah menandai field "asing"/"hilang").
 export const DIKENAL_KUNJUNGAN = [
   ...WAJIB_KUNJUNGAN, ...PENTING_KUNJUNGAN,
-  'tanggal_lahir', 'jenis_kelamin', 'no_hp_alternatif', 'agama', 'alamat', 'kota', 'kecamatan', 'nik',
   'poli', 'dokter', 'diagnosa_icd', 'diagnosa_nama', 'diagnosa_sekunder',
-  'jenis_pembayaran', 'nama_instansi', 'kode_instansi',
+  'jenis_pembayaran', 'nama_instansi', 'kode_instansi',   // penjamin: atribut kunjungan
 ]
 export const DIKENAL_PASIEN = [
   ...WAJIB_PASIEN, ...PENTING_PASIEN,
   'tanggal_lahir', 'jenis_kelamin', 'no_hp_alternatif', 'agama', 'alamat', 'kota', 'kecamatan',
-  'jenis_pembayaran', 'nama_instansi', 'kode_instansi', 'no_bpjs',
+  'no_bpjs',   // penjamin TIDAK di sini — itu per-kunjungan
 ]
 
 export interface RingkasanValidasiField {

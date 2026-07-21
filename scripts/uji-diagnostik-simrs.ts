@@ -47,9 +47,11 @@ async function main() {
 
   // ── 2. Uji jenis 'pasien' ──
   console.log('\n→ Uji endpoint pasien (mock)...')
-  const hasilPasien = await jalankanDiagnostikSimrs(db, db as any, SLUG, 'pasien', { no_rm: 'RM999999' }, admin.id)
-  periksa('mode mock memberi pesan jelas (tidak menyimulasikan pasien tunggal)',
-    hasilPasien.errorPesan?.includes('mock') === true, `(dapat "${hasilPasien.errorPesan}")`)
+  const hasilPasien = await jalankanDiagnostikSimrs(db, db as any, SLUG, 'pasien', { no_rm: 'RM100005' }, admin.id)
+  periksa('mock pasien mengembalikan data (bukan lagi "tidak disimulasikan")', hasilPasien.berhasil === true)
+  periksa('validasi pasien: tidak ada field wajib hilang', hasilPasien.validasi?.fieldHilang.length === 0)
+  periksa('validasi pasien: tidak ada field asing (mock cocok skema pasien)',
+    hasilPasien.validasi?.fieldAsing.length === 0, `(dapat ${JSON.stringify(hasilPasien.validasi?.fieldAsing)})`)
 
   // ── 3. Log tersimpan TANPA data mentah ──
   console.log('\n→ Memeriksa isi log tersimpan...')

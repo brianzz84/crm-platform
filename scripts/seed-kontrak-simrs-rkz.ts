@@ -18,14 +18,30 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.
 
 const ANOTASI_KUNJUNGAN: Record<string, { contoh: string; catatan?: string }> = {
   kunjungan_id: { contoh: 'KJG-20260320-0042', catatan: 'ID unik kunjungan di SIMRS — kunci dedup sync' },
-  no_rm: { contoh: 'RM123456', catatan: 'Penghubung ke data Pasien' },
-  nama_pasien: { contoh: 'Budi Santoso' },
+  // KUNJUNGAN ramping — cuma no_rm (penghubung) + field kunjungan. Demografi pasien
+  // pindah ke endpoint Pasien di bawah.
+  no_rm: { contoh: 'RM123456', catatan: 'SATU-SATUNYA penghubung ke data Pasien' },
   tanggal: { contoh: '2026-03-20' },
   tindakan_kode: { contoh: '4419', catatan: 'Harus sama persis dengan kode barang di master layanan kami — dasar pencocokan evaluasi campaign' },
   unit: { contoh: 'Pondok Sehat', catatan: 'Perlu diisi tim IT: kode/nilai parameter unit untuk filter Pondok Sehat' },
-  no_hp: { contoh: '081234567890' },
   status_kunjungan: { contoh: 'SELESAI', catatan: 'Dikonfirmasi: kunjungan BATAL sudah difilter di API SIMRS — field ini tetap diminta sebagai jaring pengaman' },
   jadwal_kontrol: { contoh: '2026-04-20' },
+  poli: { contoh: 'Poli Umum', catatan: 'Unit spesifik (lebih detail dari unit)' },
+  dokter: { contoh: 'dr. Andi Wijaya, Sp.PD' },
+  diagnosa_icd: { contoh: 'J06.9' },
+  diagnosa_nama: { contoh: 'ISPA akut' },
+  diagnosa_sekunder: { contoh: '["I10"]' },
+  jenis_pembayaran: { contoh: 'NON_TUNAI', catatan: 'Penjamin — atribut KUNJUNGAN ini, bukan pasien' },
+  nama_instansi: { contoh: 'BPJS Kesehatan' },
+  kode_instansi: { contoh: 'BPJS-001' },
+}
+
+const ANOTASI_PASIEN: Record<string, { contoh: string; catatan?: string }> = {
+  // PASIEN — sumber tunggal demografi. Diambil selektif (hanya no_rm baru/berubah),
+  // bukan di tiap kunjungan. Penjamin TIDAK di sini (itu per-kunjungan).
+  no_rm: { contoh: 'RM123456' },
+  nama: { contoh: 'Budi Santoso' },
+  no_hp: { contoh: '081234567890' },
   nik: { contoh: '3578012345678901', catatan: 'Dikonfirmasi tersedia di SIMRS — dipakai deteksi pasien duplikat' },
   tanggal_lahir: { contoh: '1985-06-15' },
   jenis_kelamin: { contoh: 'L' },
@@ -34,31 +50,6 @@ const ANOTASI_KUNJUNGAN: Record<string, { contoh: string; catatan?: string }> = 
   alamat: { contoh: 'Jl. Contoh No. 1', catatan: 'Alamat bebas — terpisah dari kota/kecamatan' },
   kota: { contoh: 'Surabaya', catatan: 'Field terstruktur sendiri, dipakai segmentasi wilayah' },
   kecamatan: { contoh: 'Tenggilis Mejoyo', catatan: 'Field terstruktur sendiri, dipakai segmentasi wilayah' },
-  poli: { contoh: 'Poli Umum', catatan: 'Unit spesifik (lebih detail dari unit)' },
-  dokter: { contoh: 'dr. Andi Wijaya, Sp.PD' },
-  diagnosa_icd: { contoh: 'J06.9' },
-  diagnosa_nama: { contoh: 'ISPA akut' },
-  diagnosa_sekunder: { contoh: '["I10"]' },
-  jenis_pembayaran: { contoh: 'NON_TUNAI', catatan: 'Atribut kunjungan ini, bukan atribut pasien' },
-  nama_instansi: { contoh: 'BPJS Kesehatan' },
-  kode_instansi: { contoh: 'BPJS-001' },
-}
-
-const ANOTASI_PASIEN: Record<string, { contoh: string; catatan?: string }> = {
-  no_rm: { contoh: 'RM123456' },
-  nama: { contoh: 'Budi Santoso' },
-  no_hp: { contoh: '081234567890' },
-  nik: { contoh: '3578012345678901', catatan: 'Dikonfirmasi tersedia di SIMRS' },
-  tanggal_lahir: { contoh: '1985-06-15' },
-  jenis_kelamin: { contoh: 'L' },
-  no_hp_alternatif: { contoh: '081298765432' },
-  agama: { contoh: 'Islam' },
-  alamat: { contoh: 'Jl. Contoh No. 1', catatan: 'Alamat bebas — terpisah dari kota/kecamatan' },
-  kota: { contoh: 'Surabaya' },
-  kecamatan: { contoh: 'Tenggilis Mejoyo' },
-  jenis_pembayaran: { contoh: 'NON_TUNAI' },
-  nama_instansi: { contoh: 'BPJS Kesehatan' },
-  kode_instansi: { contoh: 'BPJS-001' },
   no_bpjs: { contoh: '0001234567890' },
 }
 
@@ -96,6 +87,12 @@ Endpoint Kunjungan (delta harian) perlu API sungguhan — feed berkelanjutan. En
 Kalau kontrak ini berubah: karena belum ada sistem otomatis yang memberi tahu perubahan, perubahan nama field/tipe/struktur endpoint wajib dikomunikasikan manual sebelum dideploy. Tools Diagnostik API di halaman ini bisa dipakai bersama untuk verifikasi cepat.`
 
 async function main() {
+  // Bersihkan anotasi YATIM — field yang dulu di endpoint kunjungan lalu pindah ke
+  // pasien (saat kontrak diramping) meninggalkan baris anotasi lama. ambilKontrakDoc
+  // memang cuma menampilkan field yang dikenal, tapi baris matinya lebih baik dibuang.
+  const dibersihkan = await db.simrsKontrakField.deleteMany({ where: { tenant_slug: SLUG } })
+  if (dibersihkan.count > 0) console.log(`Membersihkan ${dibersihkan.count} anotasi field lama sebelum re-seed.`)
+
   console.log('Menyimpan anotasi field Kunjungan...')
   for (const [field, a] of Object.entries(ANOTASI_KUNJUNGAN)) {
     await simpanAnotasiField(db, SLUG, 'kunjungan', field, a)

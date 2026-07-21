@@ -32,8 +32,16 @@ async function main() {
   console.log('→ Mengambil dokumen kosong (belum ada anotasi)...')
   const docKosong = await ambilKontrakDoc(db, SLUG)
   periksa('field kunjungan tetap lengkap walau belum dianotasi (dari kode, bukan DB)',
-    docKosong.fieldsKunjungan.some(f => f.fieldNama === 'no_rm') && docKosong.fieldsKunjungan.some(f => f.fieldNama === 'kota'),
+    docKosong.fieldsKunjungan.some(f => f.fieldNama === 'no_rm') && docKosong.fieldsKunjungan.some(f => f.fieldNama === 'tindakan_kode'),
     `(dapat ${docKosong.fieldsKunjungan.length} field)`)
+  // Split Opsi A: demografi (kota, alamat, nik, dst.) pindah ke endpoint Pasien,
+  // TIDAK lagi di kunjungan. Penjamin sebaliknya TIDAK di pasien.
+  periksa('kunjungan ramping: TIDAK ada demografi (kota/nik/nama_pasien)',
+    !docKosong.fieldsKunjungan.some(f => ['kota', 'nik', 'nama_pasien', 'alamat', 'no_hp'].includes(f.fieldNama)))
+  periksa('pasien memuat demografi (kota, nik, alamat)',
+    ['kota', 'nik', 'alamat'].every(n => docKosong.fieldsPasien.some(f => f.fieldNama === n)))
+  periksa('pasien TIDAK memuat penjamin (jenis_pembayaran/nama_instansi)',
+    !docKosong.fieldsPasien.some(f => ['jenis_pembayaran', 'nama_instansi', 'kode_instansi'].includes(f.fieldNama)))
 
   console.log('\n→ Blok endpoint (diturunkan dari kode)...')
   periksa('endpoint kunjungan bermethod GET', docKosong.endpointKunjungan.spec.method === 'GET')
@@ -53,7 +61,7 @@ async function main() {
   periksa('contoh respons pasien JSON valid (objek tunggal, bukan array)', !!respPasien.data && !Array.isArray(respPasien.data))
   periksa('no_rm berstatus wajib (dari kode)', docKosong.fieldsKunjungan.find(f => f.fieldNama === 'no_rm')?.status === 'wajib')
   periksa('tindakan_kode berstatus penting (dari kode)', docKosong.fieldsKunjungan.find(f => f.fieldNama === 'tindakan_kode')?.status === 'penting')
-  periksa('alamat berstatus opsional (dari kode)', docKosong.fieldsKunjungan.find(f => f.fieldNama === 'alamat')?.status === 'opsional')
+  periksa('alamat (di pasien) berstatus opsional (dari kode)', docKosong.fieldsPasien.find(f => f.fieldNama === 'alamat')?.status === 'opsional')
   periksa('contoh/catatan kosong sebelum dianotasi',
     docKosong.fieldsKunjungan.find(f => f.fieldNama === 'no_rm')?.contoh === null)
 

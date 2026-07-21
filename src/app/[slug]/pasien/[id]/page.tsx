@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import TagChip from '@/components/pasien/TagChip'
 import UnitBadge from '@/components/pasien/UnitBadge'
 import PasienDetailTabs from './PasienDetailTabs'
+import SegarkanSimrsButton from './SegarkanSimrsButton'
 
 const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des']
@@ -255,6 +256,12 @@ export default async function PasienDetailPage({ params }: Props) {
             >
               💬 Buka Chat
             </Link>
+            <SegarkanSimrsButton
+              slug={params.slug}
+              personId={person.id}
+              punyaNoRm={!!person.no_rm}
+              lastSyncIso={person.last_simrs_sync_at?.toISOString() ?? null}
+            />
           </div>
         </div>
       </div>

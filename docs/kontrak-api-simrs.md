@@ -52,33 +52,29 @@ GET /kunjungan/delta?tanggal=YYYY-MM-DD&page=1&per_page=100&unit=<KODE_PONDOK_SE
 }
 ```
 
+> ℹ️ **RAMPING (by design):** endpoint Kunjungan **tidak** memuat demografi pasien
+> (nama, HP, NIK, alamat, dst.). Demografi diambil terpisah lewat endpoint Pasien,
+> hanya untuk `no_rm` yang datanya baru/berubah — supaya data pasien tidak dikirim
+> ulang di tiap baris kunjungan (pasien rutin bisa punya banyak kunjungan). Penghubung
+> ke pasien cukup lewat `no_rm`.
+
 **Field per baris kunjungan:**
 
 | Field | Tipe | Wajib? | Contoh | Keterangan |
 |---|---|---|---|---|
 | `kunjungan_id` | string | **Wajib** | `"KJG-20260320-0042"` | ID unik kunjungan di SIMRS — kunci dedup sync |
-| `no_rm` | string | **Wajib** | `"RM123456"` | Nomor rekam medis — penghubung ke data Pasien |
-| `nama_pasien` | string | **Wajib** | `"Budi Santoso"` | |
+| `no_rm` | string | **Wajib** | `"RM123456"` | **Satu-satunya** penghubung ke data Pasien |
 | `tanggal` | string (YYYY-MM-DD) | **Wajib** | `"2026-03-20"` | Tanggal kunjungan |
 | `tindakan_kode` | string atau null | **Penting** | `"4419"` | **Harus sama persis** dengan kode barang di master layanan kami — dasar pencocokan evaluasi campaign |
 | `unit` | string atau null | **Penting** | `"Pondok Sehat"` | Nama kelompok unit |
-| `no_hp` | string atau null | **Penting** | `"081234567890"` | Nomor HP utama pasien |
-| `status_kunjungan` | string atau null | **Penting** | `"SELESAI"` | Sudah dikonfirmasi: kunjungan **BATAL sudah difilter** di sisi API SIMRS. Field ini tetap diminta terkirim sebagai jaring pengaman |
+| `status_kunjungan` | string atau null | **Penting** | `"SELESAI"` | **BATAL sudah difilter** di API SIMRS — field ini tetap diminta sebagai jaring pengaman |
 | `jadwal_kontrol` | string (YYYY-MM-DD) atau null | **Penting** | `"2026-04-20"` | Jadwal kontrol berikutnya, kalau ada |
-| `nik` | string atau null | Opsional (tersedia) | `"3578012345678901"` | Dikonfirmasi tersedia di SIMRS — dipakai deteksi pasien duplikat |
-| `tanggal_lahir` | string (YYYY-MM-DD) atau null | Opsional | `"1985-06-15"` | |
-| `jenis_kelamin` | `"L"` \| `"P"` atau null | Opsional | `"L"` | |
-| `no_hp_alternatif` | string atau null | Opsional | `"081298765432"` | Nomor HP kedua (mis. milik keluarga/wali) |
-| `agama` | string atau null | Opsional | `"Islam"` | |
-| `alamat` | string atau null | Opsional | `"Jl. Contoh No. 1"` | Alamat bebas (nama jalan, no. rumah) — **terpisah** dari `kota`/`kecamatan` di bawah |
-| `kota` | string atau null | Opsional | `"Surabaya"` | Kota/kabupaten — field terstruktur sendiri, dipakai untuk segmentasi wilayah |
-| `kecamatan` | string atau null | Opsional | `"Tenggilis Mejoyo"` | Field terstruktur sendiri, dipakai untuk segmentasi wilayah |
 | `poli` | string atau null | Opsional | `"Poli Umum"` | Unit spesifik (lebih detail dari `unit`) |
 | `dokter` | string atau null | Opsional | `"dr. Andi Wijaya, Sp.PD"` | |
 | `diagnosa_icd` | string atau null | Opsional | `"J06.9"` | Kode ICD-10 diagnosa utama |
 | `diagnosa_nama` | string atau null | Opsional | `"ISPA akut"` | |
 | `diagnosa_sekunder` | array of string | Opsional | `["I10"]` | Kode ICD-10 tambahan |
-| `jenis_pembayaran` | `"TUNAI"` \| `"NON_TUNAI"` atau null | Opsional | `"NON_TUNAI"` | Atribut kunjungan ini, **bukan** atribut pasien — satu pasien bisa beda penjamin di kunjungan berbeda |
+| `jenis_pembayaran` | `"TUNAI"` \| `"NON_TUNAI"` atau null | Opsional | `"NON_TUNAI"` | Penjamin — atribut kunjungan ini, **bukan** pasien (satu pasien bisa beda penjamin per kunjungan) |
 | `nama_instansi` | string atau null | Opsional | `"BPJS Kesehatan"` | Nama penjamin kunjungan ini |
 | `kode_instansi` | string atau null | Opsional | `"BPJS-001"` | Kode master instansi dari SIMRS |
 
@@ -90,29 +86,34 @@ GET /kunjungan/delta?tanggal=YYYY-MM-DD&page=1&per_page=100&unit=<KODE_PONDOK_SE
 GET /pasien/{no_rm}
 ```
 
+> ℹ️ **Sumber tunggal demografi.** Dipanggil **selektif** oleh sistem — hanya untuk
+> `no_rm` yang baru atau datanya sudah basi (>30 hari), plus tombol "Segarkan dari SIMRS"
+> manual per pasien. Penjamin (`jenis_pembayaran`/`nama_instansi`/`kode_instansi`)
+> **tidak** di sini — itu atribut per-kunjungan.
+
 **Field:**
 
 | Field | Tipe | Wajib? | Contoh | Keterangan |
 |---|---|---|---|---|
 | `no_rm` | string | **Wajib** | `"RM123456"` | |
 | `nama` | string | **Wajib** | `"Budi Santoso"` | |
-| `no_hp` | string atau null | **Penting** | `"081234567890"` | |
-| `nik` | string atau null | **Penting** (tersedia) | `"3578012345678901"` | Dikonfirmasi tersedia di SIMRS |
+| `no_hp` | string atau null | **Penting** | `"081234567890"` | Nomor HP utama pasien |
+| `nik` | string atau null | **Penting** (tersedia) | `"3578012345678901"` | Dikonfirmasi tersedia di SIMRS — dipakai deteksi pasien duplikat |
 | `tanggal_lahir` | string (YYYY-MM-DD) atau null | Opsional | `"1985-06-15"` | |
 | `jenis_kelamin` | `"L"` \| `"P"` atau null | Opsional | `"L"` | |
-| `no_hp_alternatif` | string atau null | Opsional | `"081298765432"` | |
+| `no_hp_alternatif` | string atau null | Opsional | `"081298765432"` | Nomor HP kedua (mis. milik keluarga/wali) |
 | `agama` | string atau null | Opsional | `"Islam"` | |
 | `alamat` | string atau null | Opsional | `"Jl. Contoh No. 1"` | Alamat bebas — **terpisah** dari `kota`/`kecamatan` di bawah |
 | `kota` | string atau null | Opsional | `"Surabaya"` | Kota/kabupaten — field terstruktur sendiri, dipakai segmentasi wilayah |
 | `kecamatan` | string atau null | Opsional | `"Tenggilis Mejoyo"` | Field terstruktur sendiri, dipakai segmentasi wilayah |
-| `jenis_pembayaran` | string atau null | Opsional | `"NON_TUNAI"` | |
-| `nama_instansi` | string atau null | Opsional | `"BPJS Kesehatan"` | |
-| `kode_instansi` | string atau null | Opsional | `"BPJS-001"` | |
 | `no_bpjs` | string atau null | Opsional | `"0001234567890"` | |
 
 > **Untuk pilot**: endpoint ini boleh belum ada dulu. Data Person bisa dikirim **sekali**
 > lewat ekspor Excel (format akan diselaraskan terpisah), sementara endpoint Kunjungan
 > di atas yang jadi prioritas karena perlu jadi feed berkelanjutan.
+>
+> **Versi terkini dari dokumen ini bisa dilihat & disesuaikan langsung di aplikasi:**
+> Pengaturan → Integrasi SIMRS → Dokumentasi Kontrak API (khusus Admin IT).
 
 ---
 
