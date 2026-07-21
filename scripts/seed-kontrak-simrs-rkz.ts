@@ -25,7 +25,6 @@ const ANOTASI_KUNJUNGAN: Record<string, { contoh: string; catatan?: string }> = 
   tindakan_kode: { contoh: '4419', catatan: 'Harus sama persis dengan kode barang di master layanan kami — dasar pencocokan evaluasi campaign' },
   unit: { contoh: 'Pondok Sehat', catatan: 'Perlu diisi tim IT: kode/nilai parameter unit untuk filter Pondok Sehat' },
   status_kunjungan: { contoh: 'SELESAI', catatan: 'Dikonfirmasi: kunjungan BATAL sudah difilter di API SIMRS — field ini tetap diminta sebagai jaring pengaman' },
-  jadwal_kontrol: { contoh: '2026-04-20' },
   poli: { contoh: 'Poli Umum', catatan: 'Unit spesifik (lebih detail dari unit)' },
   dokter: { contoh: 'dr. Andi Wijaya, Sp.PD' },
   diagnosa_icd: { contoh: 'J06.9' },
