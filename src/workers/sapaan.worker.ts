@@ -10,7 +10,8 @@
 import { Job } from 'bullmq'
 import { QUEUE_SAPAAN } from '@/lib/queue'
 import { getTenantDb, masterDb } from '@/lib/tenant'
-import { getWappinToken, sendWaMessage } from '@/lib/wappin-client'
+import { sendMetaTemplateMessage } from '@/lib/meta-client'
+import { buildTemplateComponents, type PersonForTemplate } from '@/lib/template-fields'
 import { BUKAN_PERSON_UJI } from '@/lib/test-data-guard'
 
 const DRY_RUN = process.env.SAPAAN_DRY_RUN === 'true'
@@ -30,21 +31,19 @@ export interface SapaanJobResult {
   skipped: number
 }
 
-// ──────────────────────────────────────────────
-// Template renderer — substitusi variabel ke teks
-// ──────────────────────────────────────────────
-function renderTemplate(template: string, vars: Record<string, string>): string {
-  let result = template
-  for (const [key, val] of Object.entries(vars)) {
-    result = result.replaceAll(`{{${key}}}`, val)
+// Person row → data minimal untuk variabel {{field}} template.
+function personForTemplate(p: any): PersonForTemplate {
+  return {
+    name:    p.name,
+    no_rm:   p.no_rm ?? null,
+    no_hp:   p.no_hp ?? null,
+    agama:   p.agama ?? null,
+    no_bpjs: p.no_bpjs ?? null,
   }
-  return result
 }
 
-function today(): string {
-  return new Date().toLocaleDateString('id-ID', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
+function fmtTglKontrol(d: Date): string {
+  return d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 // ──────────────────────────────────────────────
@@ -69,30 +68,34 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
     return { sent: 0, failed: 0, skipped: 0 }
   }
 
-  // Ambil config Wappin (skip jika dry-run)
-  let wappinCfg: any = null
-  let token: string | null = null
+  // Sapaan proaktif (di luar 24 jam) HARUS pakai template approved Meta.
+  if (!cfg.template_id) {
+    job.log(`[${type}] Belum ada template approved dipilih — skip`)
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+  const template = await db.broadcastTemplate.findFirst({
+    where: { id: cfg.template_id, tenant_slug: tenantSlug, meta_status: 'APPROVED', aktif: true },
+  })
+  if (!template) {
+    job.log(`[${type}] Template belum approved / tidak ditemukan — skip`)
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+  const templateParams = (cfg.template_params ?? {}) as Record<string, string>
 
+  // Channel kirim = Meta (template message). Skip jika dry-run.
+  let metaCfg: any = null
   if (!DRY_RUN) {
-    wappinCfg = await db.wappinConfig.findUnique({ where: { tenant_slug: tenantSlug } })
-    if (!wappinCfg?.aktif) {
-      job.log(`[${type}] Wappin tidak aktif — skip`)
+    metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: tenantSlug } })
+    if (!metaCfg?.aktif) {
+      job.log(`[${type}] Meta config tidak aktif — skip`)
       return { sent: 0, failed: 0, skipped: 0 }
     }
-    token = await getWappinToken(wappinCfg as any)
-    if (!token) {
-      job.log(`[${type}] Gagal login ke Wappin — abort`)
-      throw new Error('Gagal mendapatkan token Wappin')
-    }
   } else {
-    job.log(`[${type}] DRY-RUN mode aktif — pesan tidak dikirim ke Wappin`)
+    job.log(`[${type}] DRY-RUN — pesan tidak dikirim ke Meta`)
   }
 
-  // Ambil profil klinik untuk variabel {{nama_rs}}
-  const profile = await db.tenantProfile.findUnique({ where: { tenant_slug: tenantSlug } })
-  const namaRs  = profile?.nama_rs ?? tenantSlug
-
-  let targets: { id: string; name: string; no_hp: string; rencanaId?: string; meta?: Record<string, string> }[] = []
+  // Tiap target bawa data pasien (untuk variabel {{field}}) + extra konteks non-person.
+  let targets: { id: string; no_hp: string; person: PersonForTemplate; extra?: Record<string, string>; rencanaId?: string }[] = []
 
   // ── Kumpulkan target berdasarkan jenis ──
   if (type === 'ULTAH') {
@@ -116,7 +119,7 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
         const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         return md === todayMd
       })
-      .map(p => ({ id: p.id, name: p.name, no_hp: p.no_hp! }))
+      .map(p => ({ id: p.id, no_hp: p.no_hp!, person: personForTemplate(p) }))
 
     job.log(`[ULTAH] Ditemukan ${targets.length} pasien berulang tahun hari ini`)
 
@@ -128,10 +131,10 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
     targets = persons
       .filter(p => !!p.no_hp)
       .map(p => ({
-        id:    p.id,
-        name:  p.name,
-        no_hp: p.no_hp!,
-        meta:  { hari_raya: hariRaya || 'Hari Raya' },
+        id:     p.id,
+        no_hp:  p.no_hp!,
+        person: personForTemplate(p),
+        extra:  { hari_raya: hariRaya || 'Hari Raya' },
       }))
     job.log(`[HARI_RAYA] Kirim ke ${targets.length} pasien`)
 
@@ -150,19 +153,21 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
         [kolomReminder]: null,   // hanya yang belum diingatkan untuk horizon ini
         person: { aktif: true, AND: [BUKAN_PERSON_UJI] },
       },
-      select: { id: true, tanggal_rencana: true, poli: true, unit: true, person: { select: { id: true, name: true, no_hp: true } } },
+      select: {
+        id: true, tanggal_rencana: true, poli: true, unit: true,
+        person: { select: { id: true, name: true, no_hp: true, no_rm: true, agama: true, no_bpjs: true } },
+      },
     })
     targets = rencanas
       .filter(r => !!r.person.no_hp)
       .map(r => ({
         id:        r.person.id,
-        name:      r.person.name,
         no_hp:     r.person.no_hp!,
+        person:    personForTemplate(r.person),
         rencanaId: r.id,
-        meta:  {
-          horizon:     horizon || 'H-3',
-          tgl_kontrol: r.tanggal_rencana.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-          poli:        r.poli || r.unit || '',
+        extra: {
+          tanggal_kontrol: fmtTglKontrol(r.tanggal_rencana),
+          poli_kontrol:    r.poli || r.unit || '',
         },
       }))
     job.log(`[KONTROL_REMINDER] ${horizon}: ${targets.length} pasien punya kontrol ${hMundur} hari lagi`)
@@ -191,19 +196,28 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
       if (alreadySent) { skipped++; continue }
     }
 
-    // Render template
-    const vars: Record<string, string> = {
-      nama:     target.name,
-      nama_rs:  namaRs,
-      hari_ini: today(),
-      ...target.meta,
-    }
-    const pesan = renderTemplate(cfg.template, vars)
+    // Bangun komponen template Meta (variabel {{field}} dari person + extra konteks).
+    const components = buildTemplateComponents(template, target.person, templateParams, target.extra)
 
-    // Kirim via Wappin atau dry-run
-    const result = DRY_RUN
-      ? (() => { job.log(`[DRY-RUN] → ${target.no_hp}: ${pesan.slice(0, 80)}…`); return { ok: true, message_id: `dry-${Date.now()}` } })()
-      : await sendWaMessage(wappinCfg!, token!, target.no_hp, pesan)
+    // Kirim via Meta template message (atau dry-run).
+    let result: { ok: boolean; message_id?: string; error?: string }
+    if (DRY_RUN) {
+      job.log(`[DRY-RUN] → ${target.no_hp}: template ${template.template_name}`)
+      result = { ok: true, message_id: `dry-${Date.now()}` }
+    } else {
+      try {
+        const msgId = await sendMetaTemplateMessage(
+          { phone_number_id: metaCfg.phone_number_id, access_token: metaCfg.access_token },
+          target.no_hp,
+          template.template_name,
+          template.template_language || 'id',
+          components,
+        )
+        result = { ok: true, message_id: msgId ?? undefined }
+      } catch (e: any) {
+        result = { ok: false, error: (e?.message || 'gagal kirim').slice(0, 200) }
+      }
+    }
 
     // Log hasil
     await db.sapaanLog.create({

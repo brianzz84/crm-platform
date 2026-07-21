@@ -116,14 +116,23 @@ function ConditionRow({
   )
 }
 
+type SapaanJenis = 'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER'
+const JENIS_UI: Record<SapaanJenis, { icon: string; label: string; subtitle: string; accent: string; showFilter: boolean; kontrol?: boolean }> = {
+  ULTAH:            { icon: '🎂', label: 'Ucapan Ulang Tahun', subtitle: 'Dikirim otomatis via template WhatsApp ke pasien yang berulang tahun hari itu (bisa difilter).', accent: '#E8A800', showFilter: true },
+  HARI_RAYA:        { icon: '🌙', label: 'Ucapan Hari Raya',   subtitle: 'Dikirim via template WhatsApp saat hari raya (dipicu manual oleh admin).', accent: '#7C3AED', showFilter: true },
+  KONTROL_REMINDER: { icon: '📅', label: 'Pengingat Kontrol',  subtitle: 'Dikirim otomatis H-3 & H-1 sebelum jadwal kontrol pasien (data jadwal dari SIMRS).', accent: '#0089A8', showFilter: false, kontrol: true },
+}
+
 export default function UltahCard({
-  slug, metaAktif, initialConfig, stats,
+  slug, metaAktif, initialConfig, stats, jenis = 'ULTAH',
 }: {
   slug: string; metaAktif: boolean
   initialConfig: ConfigData | null; stats: Record<string, number>
+  jenis?: SapaanJenis
 }) {
   const router = useRouter()
-  const accent = '#E8A800'
+  const ui     = JENIS_UI[jenis]
+  const accent = ui.accent
 
   const [aktif, setAktif]           = useState(initialConfig?.aktif ?? false)
   const [jamKirim, setJamKirim]     = useState(initialConfig?.jam_kirim ?? 7)
@@ -182,8 +191,8 @@ export default function UltahCard({
       const res = await fetch(`/api/${slug}/sapaan`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          jenis: 'ULTAH', aktif, jam_kirim: jamKirim,
-          template_id: templateId, template_params: templateParams, filter_groups: groups,
+          jenis, aktif, jam_kirim: jamKirim,
+          template_id: templateId, template_params: templateParams, filter_groups: ui.showFilter ? groups : [],
         }),
       })
       const json = await res.json()
@@ -197,7 +206,7 @@ export default function UltahCard({
     if (showLog) { setShowLog(false); return }
     setShowLog(true); setLoadingLog(true)
     try {
-      const res = await fetch(`/api/${slug}/sapaan/log?jenis=ULTAH&page=1`)
+      const res = await fetch(`/api/${slug}/sapaan/log?jenis=${jenis}&page=1`)
       const json = await res.json()
       setLogs(json.data || [])
     } finally { setLoadingLog(false) }
@@ -209,16 +218,16 @@ export default function UltahCard({
         display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-5)',
         cursor: 'pointer', borderLeft: `4px solid ${accent}`, userSelect: 'none',
       }}>
-        <span style={{ fontSize: 26, flexShrink: 0 }}>🎂</span>
+        <span style={{ fontSize: 26, flexShrink: 0 }}>{ui.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: 'var(--font-size-md)', color: 'var(--c-primary)' }}>Ucapan Ulang Tahun</span>
+            <span style={{ fontWeight: 800, fontSize: 'var(--font-size-md)', color: 'var(--c-primary)' }}>{ui.label}</span>
             <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99, background: aktif ? accent + '1A' : '#F1F5F9', color: aktif ? accent : '#94A3B8' }}>
               {aktif ? 'Aktif' : 'Nonaktif'}
             </span>
           </div>
           <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', margin: '3px 0 0' }}>
-            Dikirim otomatis via template WhatsApp ke pasien yang berulang tahun hari itu (bisa difilter).
+            {ui.subtitle}
           </p>
         </div>
         {total30 > 0 && (
@@ -277,6 +286,11 @@ export default function UltahCard({
                   {templates.map(t => <option key={t.id} value={t.id}>{t.nama} ({t.template_name})</option>)}
                 </select>
               )}
+              {ui.kontrol && (
+                <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '8px 10px' }}>
+                  🗓️ Pakai template <b>UTILITY</b>. Variabel <code>Tanggal Kontrol</code> &amp; <code>Poli/Unit Kontrol</code> terisi otomatis dari jadwal SIMRS per penerima. Pantau daftar &amp; status kirim di <a href={`/${slug}/rencana-kontrol`} style={{ color: '#1E40AF', fontWeight: 700 }}>Rencana Kontrol</a>.
+                </div>
+              )}
             </div>
 
             {/* Isi variabel statis */}
@@ -300,11 +314,12 @@ export default function UltahCard({
               </div>
             )}
 
-            {/* Filter builder */}
+            {/* Filter builder — hanya untuk jenis yang audiensnya bukan dari rencana */}
+            {ui.showFilter && (
             <div style={{ marginBottom: 'var(--sp-5)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <label style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--c-text)' }}>
-                  Filter Penerima <span style={{ fontWeight: 400, color: 'var(--c-text-faint)' }}>(kosong = kirim ke semua yang ulang tahun)</span>
+                  Filter Penerima <span style={{ fontWeight: 400, color: 'var(--c-text-faint)' }}>(kosong = kirim ke semua penerima)</span>
                 </label>
                 <button type="button" onClick={addGroup} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid var(--c-border)', borderRadius: 'var(--r-sm)', background: 'white', cursor: 'pointer' }}>+ Tambah Grup</button>
               </div>
@@ -330,9 +345,10 @@ export default function UltahCard({
                 </div>
               ))}
               {groups.length === 0 && (
-                <div style={{ fontSize: 12, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>Belum ada filter — akan dikirim ke semua pasien yang berulang tahun.</div>
+                <div style={{ fontSize: 12, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>Belum ada filter — akan dikirim ke semua penerima yang memenuhi syarat.</div>
               )}
             </div>
+            )}
 
             {error && (
               <div style={{ background: '#FEF2F2', color: '#B91C1C', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--r-sm)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--sp-4)', borderLeft: '3px solid #EF4444' }}>{error}</div>

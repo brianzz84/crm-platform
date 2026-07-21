@@ -72,14 +72,18 @@ export default async function SapaanPage({ params }: { params: { slug: string } 
             filter_groups:   configMap['ULTAH'].filter_groups,
           } : null,
           HARI_RAYA: configMap['HARI_RAYA'] ? {
-            aktif:     configMap['HARI_RAYA'].aktif,
-            template:  configMap['HARI_RAYA'].template,
-            jam_kirim: configMap['HARI_RAYA'].jam_kirim,
+            aktif:           configMap['HARI_RAYA'].aktif,
+            jam_kirim:       configMap['HARI_RAYA'].jam_kirim,
+            template_id:     configMap['HARI_RAYA'].template_id,
+            template_params: configMap['HARI_RAYA'].template_params,
+            filter_groups:   configMap['HARI_RAYA'].filter_groups,
           } : null,
           KONTROL_REMINDER: configMap['KONTROL_REMINDER'] ? {
-            aktif:     configMap['KONTROL_REMINDER'].aktif,
-            template:  configMap['KONTROL_REMINDER'].template,
-            jam_kirim: configMap['KONTROL_REMINDER'].jam_kirim,
+            aktif:           configMap['KONTROL_REMINDER'].aktif,
+            jam_kirim:       configMap['KONTROL_REMINDER'].jam_kirim,
+            template_id:     configMap['KONTROL_REMINDER'].template_id,
+            template_params: configMap['KONTROL_REMINDER'].template_params,
+            filter_groups:   configMap['KONTROL_REMINDER'].filter_groups,
           } : null,
         }}
         statsMap={statsMap}

@@ -41,18 +41,13 @@ const BaseSchema = z.object({
   jam_kirim: z.number().int().min(0).max(23).default(7),
 })
 
-// ULTAH: wajib pilih template approved, filter opsional
-const UltahSchema = BaseSchema.extend({
-  jenis:           z.literal('ULTAH'),
+// Semua jenis sapaan kini berbasis template approved Meta (proaktif = wajib template).
+// filter_groups opsional (dipakai ULTAH & HARI_RAYA; KONTROL audiensnya dari rencana).
+const TemplateConfigSchema = BaseSchema.extend({
+  jenis:           z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER']),
   template_id:     z.string().uuid('Pilih template terlebih dahulu'),
   template_params: z.record(z.string(), z.string()).default({}),
   filter_groups:   z.array(FilterGroupSchema).default([]),
-})
-
-// HARI_RAYA / KONTROL_REMINDER: tetap pakai teks bebas (belum diubah)
-const LegacySchema = BaseSchema.extend({
-  jenis:    z.enum(['HARI_RAYA', 'KONTROL_REMINDER']),
-  template: z.string().min(1, 'Template pesan wajib diisi'),
 })
 
 // PUT /api/[slug]/sapaan — upsert konfigurasi satu jenis sapaan
@@ -61,42 +56,27 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   if (error) return error
 
   try {
-    const body = await req.json()
-
-    if (body.jenis === 'ULTAH') {
-      const parsed = UltahSchema.safeParse(body)
-      if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 })
-
-      const db = await getTenantDb(params.slug)
-
-      // Pastikan template dipilih benar-benar approved milik tenant ini
-      const tmpl = await db.broadcastTemplate.findFirst({
-        where: { id: parsed.data.template_id, tenant_slug: params.slug, meta_status: 'APPROVED' },
-      })
-      if (!tmpl) return NextResponse.json({ error: 'Template tidak ditemukan atau belum approved' }, { status: 400 })
-
-      const cfg = await db.sapaanConfig.upsert({
-        where:  { tenant_slug_jenis: { tenant_slug: params.slug, jenis: 'ULTAH' } },
-        create: {
-          tenant_slug: params.slug, jenis: 'ULTAH', aktif: parsed.data.aktif, jam_kirim: parsed.data.jam_kirim,
-          template_id: parsed.data.template_id, template_params: parsed.data.template_params, filter_groups: parsed.data.filter_groups,
-        },
-        update: {
-          aktif: parsed.data.aktif, jam_kirim: parsed.data.jam_kirim,
-          template_id: parsed.data.template_id, template_params: parsed.data.template_params, filter_groups: parsed.data.filter_groups,
-        },
-      })
-      return NextResponse.json({ success: true, data: cfg })
-    }
-
-    const parsed = LegacySchema.safeParse(body)
+    const body   = await req.json()
+    const parsed = TemplateConfigSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 })
 
     const db = await getTenantDb(params.slug)
+
+    // Template harus benar-benar approved milik tenant ini
+    const tmpl = await db.broadcastTemplate.findFirst({
+      where: { id: parsed.data.template_id, tenant_slug: params.slug, meta_status: 'APPROVED' },
+    })
+    if (!tmpl) return NextResponse.json({ error: 'Template tidak ditemukan atau belum approved' }, { status: 400 })
+
+    const data = {
+      aktif: parsed.data.aktif, jam_kirim: parsed.data.jam_kirim,
+      template_id: parsed.data.template_id, template_params: parsed.data.template_params,
+      filter_groups: parsed.data.filter_groups, template: null,
+    }
     const cfg = await db.sapaanConfig.upsert({
       where:  { tenant_slug_jenis: { tenant_slug: params.slug, jenis: parsed.data.jenis } },
-      create: { tenant_slug: params.slug, ...parsed.data },
-      update: { aktif: parsed.data.aktif, template: parsed.data.template, jam_kirim: parsed.data.jam_kirim },
+      create: { tenant_slug: params.slug, jenis: parsed.data.jenis, ...data },
+      update: data,
     })
     return NextResponse.json({ success: true, data: cfg })
   } catch (e) {

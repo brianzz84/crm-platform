@@ -3,7 +3,7 @@ import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { sendMetaTemplateMessage } from '@/lib/meta-client'
 import { recomputeCampaignCounters } from '@/lib/campaign'
-import { resolveTemplateField, type PersonForTemplate } from '@/lib/template-fields'
+import { buildTemplateComponents, type PersonForTemplate } from '@/lib/template-fields'
 import { BUKAN_PERSON_UJI } from '@/lib/test-data-guard'
 import { BROADCAST_BATCH_SIZE, BROADCAST_DELAY_MS } from '@/constants'
 
@@ -141,7 +141,7 @@ async function sendBatchAsync(
           nama_instansi: lv?.nama_instansi ?? null,
           lastVisit: lv,
         }
-        const components = buildMetaComponents(template, person, templateParams)
+        const components = buildTemplateComponents(template, person, templateParams)
         const msgId = await sendMetaTemplateMessage(
           { phone_number_id: metaCfg.phone_number_id, access_token: metaCfg.access_token },
           r.no_hp,
