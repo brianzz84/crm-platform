@@ -612,6 +612,7 @@ model MetaConfig {
   phone_number_id  String                         // Meta Phone Number ID
   access_token     String                         // System User permanent token
   waba_id          String?                        // WhatsApp Business Account ID
+  app_id           String?                        // Meta App ID — untuk resumable upload media header template
   aktif            Boolean  @default(true)
   tested_at        DateTime?
   created_at       DateTime @default(now())

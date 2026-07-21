@@ -137,6 +137,50 @@ export interface CreateMetaTemplateInput {
   components: MetaTemplateComponent[]
 }
 
+/**
+ * Resumable Upload API — mengunggah byte media ke Meta untuk dapat "handle",
+ * yang wajib dipakai sebagai contoh header saat MEMBUAT template media (URL biasa
+ * ditolak Meta). Dua langkah: buka sesi upload → kirim byte → dapat handle.
+ * Butuh App ID (dari MetaConfig.app_id).
+ */
+export async function uploadResumableToMeta(
+  cfg:     MetaCfg,
+  appId:   string,
+  file:    { bytes: Buffer; mime: string; filename: string },
+): Promise<string> {
+  // 1) Buka sesi upload
+  const q = new URLSearchParams({
+    file_name:   file.filename,
+    file_length: String(file.bytes.length),
+    file_type:   file.mime,
+  })
+  const openRes = await fetch(`${META_API_BASE}/${appId}/uploads?${q.toString()}`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${cfg.access_token}` },
+  })
+  const openJson = await openRes.json()
+  if (!openRes.ok || !openJson.id) {
+    console.error('[meta-client] resumable open failed:', JSON.stringify(openJson))
+    throw new Error(openJson.error?.error_user_msg || openJson.error?.message || 'Gagal membuka sesi upload Meta')
+  }
+
+  // 2) Kirim byte — Authorization pakai skema "OAuth", file_offset 0
+  const upRes = await fetch(`${META_API_BASE}/${openJson.id}`, {
+    method:  'POST',
+    headers: {
+      Authorization: `OAuth ${cfg.access_token}`,
+      file_offset:   '0',
+    },
+    body: file.bytes as any,
+  })
+  const upJson = await upRes.json()
+  if (!upRes.ok || !upJson.h) {
+    console.error('[meta-client] resumable upload failed:', JSON.stringify(upJson))
+    throw new Error(upJson.error?.error_user_msg || upJson.error?.message || 'Gagal mengunggah media ke Meta')
+  }
+  return upJson.h as string
+}
+
 export async function createMetaTemplate(
   cfg:    MetaCfg,
   wabaId: string,

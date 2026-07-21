@@ -6,6 +6,7 @@ interface InitialData {
   id:              string
   phone_number_id: string
   waba_id:         string | null
+  app_id:          string | null
   aktif:           boolean
   has_token:       boolean
   tested_at:       string | null
@@ -15,6 +16,7 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
   const [phoneNumberId, setPhoneNumberId] = useState(initialData?.phone_number_id ?? '')
   const [accessToken,   setAccessToken]   = useState('')
   const [wabaId,        setWabaId]        = useState(initialData?.waba_id ?? '')
+  const [appId,         setAppId]         = useState(initialData?.app_id ?? '')
   const [aktif,         setAktif]         = useState(initialData?.aktif ?? true)
   const [saving,        setSaving]        = useState(false)
   const [testing,       setTesting]       = useState(false)
@@ -31,6 +33,7 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
           phone_number_id: phoneNumberId,
           access_token:    accessToken || undefined,
           waba_id:         wabaId || undefined,
+          app_id:          appId || undefined,
           aktif,
         }),
       })
@@ -119,6 +122,22 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
             />
             <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
               Opsional — untuk referensi. Dari Meta Business Suite → Accounts → WhatsApp Accounts.
+            </p>
+          </div>
+
+          {/* App ID */}
+          <div>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>
+              App ID
+            </label>
+            <input
+              value={appId}
+              onChange={e => setAppId(e.target.value)}
+              placeholder="1234567890123456"
+              style={inputStyle}
+            />
+            <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
+              Diperlukan untuk template dengan header gambar/video/dokumen (unggah contoh media ke Meta). Dari developers.facebook.com → App → Settings.
             </p>
           </div>
 

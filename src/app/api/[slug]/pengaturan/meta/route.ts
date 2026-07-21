@@ -22,6 +22,7 @@ const MetaSchema = z.object({
   phone_number_id: z.string().min(1),
   access_token:    z.string().optional(),
   waba_id:         z.string().optional(),
+  app_id:          z.string().optional(),
   aktif:           z.boolean().default(true),
 })
 

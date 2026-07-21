@@ -49,8 +49,9 @@ const LANG_OPTIONS = [
 ]
 
 const COMP_TYPES: Array<{ value: Component['type']; label: string; desc: string }> = [
-  { value: 'header', label: 'Header',  desc: 'Teks di bagian atas pesan' },
+  { value: 'header', label: 'Header',  desc: 'Teks atau gambar di bagian atas pesan' },
   { value: 'body',   label: 'Body',    desc: 'Isi utama pesan (wajib)' },
+  { value: 'footer', label: 'Footer',  desc: 'Teks kecil di bagian bawah (maks 60 karakter, tanpa variabel)' },
   { value: 'button', label: 'Button',  desc: 'Tombol quick reply atau URL' },
 ]
 
@@ -83,8 +84,10 @@ function EmptyState({ onAdd, onSync, syncing }: { onAdd: () => void; onSync: () 
 }
 
 function ComponentEditor({
-  components, onChange,
-}: { components: Component[]; onChange: (c: Component[]) => void }) {
+  components, onChange, slug,
+}: { components: Component[]; onChange: (c: Component[]) => void; slug: string }) {
+  const [uploading, setUploading] = useState<number | null>(null)
+  const [uploadErr, setUploadErr] = useState<string>('')
   const usedTypes = new Set(components.map(c => c.type))
   const allTypes: Component['type'][] = ['header', 'body', 'footer', 'button']
   const availableTypes = allTypes.filter(t => !usedTypes.has(t))
@@ -98,6 +101,19 @@ function ComponentEditor({
   }
   function updateComp(i: number, patch: Partial<Component>) {
     onChange(components.map((c, idx) => idx === i ? { ...c, ...patch } : c))
+  }
+  async function handleUpload(ci: number, file: File) {
+    setUploading(ci); setUploadErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res  = await fetch(`/api/${slug}/broadcast/templates/upload`, { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok || !json.success) { setUploadErr(json.error || 'Upload gagal'); return }
+      updateComp(ci, { media_url: json.url })
+    } catch (e: any) {
+      setUploadErr(e.message || 'Upload gagal')
+    } finally { setUploading(null) }
   }
   function addParam(ci: number) {
     const c = components[ci]
@@ -196,10 +212,36 @@ function ComponentEditor({
                   onChange={e => updateComp(ci, { text: e.target.value })}
                   style={inp} />
               ) : (
-                <input placeholder={`URL ${comp.format === 'IMAGE' ? 'gambar' : comp.format === 'VIDEO' ? 'video' : 'dokumen'} (https://...)`}
-                  value={comp.media_url ?? ''}
-                  onChange={e => updateComp(ci, { media_url: e.target.value })}
-                  style={inp} />
+                <div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input placeholder={`URL ${comp.format === 'IMAGE' ? 'gambar' : comp.format === 'VIDEO' ? 'video' : 'dokumen'} (https://... atau unggah)`}
+                      value={comp.media_url ?? ''}
+                      onChange={e => updateComp(ci, { media_url: e.target.value })}
+                      style={{ ...inp, flex: 1 }} />
+                    <label style={{
+                      flexShrink: 0, cursor: uploading === ci ? 'wait' : 'pointer', padding: '8px 12px',
+                      border: '1.5px solid var(--c-border)', borderRadius: 'var(--r-sm)',
+                      fontSize: 12, fontWeight: 600, color: 'var(--c-secondary)', background: 'white', whiteSpace: 'nowrap',
+                    }}>
+                      {uploading === ci ? '⏳ Mengunggah…' : '📎 Unggah'}
+                      <input type="file" hidden
+                        accept={comp.format === 'IMAGE' ? 'image/jpeg,image/png' : comp.format === 'VIDEO' ? 'video/mp4' : 'application/pdf'}
+                        disabled={uploading === ci}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(ci, f); e.target.value = '' }} />
+                    </label>
+                  </div>
+                  {uploadErr && <div style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>{uploadErr}</div>}
+                  {comp.media_url && comp.format === 'IMAGE' && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={comp.media_url} alt="preview" style={{ marginTop: 6, maxHeight: 90, borderRadius: 6, border: '1px solid var(--c-border)' }} />
+                  )}
+                  {comp.media_url && comp.format !== 'IMAGE' && (
+                    <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 4, wordBreak: 'break-all' }}>✓ {comp.media_url}</div>
+                  )}
+                  <p style={{ fontSize: 11, color: 'var(--c-text-faint)', margin: '4px 0 0' }}>
+                    Gambar disimpan di media RKZ, lalu diunggah otomatis ke Meta saat submit. JPG/PNG, MP4, atau PDF (maks 16 MB).
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -214,7 +256,18 @@ function ComponentEditor({
             />
           )}
 
-          {/* Parameters */}
+          {comp.type === 'footer' && (
+            <input
+              placeholder="Teks footer (maks 60 karakter, tanpa variabel)"
+              value={comp.text ?? ''}
+              maxLength={60}
+              onChange={e => updateComp(ci, { text: e.target.value })}
+              style={{ ...inp, marginBottom: 8 }}
+            />
+          )}
+
+          {/* Parameters — footer tidak mendukung variabel di WhatsApp */}
+          {comp.type !== 'footer' && (
           <div style={{ paddingLeft: 8, borderLeft: '2px solid var(--c-border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <span style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>Variabel {'{{1}}'}, {'{{2}}'}… ({comp.parameters.length}) — urutan = urutan variabel di teks</span>
@@ -254,6 +307,7 @@ function ComponentEditor({
               <div style={{ fontSize: 11, color: 'var(--c-text-faint)', fontStyle: 'italic' }}>Belum ada variabel. Klik "+ variabel" untuk tiap {'{{n}}'} di teks.</div>
             )}
           </div>
+          )}
         </div>
       ))}
     </div>
@@ -428,7 +482,7 @@ function TemplateModal({
             <div style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--c-text-faint)', textTransform: 'uppercase', marginBottom: 'var(--sp-3)' }}>
               Konten Pesan
             </div>
-            <ComponentEditor components={components} onChange={setComps} />
+            <ComponentEditor components={components} onChange={setComps} slug={slug} />
             <div style={{ marginTop: 8, padding: 'var(--sp-3)', background: '#EFF9FB', borderRadius: 'var(--r-sm)', fontSize: 11, color: '#0089A8' }}>
               <strong>Tip:</strong> Gunakan <code>{'{{1}}'}</code> <code>{'{{2}}'}</code> dst di teks, lalu tambahkan param dengan nama dan contoh nilainya. Contoh nilai wajib diisi agar Meta bisa mereview template.
             </div>
@@ -639,7 +693,10 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
   const [syncMsg,    setSyncMsg]    = useState('')
 
   const active   = templates.filter(t => t.aktif)
-  const inactive = templates.filter(t => !t.aktif)
+  // Template PENDING sudah terkirim ke Meta & sedang direview — bukan "nonaktif"
+  // (yang itu = sengaja dimatikan user). Dipisah supaya tidak terlihat lenyap.
+  const pending  = templates.filter(t => !t.aktif && t.meta_status === 'PENDING')
+  const inactive = templates.filter(t => !t.aktif && t.meta_status !== 'PENDING')
 
   function openAdd()  { setEditTarget(null); setModalOpen(true) }
   function openEdit(t: Template) { setEditTarget(t); setModalOpen(true) }
@@ -758,7 +815,7 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
         marginBottom: 'var(--sp-4)', flexWrap: 'wrap', gap: 'var(--sp-3)',
       }}>
         <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text-muted)' }}>
-          {active.length} aktif · {inactive.length} nonaktif
+          {active.length} aktif{pending.length > 0 && ` · ${pending.length} menunggu review`} · {inactive.length} nonaktif
         </div>
         <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' }}>
           {syncMsg && (
@@ -797,6 +854,26 @@ export default function TemplatesClient({ slug, initialTemplates }: Props) {
                   onToggle={() => handleToggle(t)}
                   onDelete={() => handleDelete(t)} />
               ))}
+            </div>
+          )}
+
+          {/* Menunggu review Meta */}
+          {pending.length > 0 && (
+            <div style={{ marginBottom: 'var(--sp-4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 8, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--r-md)' }}>
+                <span>⏳</span>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: '#92400E' }}>
+                  {pending.length} template sudah dikirim ke Meta dan sedang direview. Setelah disetujui, klik <b>Sync dari Meta</b> agar otomatis aktif.
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                {pending.map(t => (
+                  <TemplateCard key={t.id} template={t}
+                    onEdit={() => openEdit(t)}
+                    onToggle={() => handleToggle(t)}
+                    onDelete={() => handleDelete(t)} />
+                ))}
+              </div>
             </div>
           )}
 

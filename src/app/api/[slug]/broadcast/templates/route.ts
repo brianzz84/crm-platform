@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
-import { fetchMetaTemplates, createMetaTemplate } from '@/lib/meta-client'
+import { fetchMetaTemplates, createMetaTemplate, uploadResumableToMeta } from '@/lib/meta-client'
 import { z } from 'zod'
 
 type Ctx = { params: { slug: string } }
@@ -69,10 +69,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         return NextResponse.json({ error: 'WABA ID belum diatur di Pengaturan > Integrasi Meta' }, { status: 400 })
       }
 
-      // Bangun komponen format Meta
-      const metaComponents = buildMetaComponents(parsed.data.components_schema)
+      // Bangun komponen format Meta (header media diunggah dulu via resumable upload)
+      const cfg = { phone_number_id: metaCfg.phone_number_id, access_token: metaCfg.access_token }
+      const metaComponents = await buildMetaComponents(parsed.data.components_schema, cfg, metaCfg.app_id)
       const result = await createMetaTemplate(
-        { phone_number_id: metaCfg.phone_number_id, access_token: metaCfg.access_token },
+        cfg,
         metaCfg.waba_id,
         {
           name:       parsed.data.template_name,
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 }
 
-function buildMetaComponents(schema: any[]): any[] {
+async function buildMetaComponents(schema: any[], cfg: { phone_number_id: string; access_token: string }, appId: string | null): Promise<any[]> {
   const seen = new Set<string>()
   const deduped = schema.filter(c => { if (seen.has(c.type)) return false; seen.add(c.type); return true })
 
@@ -117,9 +118,18 @@ function buildMetaComponents(schema: any[]): any[] {
         if (comp.parameters?.length > 0) {
           metaComp.example = { header_text: comp.parameters.map((p: any) => p.example || `[${p.param_key}]`) }
         }
-      } else {
-        // IMAGE / VIDEO / DOCUMENT — gunakan link
-        if (comp.media_url) metaComp.example = { header_handle: [comp.media_url] }
+      } else if (comp.media_url) {
+        // IMAGE / VIDEO / DOCUMENT — Meta minta "handle" dari resumable upload,
+        // bukan URL. Unggah byte dari URL publik (HostGator) ke Meta dulu.
+        if (!appId) throw new Error('App ID Meta belum diatur (Pengaturan → Integrasi Meta) — diperlukan untuk header media.')
+        const fileRes = await fetch(comp.media_url)
+        if (!fileRes.ok) throw new Error(`Gagal mengambil media header dari URL (HTTP ${fileRes.status})`)
+        const bytes = Buffer.from(await fileRes.arrayBuffer())
+        const mime  = fileRes.headers.get('content-type')?.split(';')[0]
+          || (format === 'IMAGE' ? 'image/jpeg' : format === 'VIDEO' ? 'video/mp4' : 'application/pdf')
+        const filename = comp.media_url.split('/').pop()?.split('?')[0] || 'header'
+        const handle = await uploadResumableToMeta(cfg, appId, { bytes, mime, filename })
+        metaComp.example = { header_handle: [handle] }
       }
     } else if (comp.type === 'body') {
       if (!comp.text) continue
