@@ -6,7 +6,7 @@ type StatusField = 'wajib' | 'penting' | 'opsional'
 type Bagian = 'non_fungsional' | 'kesepakatan' | 'pertanyaan_terbuka'
 
 interface FieldKontrak {
-  endpoint: 'kunjungan' | 'pasien'
+  endpoint: 'kunjungan' | 'pasien' | 'rencana'
   fieldNama: string
   status: StatusField
   contoh: string | null
@@ -26,8 +26,10 @@ interface EndpointDoc { spec: EndpointSpec; contohRespons: string }
 interface KontrakDoc {
   endpointKunjungan: EndpointDoc
   endpointPasien: EndpointDoc
+  endpointRencana: EndpointDoc
   fieldsKunjungan: FieldKontrak[]
   fieldsPasien: FieldKontrak[]
+  fieldsRencana: FieldKontrak[]
   nonFungsional: ItemKontrak[]
   kesepakatan: ItemKontrak[]
   pertanyaanTerbuka: ItemKontrak[]
@@ -441,6 +443,11 @@ export default function SimrsKontrakDoc({ slug }: { slug: string }) {
       <div style={kartu}>
         <EndpointBlok judul="Endpoint Pasien (by No. RM)" endpoint={doc.endpointPasien} />
         <FieldTable judul="Field Pasien" fields={doc.fieldsPasien} onSave={simpanField} />
+      </div>
+
+      <div style={kartu}>
+        <EndpointBlok judul="Endpoint Rencana Kontrol (jadwal, belum terjadi)" endpoint={doc.endpointRencana} />
+        <FieldTable judul="Field Rencana Kontrol" fields={doc.fieldsRencana} onSave={simpanField} />
       </div>
 
       <DaftarBebas

@@ -195,6 +195,7 @@ model Person {
 
   tags                     PersonTag[]
   visits                   SimrsVisit[]
+  rencana_kontrol          SimrsRencanaKontrol[]
   conversations            Conversation[]
   campaign_recipients      CampaignRecipient[]
   kegiatan_diikuti         KegiatanPeserta[]
@@ -330,7 +331,10 @@ model SimrsVisit {
   diagnosa_sekunder String[] // kode ICD-10 diagnosa sekunder
   tindakan         String?   // nama tindakan (untuk penunjang)
   tindakan_kode    String?   // kode tindakan dari library layanan
-  jadwal_kontrol   DateTime? // jadwal kontrol berikutnya — untuk KONTROL_REMINDER
+  // CATATAN: jadwal kontrol (rencana kunjungan berikutnya) BUKAN di sini lagi. Di SIMRS
+  // ia berasal dari tabel-tabel terpisah (Pondok Sehat & rawat jalan punya tabel
+  // sendiri) dan sifatnya BELUM TERJADI + bisa berubah/batal — beda dengan kunjungan
+  // yang SUDAH terjadi & immutable. Lihat model SimrsRencanaKontrol.
   status_kunjungan String?   // SELESAI | BATAL | dll dari SIMRS
   jenis_pembayaran String?   // "TUNAI" | "NON_TUNAI" — aktual per kunjungan ini
   nama_instansi    String?   // nama penjamin kunjungan ini
@@ -350,6 +354,36 @@ model SimrsVisit {
   @@index([tanggal])
   @@index([diagnosa_icd])
   @@map("crm_simrs_visits")
+}
+
+/// Rencana kontrol / jadwal kunjungan yang BELUM TERJADI. Entitas terpisah dari
+/// SimrsVisit (yang SUDAH terjadi) karena DO-nya beda: rencana bisa berubah/dibatalkan,
+/// dan di SIMRS berasal dari tabel-tabel jadwal yang berbeda (Pondok Sehat, rawat
+/// jalan, dst.) — bukan dari tabel kunjungan. Sync-nya juga beda pola: "tarik jendela
+/// ke depan lalu rekonsiliasi" (rencana yang hilang dari feed ditandai batal), bukan
+/// delta append seperti kunjungan.
+model SimrsRencanaKontrol {
+  id                String    @id @default(uuid())
+  tenant_slug       String    // denormalisasi — untuk scan reminder per tenant per tanggal
+  person_id         String
+  no_rm_sumber      String    // RM mentah dari SIMRS, jejak penautan ulang jika digabung
+  rencana_id_sumber String    // ID jadwal asli dari SIMRS — kunci dedup/rekonsiliasi
+  tanggal_rencana   DateTime  // kapan kontrol dijadwalkan
+  sumber            String    // 'pondok_sehat' | 'rawat_jalan' | ... (tabel asal di SIMRS)
+  unit              String?   // kelompok unit
+  poli              String?   // unit spesifik
+  status            String    @default("terjadwal") // 'terjadwal' | 'terpenuhi' | 'batal'
+  last_simrs_sync_at DateTime @default(now())
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  person Person @relation(fields: [person_id], references: [id])
+
+  @@unique([tenant_slug, rencana_id_sumber])
+  @@index([person_id])
+  @@index([tenant_slug, tanggal_rencana])
+  @@index([tenant_slug, status])
+  @@map("crm_simrs_rencana_kontrol")
 }
 
 // Log setiap eksekusi sync SIMRS — untuk tracking catchup dan error

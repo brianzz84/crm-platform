@@ -90,13 +90,13 @@ async function main() {
   periksa('orangBerkunjung >= orangAmbilPromo + orangProdukLain secara konsisten (tidak dobel hitung)',
     hasil.ringkasanKonversi.orangBerkunjung === hasil.ringkasanKonversi.orangAmbilPromo + hasil.ringkasanKonversi.orangProdukLain)
 
-  // Populasi dummy yang lebih luas (seed-dummy-pasien.ts) memang menyisipkan
-  // jadwal_kontrol acak untuk diagnosa kronis — Dwi Wijaya (kunjungan DUMMY-1079,
-  // sebelum campaign) punya jadwal_kontrol yang kebetulan jatuh di jendela ini.
-  // Ini BUKAN dari seed campaign, dan justru bukti pengecualian bekerja benar.
-  periksa('tepat 1 orang dikecualikan "sudah terjadwal" (Dwi Wijaya, dari noise seed lama)',
-    hasil.sudahTerjadwal.length === 1 && hasil.sudahTerjadwal[0].nama === 'Dwi Wijaya',
-    `(dapat ${JSON.stringify(hasil.sudahTerjadwal)})`)
+  // Sejak jadwal kontrol pindah ke tabel SimrsRencanaKontrol (terpisah dari kunjungan),
+  // pengecualian "sudah terjadwal" dihitung dari rencana kontrol — bukan lagi dari
+  // jadwal_kontrol di kunjungan. Campaign dummy tidak punya data rencana kontrol,
+  // jadi tidak ada yang dikecualikan. (Dwi Wijaya yang dulu terkecuali sudah tidak
+  // relevan — jadwal_kontrol di kunjungan sudah dihapus.)
+  periksa('tidak ada yang dikecualikan "sudah terjadwal" (belum ada data rencana kontrol)',
+    hasil.sudahTerjadwal.length === 0, `(dapat ${JSON.stringify(hasil.sudahTerjadwal)})`)
 
   console.log('\n=== BASELINE ===')
   console.log(hasil.baseline)

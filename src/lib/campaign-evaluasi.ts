@@ -184,21 +184,24 @@ export async function hitungEvaluasiCampaign(
     }
   }
 
-  // ── Kecualikan yang sudah punya jadwal kontrol SEBELUM campaign, jatuh DI DALAM jendela ──
-  // (jadwal_kontrol melekat di kunjungan, bukan di orang — makanya query ke SimrsVisit)
-  const kunjunganDenganJadwal = await db.simrsVisit.findMany({
+  // ── Kecualikan yang SUDAH DIJADWALKAN kontrol sebelum campaign, jatuh DI DALAM jendela ──
+  // Rencana kontrol kini entitas sendiri (SimrsRencanaKontrol), bukan kolom di kunjungan.
+  // Syarat "sebelum campaign": created_at < anchor — artinya rencana ini sudah kita
+  // ketahui saat campaign dikirim, jadi kedatangannya bukan hasil campaign. Rencana yang
+  // MUNCUL setelah campaign justru bisa jadi buah campaign, maka TIDAK dikecualikan.
+  const rencanaSebelum = await db.simrsRencanaKontrol.findMany({
     where: {
-      person_id:      { in: personIds },
-      tanggal:        { lt: anchor },
-      jadwal_kontrol: { gte: windowMulai, lte: windowSelesai },
-      aktif:          true,
+      person_id:       { in: personIds },
+      tanggal_rencana: { gte: windowMulai, lte: windowSelesai },
+      status:          { in: ['terjadwal', 'terpenuhi'] },
+      created_at:      { lt: anchor },
     },
-    select: { person_id: true, jadwal_kontrol: true },
-    orderBy: { jadwal_kontrol: 'asc' },
+    select: { person_id: true, tanggal_rencana: true },
+    orderBy: { tanggal_rencana: 'asc' },
   })
   const sudahTerjadwalMap = new Map<string, Date>()
-  for (const k of kunjunganDenganJadwal) {
-    if (!sudahTerjadwalMap.has(k.person_id)) sudahTerjadwalMap.set(k.person_id, k.jadwal_kontrol!)
+  for (const r of rencanaSebelum) {
+    if (!sudahTerjadwalMap.has(r.person_id)) sudahTerjadwalMap.set(r.person_id, r.tanggal_rencana)
   }
   const sudahTerjadwal: SudahTerjadwalRow[] = Array.from(sudahTerjadwalMap, ([personId, jadwalKontrol]) => ({
     personId, nama: namaByPerson.get(personId) ?? '(tidak diketahui)', jadwalKontrol,

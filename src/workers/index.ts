@@ -34,12 +34,14 @@ async function main() {
         return runScanner(job)
       }
       if (job.name === 'simrs-sync') {
-        const { syncWithCatchup } = await import('@/lib/simrs-sync')
+        const { syncWithCatchup, syncRencanaKontrol } = await import('@/lib/simrs-sync')
         const results = await syncWithCatchup(job.data.tenantSlug, job.data.mode ?? 'cron')
         const total_baru   = results.reduce((s, r) => s + r.jumlah_baru, 0)
         const total_update = results.reduce((s, r) => s + r.jumlah_update, 0)
-        job.log(`[SIMRS_SYNC] ${results.length} tanggal, ${total_baru} baru, ${total_update} update`)
-        return { dates: results.length, total_baru, total_update }
+        // Sync rencana kontrol menyusul (endpoint & pola sync berbeda dari kunjungan).
+        const rk = await syncRencanaKontrol(job.data.tenantSlug, job.data.mode ?? 'cron')
+        job.log(`[SIMRS_SYNC] ${results.length} tanggal, ${total_baru} baru, ${total_update} update | rencana: ${rk.jumlah_upsert} upsert, ${rk.jumlah_batal} batal${rk.error ? ' ERR: ' + rk.error : ''}`)
+        return { dates: results.length, total_baru, total_update, rencana: rk }
       }
       if (job.name === 'simrs-backfill') {
         const { syncTanggal } = await import('@/lib/simrs-sync')

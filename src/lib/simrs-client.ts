@@ -22,7 +22,7 @@ export interface SimrsQueryParam {
   keterangan: string
 }
 export interface SimrsEndpointSpec {
-  kunci:      'kunjungan' | 'pasien'
+  kunci:      'kunjungan' | 'pasien' | 'rencana'
   method:     string
   pathContoh: string
   queryParams: SimrsQueryParam[]
@@ -47,6 +47,19 @@ export const SIMRS_ENDPOINT_PASIEN: SimrsEndpointSpec = {
   queryParams: [],
 }
 
+export const SIMRS_ENDPOINT_RENCANA: SimrsEndpointSpec = {
+  kunci:  'rencana',
+  method: 'GET',
+  pathContoh: `/rencana-kontrol?dari=2026-03-20&sampai=2026-04-20&page=1&per_page=${SIMRS_PER_PAGE}&unit=<KODE_PONDOK_SEHAT>`,
+  queryParams: [
+    { nama: 'dari',     contoh: '2026-03-20',           keterangan: 'Awal jendela — rencana kontrol mulai tanggal ini' },
+    { nama: 'sampai',   contoh: '2026-04-20',           keterangan: 'Akhir jendela — kirim SEMUA rencana dalam rentang (untuk rekonsiliasi pembatalan)' },
+    { nama: 'page',     contoh: '1',                     keterangan: 'Nomor halaman, mulai dari 1' },
+    { nama: 'per_page', contoh: String(SIMRS_PER_PAGE),  keterangan: `Baris per halaman — maks ${SIMRS_PER_PAGE}` },
+    { nama: 'unit',     contoh: '<KODE_PONDOK_SEHAT>',   keterangan: 'Filter unit di sisi server SIMRS' },
+  ],
+}
+
 /**
  * KUNJUNGAN — RAMPING. Sengaja TIDAK memuat demografi pasien (nama, HP, NIK,
  * alamat, dst.). Data person diambil terpisah lewat endpoint Pasien, hanya untuk
@@ -65,11 +78,28 @@ export interface SimrsKunjungan {
   diagnosa_nama:    string | null
   diagnosa_sekunder: string[]       // array kode ICD sekunder
   tindakan_kode:    string | null   // WAJIB cocok dengan SimrsLayananLibrary.kode_barang — dasar pencocokan evaluasi campaign
-  jadwal_kontrol:   string | null   // YYYY-MM-DD
   status_kunjungan: string | null   // SELESAI | BATAL | dll — RKZ mengonfirmasi kunjungan BATAL sudah difilter di sisi API mereka
   jenis_pembayaran: string | null   // "TUNAI" | "NON_TUNAI" — atribut KUNJUNGAN ini, bukan pasien
   nama_instansi:    string | null   // nama penjamin kunjungan ini
   kode_instansi:    string | null   // kode master instansi dari SIMRS
+  // CATATAN: jadwal_kontrol TIDAK di sini — rencana kontrol datang dari endpoint
+  // terpisah (SimrsRencanaKontrol), dari tabel SIMRS yang berbeda.
+}
+
+/**
+ * RENCANA KONTROL — jadwal kunjungan yang BELUM terjadi. Datang dari endpoint &
+ * tabel SIMRS yang BERBEDA dari kunjungan (Pondok Sehat & rawat jalan punya tabel
+ * jadwal masing-masing). Dikirim sebagai "semua jadwal dalam jendela ke depan"
+ * supaya sisi kami bisa merekonsiliasi pembatalan (rencana yang hilang = batal).
+ */
+export interface SimrsRencanaKontrol {
+  rencana_id:     string        // ID jadwal unik di SIMRS — kunci dedup/rekonsiliasi
+  no_rm:          string        // penghubung ke pasien
+  tanggal:        string        // YYYY-MM-DD tanggal rencana kontrol
+  sumber:         string        // 'pondok_sehat' | 'rawat_jalan' — tabel asal di SIMRS
+  unit:           string | null // kelompok unit
+  poli:           string | null // unit spesifik
+  status:         string | null // status jadwal dari SIMRS (mis. AKTIF/BATAL) — opsional
 }
 
 /**
@@ -148,12 +178,29 @@ function mockKunjungan(tanggal: string, n: number): SimrsKunjungan[] {
     diagnosa_nama:    'Diagnosis Mock',
     diagnosa_sekunder: [],
     tindakan_kode:    null,
-    jadwal_kontrol:   i % 5 === 0 ? tanggal : null,
     status_kunjungan: 'SELESAI',
     jenis_pembayaran: i % 3 === 0 ? 'TUNAI' : 'NON_TUNAI',
     nama_instansi:    i % 3 === 0 ? null : ['BPJS Kesehatan', 'PT Prudential', 'PT Allianz'][i % 3 === 1 ? 0 : 1],
     kode_instansi:    i % 3 === 0 ? null : ['BPJS-001', 'PRU-001', 'ALZ-001'][i % 3 === 1 ? 0 : 1],
   }))
+}
+
+// Rencana kontrol mock — deterministik. `n` rencana dalam jendela, rencana_id
+// stabil per (tanggal-basis, indeks) supaya bisa menguji rekonsiliasi pembatalan.
+function mockRencanaKontrol(tanggalBasis: string, n: number): SimrsRencanaKontrol[] {
+  return Array.from({ length: n }, (_, i) => {
+    const t = new Date(tanggalBasis)
+    t.setDate(t.getDate() + (i % 14) + 1)   // dijadwalkan 1-14 hari ke depan
+    return {
+      rencana_id: `RK-${tanggalBasis.replace(/-/g, '')}-${String(i + 1).padStart(4, '0')}`,
+      no_rm:      mockNoRm(i),
+      tanggal:    t.toISOString().slice(0, 10),
+      sumber:     i % 2 === 0 ? 'pondok_sehat' : 'rawat_jalan',
+      unit:       i % 2 === 0 ? 'Pondok Sehat' : 'Rawat Jalan',
+      poli:       i % 2 === 0 ? 'Check Up' : MOCK_POLI[i % MOCK_POLI.length],
+      status:     'AKTIF',
+    }
+  })
 }
 
 // Demografi pasien deterministik dari no_rm — dipakai mock endpoint Pasien.
@@ -231,6 +278,42 @@ export async function getKunjunganByTanggal(
 
   while (true) {
     const { data, total } = await fetchKunjunganPage(cfg, tanggal, page)
+    all.push(...data)
+    if (all.length >= total || data.length === 0) break
+    page++
+  }
+
+  return all
+}
+
+/**
+ * Ambil SEMUA rencana kontrol dalam jendela [dari, sampai]. Bukan delta — sengaja
+ * ambil penuh supaya sync bisa merekonsiliasi: rencana yang HILANG dari feed berarti
+ * dibatalkan/digeser di SIMRS. Lihat syncRencanaKontrol di simrs-sync.ts.
+ */
+export async function getRencanaKontrol(
+  cfg: SimrsClientConfig,
+  dari: string,
+  sampai: string,
+): Promise<SimrsRencanaKontrol[]> {
+  if (MOCK_MODE) {
+    // Jumlah tetap; dipanggil ulang dengan mockRencanaKontrol dari test untuk skenario batal.
+    return mockRencanaKontrol(dari, 8)
+  }
+
+  const all: SimrsRencanaKontrol[] = []
+  let page = 1
+
+  while (true) {
+    const url = `${cfg.base_url}/rencana-kontrol?dari=${dari}&sampai=${sampai}&page=${page}&per_page=${SIMRS_PER_PAGE}`
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${cfg.api_key}`, 'Accept': 'application/json' },
+      signal:  AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) throw new Error(`SIMRS API error ${res.status}: ${await res.text().catch(() => res.statusText)}`)
+    const json = await res.json()
+    const data: SimrsRencanaKontrol[] = json.data ?? []
+    const total: number = json.meta?.total ?? data.length
     all.push(...data)
     if (all.length >= total || data.length === 0) break
     page++

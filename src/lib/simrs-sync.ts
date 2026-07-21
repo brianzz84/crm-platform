@@ -14,8 +14,9 @@
  */
 
 import { masterDb, getTenantDb } from '@/lib/tenant'
-import { getKunjunganByTanggal, getPasienByNoRm, getSimrsConfig, type SimrsClientConfig } from '@/lib/simrs-client'
+import { getKunjunganByTanggal, getPasienByNoRm, getRencanaKontrol, getSimrsConfig, type SimrsClientConfig } from '@/lib/simrs-client'
 import { pastikanPersonDariRm } from '@/lib/person-identity'
+import { normalizePhoneOrNull } from '@/lib/phone'
 import type { PrismaClient } from '@/generated/prisma/client'
 import { randomUUID } from 'crypto'
 
@@ -105,7 +106,6 @@ export async function syncTanggal(tenantSlug: string, tanggal: string, mode: 'cr
         diagnosa_nama:    k.diagnosa_nama ?? null,
         diagnosa_sekunder: k.diagnosa_sekunder ?? [],
         tindakan_kode:    k.tindakan_kode ?? null,
-        jadwal_kontrol:   k.jadwal_kontrol ? new Date(k.jadwal_kontrol) : null,
         status_kunjungan: k.status_kunjungan ?? null,
         jenis_pembayaran: k.jenis_pembayaran ?? null,   // penjamin: atribut KUNJUNGAN
         nama_instansi:    k.nama_instansi ?? null,
@@ -174,7 +174,12 @@ export async function segarkanPersonDariSimrs(
   const p = await getPasienByNoRm(cfg, noRm)
   if (!p) return false
 
-  const noHpAlt = (p.no_hp_alternatif && p.no_hp_alternatif !== p.no_hp) ? p.no_hp_alternatif : null
+  // Normalisasi nomor HP — SIMRS bisa kirim +62/62/spasi; CRM menyeragamkan ke 08xxx
+  // supaya cocok saat matching balasan chat. Lihat src/lib/phone.ts.
+  const noHp    = normalizePhoneOrNull(p.no_hp)
+  const noHpAltRaw = normalizePhoneOrNull(p.no_hp_alternatif)
+  const noHpAlt = (noHpAltRaw && noHpAltRaw !== noHp) ? noHpAltRaw : null
+
   await db.person.update({
     where: { id: personId },
     data: {
@@ -190,7 +195,7 @@ export async function segarkanPersonDariSimrs(
       kota:               p.kota || undefined,
       kecamatan:          p.kecamatan || undefined,
       no_bpjs:            p.no_bpjs || undefined,
-      no_hp:              p.no_hp || undefined,
+      no_hp:              noHp || undefined,
       no_hp_2:            noHpAlt || undefined,
       last_simrs_sync_at: new Date(),
     },
@@ -227,6 +232,84 @@ async function segarkanPersonYangPerlu(
     if (await segarkanPersonDariSimrs(db, cfg, r.id, noRm)) n++
   }
   return n
+}
+
+// ──────────────────────────────────────────────
+// Sync Rencana Kontrol (jadwal kunjungan yang belum terjadi)
+// ──────────────────────────────────────────────
+
+export interface RencanaSyncResult {
+  jumlah_upsert: number   // rencana baru/diperbarui dari feed
+  jumlah_batal:  number   // rencana yang HILANG dari feed → ditandai batal
+  error?:        string
+}
+
+// Seberapa jauh ke depan jendela rencana ditarik. Semua rencana dalam jendela ini
+// yang tidak muncul lagi di feed dianggap dibatalkan/digeser (rekonsiliasi).
+const HARI_JENDELA_RENCANA = 90
+
+/**
+ * Sinkronisasi rencana kontrol — pola BEDA dari kunjungan. Tarik SELURUH rencana
+ * dalam jendela [hari ini, +90 hari], lalu rekonsiliasi:
+ *  - rencana yang ADA di feed → upsert (by rencana_id_sumber)
+ *  - rencana kita yang masih 'terjadwal' di jendela tapi TIDAK muncul di feed →
+ *    ditandai 'batal' (dibatalkan/digeser di SIMRS; SIMRS tak memberi tahu langsung)
+ */
+export async function syncRencanaKontrol(tenantSlug: string, mode: 'cron' | 'manual' = 'cron'): Promise<RencanaSyncResult> {
+  const db       = await getTenantDb(tenantSlug)
+  const simrsCfg = await getSimrsConfig(masterDb, tenantSlug)
+  if (!simrsCfg) return { jumlah_upsert: 0, jumlah_batal: 0, error: 'Konfigurasi SIMRS belum diisi' }
+
+  const now    = new Date()
+  const dari   = now.toISOString().slice(0, 10)
+  const sampai = new Date(now.getTime() + HARI_JENDELA_RENCANA * 86_400_000).toISOString().slice(0, 10)
+
+  try {
+    const rencanas = await getRencanaKontrol(simrsCfg, dari, sampai)
+
+    let jumlah_upsert = 0
+    const idHadir = new Set<string>()
+
+    for (const r of rencanas) {
+      idHadir.add(r.rencana_id)
+      // Pastikan Person ada (kunjungan mungkin belum tiba, rencana bisa duluan)
+      const person = await pastikanPersonDariRm(db as any, tenantSlug, r.no_rm)
+
+      await db.simrsRencanaKontrol.upsert({
+        where:  { tenant_slug_rencana_id_sumber: { tenant_slug: tenantSlug, rencana_id_sumber: r.rencana_id } },
+        create: {
+          tenant_slug: tenantSlug, person_id: person.id, no_rm_sumber: r.no_rm,
+          rencana_id_sumber: r.rencana_id, tanggal_rencana: new Date(r.tanggal),
+          sumber: r.sumber, unit: r.unit ?? null, poli: r.poli ?? null, status: 'terjadwal',
+        },
+        update: {
+          person_id: person.id, tanggal_rencana: new Date(r.tanggal),
+          sumber: r.sumber, unit: r.unit ?? null, poli: r.poli ?? null,
+          status: 'terjadwal',   // muncul lagi = masih aktif (batalkan pembatalan jika sempat)
+          last_simrs_sync_at: new Date(),
+        },
+      })
+      jumlah_upsert++
+    }
+
+    // Rekonsiliasi: rencana kita yang masih 'terjadwal' dalam jendela ini tapi TIDAK
+    // ada di feed = dibatalkan/digeser di SIMRS.
+    const kandidatBatal = await db.simrsRencanaKontrol.findMany({
+      where: {
+        tenant_slug: tenantSlug, status: 'terjadwal',
+        tanggal_rencana: { gte: new Date(dari), lte: new Date(sampai) },
+      },
+      select: { id: true, rencana_id_sumber: true },
+    })
+    const idBatal = kandidatBatal.filter(k => !idHadir.has(k.rencana_id_sumber)).map(k => k.id)
+    if (idBatal.length > 0) {
+      await db.simrsRencanaKontrol.updateMany({ where: { id: { in: idBatal } }, data: { status: 'batal' } })
+    }
+
+    return { jumlah_upsert, jumlah_batal: idBatal.length }
+  } catch (e: any) {
+    return { jumlah_upsert: 0, jumlah_batal: 0, error: e.message }
+  }
 }
 
 // ──────────────────────────────────────────────

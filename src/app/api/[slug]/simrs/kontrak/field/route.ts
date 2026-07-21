@@ -7,7 +7,7 @@ import { z } from 'zod'
 type Ctx = { params: { slug: string } }
 
 const Skema = z.object({
-  endpoint:   z.enum(['kunjungan', 'pasien']),
+  endpoint:   z.enum(['kunjungan', 'pasien', 'rencana']),
   field_nama: z.string().min(1),
   contoh:     z.string().nullable().optional(),
   catatan:    z.string().nullable().optional(),

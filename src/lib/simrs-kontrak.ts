@@ -23,17 +23,20 @@ import type { PrismaClient } from '../generated/prisma/client'
 import {
   WAJIB_KUNJUNGAN, PENTING_KUNJUNGAN, DIKENAL_KUNJUNGAN,
   WAJIB_PASIEN, PENTING_PASIEN, DIKENAL_PASIEN,
+  WAJIB_RENCANA, PENTING_RENCANA, DIKENAL_RENCANA,
 } from './simrs-diagnostik'
 import {
-  SIMRS_PER_PAGE, SIMRS_ENDPOINT_KUNJUNGAN, SIMRS_ENDPOINT_PASIEN,
+  SIMRS_PER_PAGE, SIMRS_ENDPOINT_KUNJUNGAN, SIMRS_ENDPOINT_PASIEN, SIMRS_ENDPOINT_RENCANA,
   type SimrsEndpointSpec,
 } from './simrs-client'
 
 export type StatusField = 'wajib' | 'penting' | 'opsional'
 export type Bagian = 'non_fungsional' | 'kesepakatan' | 'pertanyaan_terbuka'
 
+export type EndpointKunci = 'kunjungan' | 'pasien' | 'rencana'
+
 export interface FieldKontrak {
-  endpoint: 'kunjungan' | 'pasien'
+  endpoint: EndpointKunci
   fieldNama: string
   status: StatusField
   contoh: string | null
@@ -60,8 +63,10 @@ export interface EndpointDoc {
 export interface KontrakDoc {
   endpointKunjungan: EndpointDoc
   endpointPasien: EndpointDoc
+  endpointRencana: EndpointDoc
   fieldsKunjungan: FieldKontrak[]
   fieldsPasien: FieldKontrak[]
+  fieldsRencana: FieldKontrak[]
   nonFungsional: ItemKontrak[]
   kesepakatan: ItemKontrak[]
   pertanyaanTerbuka: ItemKontrak[]
@@ -90,7 +95,7 @@ export async function ambilKontrakDoc(db: PrismaClient, tenantSlug: string): Pro
   const anotasiMap = new Map(anotasi.map(a => [`${a.endpoint}:${a.field_nama}`, a]))
 
   const susunFields = (
-    endpoint: 'kunjungan' | 'pasien',
+    endpoint: EndpointKunci,
     dikenal: readonly string[], wajib: readonly string[], penting: readonly string[],
   ): FieldKontrak[] =>
     dikenal.map(fieldNama => {
@@ -109,6 +114,7 @@ export async function ambilKontrakDoc(db: PrismaClient, tenantSlug: string): Pro
 
   const fieldsKunjungan = susunFields('kunjungan', DIKENAL_KUNJUNGAN, WAJIB_KUNJUNGAN, PENTING_KUNJUNGAN)
   const fieldsPasien    = susunFields('pasien', DIKENAL_PASIEN, WAJIB_PASIEN, PENTING_PASIEN)
+  const fieldsRencana   = susunFields('rencana', DIKENAL_RENCANA, WAJIB_RENCANA, PENTING_RENCANA)
 
   return {
     endpointKunjungan: {
@@ -124,8 +130,16 @@ export async function ambilKontrakDoc(db: PrismaClient, tenantSlug: string): Pro
       // getPasienByNoRm() membacanya (json.data ?? json).
       contohRespons: JSON.stringify({ data: contohBaris(fieldsPasien) }, null, 2),
     },
+    endpointRencana: {
+      spec: SIMRS_ENDPOINT_RENCANA,
+      contohRespons: JSON.stringify(
+        { data: [ contohBaris(fieldsRencana) ], meta: { total: 1, page: 1, per_page: SIMRS_PER_PAGE } },
+        null, 2,
+      ),
+    },
     fieldsKunjungan,
     fieldsPasien,
+    fieldsRencana,
     nonFungsional: items.filter(i => i.bagian === 'non_fungsional').map(keItem),
     kesepakatan: items.filter(i => i.bagian === 'kesepakatan').map(keItem),
     pertanyaanTerbuka: items.filter(i => i.bagian === 'pertanyaan_terbuka').map(keItem),
@@ -154,10 +168,12 @@ function contohBaris(fields: FieldKontrak[]): Record<string, unknown> {
  * mencegah anotasi menempel ke field yang tidak pernah ada di kontrak sungguhan. */
 export async function simpanAnotasiField(
   db: PrismaClient, tenantSlug: string,
-  endpoint: 'kunjungan' | 'pasien', fieldNama: string,
+  endpoint: EndpointKunci, fieldNama: string,
   data: { contoh?: string | null; catatan?: string | null },
 ): Promise<void> {
-  const dikenal = endpoint === 'kunjungan' ? DIKENAL_KUNJUNGAN : DIKENAL_PASIEN
+  const dikenal = endpoint === 'kunjungan' ? DIKENAL_KUNJUNGAN
+    : endpoint === 'pasien' ? DIKENAL_PASIEN
+    : DIKENAL_RENCANA
   if (!(dikenal as string[]).includes(fieldNama)) {
     throw new Error(`Field "${fieldNama}" tidak dikenal di kontrak ${endpoint} — periksa penulisan.`)
   }

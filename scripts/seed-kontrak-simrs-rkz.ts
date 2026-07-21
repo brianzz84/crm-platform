@@ -53,6 +53,18 @@ const ANOTASI_PASIEN: Record<string, { contoh: string; catatan?: string }> = {
   no_bpjs: { contoh: '0001234567890' },
 }
 
+const ANOTASI_RENCANA: Record<string, { contoh: string; catatan?: string }> = {
+  // RENCANA KONTROL — jadwal yang BELUM terjadi, dari tabel SIMRS terpisah (Pondok
+  // Sehat & rawat jalan punya tabel sendiri). Dikirim sebagai jendela ke depan.
+  rencana_id: { contoh: 'RK-20260320-0042', catatan: 'ID jadwal unik di SIMRS — kunci dedup & rekonsiliasi pembatalan' },
+  no_rm: { contoh: 'RM123456', catatan: 'Penghubung ke pasien' },
+  tanggal: { contoh: '2026-04-20', catatan: 'Tanggal kontrol dijadwalkan' },
+  sumber: { contoh: 'pondok_sehat', catatan: 'Tabel asal di SIMRS: pondok_sehat | rawat_jalan | ...' },
+  unit: { contoh: 'Pondok Sehat' },
+  poli: { contoh: 'Check Up', catatan: 'Unit spesifik' },
+  status: { contoh: 'AKTIF', catatan: 'Status jadwal dari SIMRS (opsional) — pembatalan dideteksi via rekonsiliasi jendela' },
+}
+
 const NON_FUNGSIONAL = [
   { judul: 'Ukuran halaman', isi: 'Maks 100 baris per panggilan', status: 'Dikonfirmasi' },
   { judul: 'Batas frekuensi panggilan', isi: 'Apakah 100 baris cuma batas per halaman, atau juga ada batas jumlah panggilan per menit/jam?', status: 'Terbuka' },
@@ -104,6 +116,12 @@ async function main() {
     await simpanAnotasiField(db, SLUG, 'pasien', field, a)
   }
   console.log(`  ${Object.keys(ANOTASI_PASIEN).length} field dianotasi.`)
+
+  console.log('Menyimpan anotasi field Rencana Kontrol...')
+  for (const [field, a] of Object.entries(ANOTASI_RENCANA)) {
+    await simpanAnotasiField(db, SLUG, 'rencana', field, a)
+  }
+  console.log(`  ${Object.keys(ANOTASI_RENCANA).length} field dianotasi.`)
 
   const sudahAdaItem = await db.simrsKontrakItem.count({ where: { tenant_slug: SLUG } })
   if (sudahAdaItem > 0) {

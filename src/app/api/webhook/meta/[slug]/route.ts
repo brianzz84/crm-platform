@@ -4,6 +4,7 @@ import { handleIncomingMessage } from '@/lib/inbox-handler'
 import { recomputeCampaignCounters } from '@/lib/campaign'
 import { fetchMetaMediaInfo, downloadMetaMedia } from '@/lib/meta-client'
 import { uploadPublic, isStorageConfigured } from '@/lib/storage'
+import { normalizePhone } from '@/lib/phone'
 
 const MEDIA_TYPES = ['image', 'document', 'video', 'audio', 'sticker']
 function mimeExt(mime: string): string {
@@ -187,15 +188,6 @@ async function handleTemplateStatusUpdate(db: any, slug: string, value: MetaTemp
     data:  { meta_status: event, aktif: event === 'APPROVED' },
   })
   console.log(`[webhook/meta/${slug}] template ${tmpl.template_name} → ${event}`)
-}
-
-// ─── Normalisasi nomor ────────────────────────────────────────────────────────
-
-function normalizePhone(phone: string): string {
-  // Meta mengirim format internasional tanpa '+': 628xxxxxxxxx
-  // Kita simpan format lokal: 08xxxxxxxxx
-  if (phone.startsWith('62')) return '0' + phone.slice(2)
-  return phone
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

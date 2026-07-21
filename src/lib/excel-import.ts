@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import { PrismaClient } from '@/generated/prisma/client'
 import { ExcelImportRow, ImportRowError } from '@/types'
+import { normalizePhone } from '@/lib/phone'
 
 export interface ImportResult {
   totalRows:      number
@@ -15,13 +16,6 @@ export interface ImportResult {
 // Kolom wajib
 const REQUIRED_COLS = ['nama', 'no_hp']
 
-// Normalisasi no_hp → format 08xxx (strip +62, spasi, tanda baca)
-function normalizePhone(raw: string): string {
-  const s = String(raw).replace(/\s+/g, '').replace(/[^0-9+]/g, '')
-  if (s.startsWith('+62')) return '0' + s.slice(3)
-  if (s.startsWith('62'))  return '0' + s.slice(2)
-  return s
-}
 
 // Nama → Title Case, trim spasi berlebih
 function normalizeName(raw: string): string {

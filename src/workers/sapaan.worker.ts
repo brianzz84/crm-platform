@@ -133,12 +133,34 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
     job.log(`[HARI_RAYA] Kirim ke ${targets.length} pasien`)
 
   } else if (type === 'KONTROL_REMINDER') {
-    // PENDING: Fitur ini membutuhkan field `jadwal_kontrol` dari integrasi SIMRS.
-    // Tanpa data jadwal kontrol yang akurat (bukan tanggal kunjungan lalu),
-    // pengiriman H-3/H-1 tidak bisa ditentukan dengan benar.
-    // Akan diaktifkan setelah modul SIMRS selesai dikerjakan.
-    job.log(`[KONTROL_REMINDER] PENDING — menunggu integrasi SIMRS (field jadwal_kontrol). Job diabaikan.`)
-    return { sent: 0, failed: 0, skipped: 0 }
+    // Rencana kontrol kini dari tabel SimrsRencanaKontrol (jadwal SIMRS, bukan tanggal
+    // kunjungan lalu). Kirim pengingat untuk kontrol yang jatuh H-3 atau H-1 dari hari ini.
+    const hMundur = horizon === 'H-1' ? 1 : 3
+    const target  = new Date(now.getFullYear(), now.getMonth(), now.getDate() + hMundur)
+    const targetAkhir = new Date(target.getTime() + 86_400_000)
+
+    const rencanas = await db.simrsRencanaKontrol.findMany({
+      where: {
+        tenant_slug:     tenantSlug,
+        status:          'terjadwal',
+        tanggal_rencana: { gte: target, lt: targetAkhir },
+        person: { aktif: true, AND: [BUKAN_PERSON_UJI] },
+      },
+      select: { tanggal_rencana: true, poli: true, unit: true, person: { select: { id: true, name: true, no_hp: true } } },
+    })
+    targets = rencanas
+      .filter(r => !!r.person.no_hp)
+      .map(r => ({
+        id:    r.person.id,
+        name:  r.person.name,
+        no_hp: r.person.no_hp!,
+        meta:  {
+          horizon:     horizon || 'H-3',
+          tgl_kontrol: r.tanggal_rencana.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+          poli:        r.poli || r.unit || '',
+        },
+      }))
+    job.log(`[KONTROL_REMINDER] ${horizon}: ${targets.length} pasien punya kontrol ${hMundur} hari lagi`)
   }
 
   if (targets.length === 0) {
