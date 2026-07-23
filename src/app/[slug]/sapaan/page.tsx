@@ -85,6 +85,13 @@ export default async function SapaanPage({ params }: { params: { slug: string } 
             template_params: configMap['KONTROL_REMINDER'].template_params,
             filter_groups:   configMap['KONTROL_REMINDER'].filter_groups,
           } : null,
+          VAKSIN_REMINDER: configMap['VAKSIN_REMINDER'] ? {
+            aktif:           configMap['VAKSIN_REMINDER'].aktif,
+            jam_kirim:       configMap['VAKSIN_REMINDER'].jam_kirim,
+            template_id:     configMap['VAKSIN_REMINDER'].template_id,
+            template_params: configMap['VAKSIN_REMINDER'].template_params,
+            filter_groups:   configMap['VAKSIN_REMINDER'].filter_groups,
+          } : null,
         }}
         statsMap={statsMap}
       />

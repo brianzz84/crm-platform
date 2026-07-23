@@ -36,7 +36,7 @@ const FilterConditionSchema = z.object({
 const FilterGroupSchema = z.object({ conditions: z.array(FilterConditionSchema) })
 
 const BaseSchema = z.object({
-  jenis:     z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER']),
+  jenis:     z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER', 'VAKSIN_REMINDER']),
   aktif:     z.boolean(),
   jam_kirim: z.number().int().min(0).max(23).default(7),
 })
@@ -44,7 +44,7 @@ const BaseSchema = z.object({
 // Semua jenis sapaan kini berbasis template approved Meta (proaktif = wajib template).
 // filter_groups opsional (dipakai ULTAH & HARI_RAYA; KONTROL audiensnya dari rencana).
 const TemplateConfigSchema = BaseSchema.extend({
-  jenis:           z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER']),
+  jenis:           z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER', 'VAKSIN_REMINDER']),
   template_id:     z.string().uuid('Pilih template terlebih dahulu'),
   template_params: z.record(z.string(), z.string()).default({}),
   filter_groups:   z.array(FilterGroupSchema).default([]),

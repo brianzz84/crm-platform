@@ -52,6 +52,7 @@ export const DIKENAL_PASIEN = [
 export const DIKENAL_RENCANA = [
   ...WAJIB_RENCANA, ...PENTING_RENCANA,
   'poli', 'status',
+  'jenis_vaksin', 'keterangan',   // dipakai saat sumber='vaksin' (Pengingat Vaksin)
 ]
 
 export interface RingkasanValidasiField {

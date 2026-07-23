@@ -116,11 +116,12 @@ function ConditionRow({
   )
 }
 
-type SapaanJenis = 'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER'
-const JENIS_UI: Record<SapaanJenis, { icon: string; label: string; subtitle: string; accent: string; showFilter: boolean; kontrol?: boolean }> = {
+type SapaanJenis = 'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER' | 'VAKSIN_REMINDER'
+const JENIS_UI: Record<SapaanJenis, { icon: string; label: string; subtitle: string; accent: string; showFilter: boolean; jadwal?: boolean }> = {
   ULTAH:            { icon: '🎂', label: 'Ucapan Ulang Tahun', subtitle: 'Dikirim otomatis via template WhatsApp ke pasien yang berulang tahun hari itu (bisa difilter).', accent: '#E8A800', showFilter: true },
   HARI_RAYA:        { icon: '🌙', label: 'Ucapan Hari Raya',   subtitle: 'Dikirim via template WhatsApp saat hari raya (dipicu manual oleh admin).', accent: '#7C3AED', showFilter: true },
-  KONTROL_REMINDER: { icon: '📅', label: 'Pengingat Kontrol',  subtitle: 'Dikirim otomatis H-3 & H-1 sebelum jadwal kontrol pasien (data jadwal dari SIMRS).', accent: '#0089A8', showFilter: false, kontrol: true },
+  KONTROL_REMINDER: { icon: '📅', label: 'Pengingat Kontrol',  subtitle: 'Dikirim otomatis H-3 & H-1 sebelum jadwal kontrol pasien (data jadwal dari SIMRS).', accent: '#0089A8', showFilter: false, jadwal: true },
+  VAKSIN_REMINDER:  { icon: '💉', label: 'Pengingat Vaksin',   subtitle: 'Dikirim otomatis H-7, H-3 & H-1 sebelum jadwal vaksin pasien (data jadwal dari SIMRS, sumber="vaksin").', accent: '#0E7A6B', showFilter: false, jadwal: true },
 }
 
 export default function UltahCard({
@@ -286,9 +287,9 @@ export default function UltahCard({
                   {templates.map(t => <option key={t.id} value={t.id}>{t.nama} ({t.template_name})</option>)}
                 </select>
               )}
-              {ui.kontrol && (
+              {ui.jadwal && (
                 <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '8px 10px' }}>
-                  🗓️ Pakai template <b>UTILITY</b>. Variabel <code>Tanggal Kontrol</code> &amp; <code>Poli/Unit Kontrol</code> terisi otomatis dari jadwal SIMRS per penerima. Pantau daftar &amp; status kirim di <a href={`/${slug}/rencana-kontrol`} style={{ color: '#1E40AF', fontWeight: 700 }}>Rencana Kontrol</a>.
+                  🗓️ Pakai template <b>UTILITY</b>. Variabel jadwal (<code>Tanggal Jadwal</code>, <code>Poli/Unit</code>{jenis === 'VAKSIN_REMINDER' ? <>, <code>Jenis Vaksin</code>, <code>Catatan Dokter</code></> : null}) terisi otomatis dari data SIMRS per penerima. Pantau daftar &amp; status kirim di <a href={`/${slug}/rencana-kontrol`} style={{ color: '#1E40AF', fontWeight: 700 }}>Rencana Kontrol</a>.
                 </div>
               )}
             </div>

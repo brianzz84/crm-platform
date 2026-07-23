@@ -373,6 +373,9 @@ model SimrsRencanaKontrol {
   unit              String?   // kelompok unit
   poli              String?   // unit spesifik
   status            String    @default("terjadwal") // 'terjadwal' | 'terpenuhi' | 'batal'
+  jenis_vaksin      String?   // jenis vaksin dari SIMRS — hanya baris sumber='vaksin'
+  keterangan        String?   // catatan dokter (vaksin & bisa juga kontrol)
+  reminder_h7_at    DateTime? // stempel pengingat H-7 (idempotency) — dipakai vaksin
   reminder_h3_at    DateTime? // kapan pengingat H-3 dikirim (null = belum) — sumber status dashboard & idempotency
   reminder_h1_at    DateTime? // kapan pengingat H-1 dikirim (null = belum)
   last_simrs_sync_at DateTime @default(now())
@@ -1145,6 +1148,7 @@ enum SapaanJenis {
   ULTAH
   HARI_RAYA
   KONTROL_REMINDER
+  VAKSIN_REMINDER
 }
 
 enum ImportSumber {

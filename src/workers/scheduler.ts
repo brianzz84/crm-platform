@@ -114,6 +114,24 @@ export async function runScanner(job: Job) {
           }
           job.log(`[scanner] Enqueue KONTROL_REMINDER (H-3 & H-1) untuk ${tenant.slug}`)
         }
+
+        // VAKSIN_REMINDER: jadwal vaksin (sumber='vaksin'), horizon H-7, H-3, H-1.
+        if (cfg.jenis === 'VAKSIN_REMINDER') {
+          const tgl = nowWib.toISOString().slice(0, 10)
+          for (const h of ['H-7', 'H-3', 'H-1'] as const) {
+            await queue.add('sapaan', {
+              type:       'VAKSIN_REMINDER',
+              tenantSlug: tenant.slug,
+              horizon:    h,
+            }, {
+              jobId: `vaksin-${tenant.slug}-${tgl}-${h}`,
+              removeOnComplete: 30,
+              removeOnFail:     50,
+            })
+            enqueued++
+          }
+          job.log(`[scanner] Enqueue VAKSIN_REMINDER (H-7, H-3 & H-1) untuk ${tenant.slug}`)
+        }
       }
 
       // SIMRS SYNC: cek jam sinkronisasi per tenant

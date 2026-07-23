@@ -11,7 +11,7 @@ import { z } from 'zod'
 type Ctx = { params: { slug: string } }
 
 const TriggerSchema = z.object({
-  jenis:     z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER']),
+  jenis:     z.enum(['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER', 'VAKSIN_REMINDER']),
   hari_raya: z.string().optional(),  // wajib jika jenis = HARI_RAYA
   horizon:   z.enum(['H-3', 'H-1']).optional(),  // untuk KONTROL_REMINDER
 })

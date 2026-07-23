@@ -21,10 +21,12 @@ export const TEMPLATE_FIELDS: TemplateField[] = [
   { key: 'dokter_terakhir',            label: 'Dokter Terakhir' },
   { key: 'diagnosa_terakhir',          label: 'Diagnosa Terakhir' },
   { key: 'tanggal_kunjungan_terakhir', label: 'Tgl Kunjungan Terakhir' },
-  // Konteks jadwal kontrol — hanya terisi saat kirim Pengingat Kontrol (dari rencana,
+  // Konteks jadwal — hanya terisi saat kirim Pengingat Kontrol/Vaksin (dari rencana,
   // bukan dari person). Di jenis sapaan lain field ini kosong.
-  { key: 'tanggal_kontrol',            label: 'Tanggal Kontrol (jadwal)' },
-  { key: 'poli_kontrol',               label: 'Poli/Unit Kontrol (jadwal)' },
+  { key: 'tanggal_kontrol',            label: 'Tanggal Jadwal' },
+  { key: 'poli_kontrol',               label: 'Poli/Unit (jadwal)' },
+  { key: 'jenis_vaksin',               label: 'Jenis Vaksin (jadwal)' },
+  { key: 'catatan_dokter',             label: 'Catatan Dokter (jadwal)' },
 ]
 
 export const TEMPLATE_FIELD_LABELS: Record<string, string> =

@@ -17,12 +17,12 @@ import { BUKAN_PERSON_UJI } from '@/lib/test-data-guard'
 const DRY_RUN = process.env.SAPAAN_DRY_RUN === 'true'
 
 export interface SapaanJobData {
-  type:       'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER'
+  type:       'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER' | 'VAKSIN_REMINDER'
   tenantSlug: string
   // Untuk HARI_RAYA: nama hari raya (contoh: 'Idul Fitri 1447 H')
   hariRaya?:  string
-  // Untuk KONTROL_REMINDER: 'H-3' atau 'H-1'
-  horizon?:   'H-3' | 'H-1'
+  // Untuk KONTROL_REMINDER / VAKSIN_REMINDER: horizon pengingat
+  horizon?:   'H-7' | 'H-3' | 'H-1'
 }
 
 export interface SapaanJobResult {
@@ -53,7 +53,9 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
   const { type, tenantSlug, hariRaya, horizon } = job.data
   // Kolom stempel per-rencana untuk KONTROL_REMINDER — sekaligus sumber idempotency
   // (jadi H-3 dan H-1 dilacak terpisah, tidak saling menutup seperti kalau pakai SapaanLog).
-  const kolomReminder = horizon === 'H-1' ? 'reminder_h1_at' as const : 'reminder_h3_at' as const
+  const kolomReminder = horizon === 'H-1' ? 'reminder_h1_at' as const
+    : horizon === 'H-7' ? 'reminder_h7_at' as const
+    : 'reminder_h3_at' as const
 
   const db  = await getTenantDb(tenantSlug)
   const now = new Date()
@@ -138,11 +140,12 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
       }))
     job.log(`[HARI_RAYA] Kirim ke ${targets.length} pasien`)
 
-  } else if (type === 'KONTROL_REMINDER') {
-    // Rencana kontrol kini dari tabel SimrsRencanaKontrol (jadwal SIMRS, bukan tanggal
-    // kunjungan lalu). Kirim pengingat untuk kontrol yang jatuh H-3 atau H-1 dari hari ini.
-    const hMundur = horizon === 'H-1' ? 1 : 3
-    const target  = new Date(now.getFullYear(), now.getMonth(), now.getDate() + hMundur)
+  } else if (type === 'KONTROL_REMINDER' || type === 'VAKSIN_REMINDER') {
+    // Kontrol & vaksin sama-sama dari tabel SimrsRencanaKontrol (jadwal SIMRS), dipisah
+    // lewat kolom `sumber`: baris vaksin ber-sumber='vaksin', kontrol selain itu.
+    const isVaksin = type === 'VAKSIN_REMINDER'
+    const hMundur  = horizon === 'H-1' ? 1 : horizon === 'H-7' ? 7 : 3
+    const target   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + hMundur)
     const targetAkhir = new Date(target.getTime() + 86_400_000)
 
     const rencanas = await db.simrsRencanaKontrol.findMany({
@@ -150,11 +153,12 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
         tenant_slug:     tenantSlug,
         status:          'terjadwal',
         tanggal_rencana: { gte: target, lt: targetAkhir },
+        sumber:          isVaksin ? 'vaksin' : { not: 'vaksin' },
         [kolomReminder]: null,   // hanya yang belum diingatkan untuk horizon ini
         person: { aktif: true, AND: [BUKAN_PERSON_UJI] },
       },
       select: {
-        id: true, tanggal_rencana: true, poli: true, unit: true,
+        id: true, tanggal_rencana: true, poli: true, unit: true, jenis_vaksin: true, keterangan: true,
         person: { select: { id: true, name: true, no_hp: true, no_rm: true, agama: true, no_bpjs: true } },
       },
     })
@@ -168,9 +172,10 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
         extra: {
           tanggal_kontrol: fmtTglKontrol(r.tanggal_rencana),
           poli_kontrol:    r.poli || r.unit || '',
+          ...(isVaksin ? { jenis_vaksin: r.jenis_vaksin || '', catatan_dokter: r.keterangan || '' } : {}),
         },
       }))
-    job.log(`[KONTROL_REMINDER] ${horizon}: ${targets.length} pasien punya kontrol ${hMundur} hari lagi`)
+    job.log(`[${type}] ${horizon}: ${targets.length} pasien punya jadwal ${hMundur} hari lagi`)
   }
 
   if (targets.length === 0) {
@@ -181,10 +186,10 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
   let sent = 0, failed = 0, skipped = 0
 
   for (const target of targets) {
-    // Idempotency. KONTROL_REMINDER dilacak per-rencana lewat kolom reminder_hX_at
+    // Idempotency. KONTROL/VAKSIN dilacak per-rencana lewat kolom reminder_hX_at
     // (sudah difilter null di query, jadi tidak perlu cek lagi di sini). Jenis lain
     // dilacak per-person-per-hari lewat SapaanLog.
-    if (type !== 'KONTROL_REMINDER') {
+    if (type !== 'KONTROL_REMINDER' && type !== 'VAKSIN_REMINDER') {
       const alreadySent = await db.sapaanLog.findFirst({
         where: {
           tenant_slug: tenantSlug,
@@ -236,7 +241,7 @@ async function processSapaanJob(job: Job<SapaanJobData>): Promise<SapaanJobResul
       sent++
       // Stempel rencana ini sebagai sudah-diingatkan untuk horizon ini. Hanya saat
       // sukses, supaya yang gagal ikut ditarik lagi di run berikutnya.
-      if (type === 'KONTROL_REMINDER' && target.rencanaId) {
+      if ((type === 'KONTROL_REMINDER' || type === 'VAKSIN_REMINDER') && target.rencanaId) {
         await db.simrsRencanaKontrol.update({
           where: { id: target.rencanaId },
           data:  { [kolomReminder]: now },

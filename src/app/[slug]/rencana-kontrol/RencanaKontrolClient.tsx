@@ -80,6 +80,7 @@ export default function RencanaKontrolClient({
   jamKirim: number | null
 }) {
   const [statusFilter, setStatusFilter] = useState<'semua' | 'terjadwal' | 'batal' | 'terpenuhi'>('terjadwal')
+  const [jenisFilter, setJenisFilter]   = useState<'semua' | 'kontrol' | 'vaksin'>('semua')
   const [cari, setCari]   = useState('')
   const [range, setRange] = useState(30)
 
@@ -88,11 +89,13 @@ export default function RencanaKontrolClient({
     const q = cari.trim().toLowerCase()
     return rows.filter(r => {
       if (statusFilter !== 'semua' && r.status !== statusFilter) return false
+      if (jenisFilter === 'vaksin' && r.sumber !== 'vaksin') return false
+      if (jenisFilter === 'kontrol' && r.sumber === 'vaksin') return false
       if (range !== 999 && tglSaja(r.tanggal).getTime() >= batas.getTime()) return false
       if (q && !r.nama.toLowerCase().includes(q)) return false
       return true
     })
-  }, [rows, statusFilter, cari, range])
+  }, [rows, statusFilter, jenisFilter, cari, range])
 
   // Ringkasan dihitung dari SEMUA baris (bukan yang terfilter) supaya angka stabil.
   const ringkasan = useMemo(() => {
@@ -168,6 +171,11 @@ export default function RencanaKontrolClient({
           <option value="batal">Status: Batal</option>
           <option value="terpenuhi">Status: Terpenuhi</option>
           <option value="semua">Status: Semua</option>
+        </select>
+        <select value={jenisFilter} onChange={e => setJenisFilter(e.target.value as any)} style={inp}>
+          <option value="semua">Jenis: Semua</option>
+          <option value="kontrol">Jenis: Kontrol</option>
+          <option value="vaksin">Jenis: Vaksin</option>
         </select>
         <select value={range} onChange={e => setRange(parseInt(e.target.value))} style={inp}>
           {RANGE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

@@ -58,9 +58,11 @@ const ANOTASI_RENCANA: Record<string, { contoh: string; catatan?: string }> = {
   rencana_id: { contoh: 'RK-20260320-0042', catatan: 'ID jadwal unik di SIMRS — kunci dedup & rekonsiliasi pembatalan' },
   no_rm: { contoh: 'RM123456', catatan: 'Penghubung ke pasien' },
   tanggal: { contoh: '2026-04-20', catatan: 'Tanggal kontrol dijadwalkan' },
-  sumber: { contoh: 'pondok_sehat', catatan: 'Tabel asal di SIMRS: pondok_sehat | rawat_jalan | ...' },
+  sumber: { contoh: 'pondok_sehat', catatan: 'Jenis jadwal: pondok_sehat | rawat_jalan | vaksin. Baris vaksin WAJIB pakai sumber="vaksin" (memisahkan Pengingat Vaksin dari Pengingat Kontrol)' },
   unit: { contoh: 'Pondok Sehat' },
   poli: { contoh: 'Check Up', catatan: 'Unit spesifik' },
+  jenis_vaksin: { contoh: 'Influenza', catatan: 'Hanya untuk sumber="vaksin" — jenis vaksin yang dijadwalkan' },
+  keterangan: { contoh: 'Dosis lanjutan, bawa kartu vaksin.', catatan: 'Catatan bebas dari dokter (opsional)' },
   status: { contoh: 'AKTIF', catatan: 'Status jadwal dari SIMRS (opsional) — pembatalan dideteksi via rekonsiliasi jendela' },
 }
 

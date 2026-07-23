@@ -2,7 +2,7 @@
 
 import UltahCard from './UltahCard'
 
-type Jenis = 'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER'
+type Jenis = 'ULTAH' | 'HARI_RAYA' | 'KONTROL_REMINDER' | 'VAKSIN_REMINDER'
 
 interface Props {
   slug:           string
@@ -15,7 +15,7 @@ interface Props {
 // Ketiga jenis sapaan memakai kartu berbasis template approved Meta yang sama
 // (UltahCard tergeneralisasi lewat prop `jenis`). Kirim lewat template message —
 // pesan proaktif di luar 24 jam wajib pakai template approved.
-const JENIS: Jenis[] = ['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER']
+const JENIS: Jenis[] = ['ULTAH', 'HARI_RAYA', 'KONTROL_REMINDER', 'VAKSIN_REMINDER']
 
 export default function SapaanClient({ slug, metaAktif, initialConfigs, statsMap }: Props) {
   return (

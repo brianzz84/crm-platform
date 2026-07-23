@@ -96,9 +96,11 @@ export interface SimrsRencanaKontrol {
   rencana_id:     string        // ID jadwal unik di SIMRS — kunci dedup/rekonsiliasi
   no_rm:          string        // penghubung ke pasien
   tanggal:        string        // YYYY-MM-DD tanggal rencana kontrol
-  sumber:         string        // 'pondok_sehat' | 'rawat_jalan' — tabel asal di SIMRS
+  sumber:         string        // 'pondok_sehat' | 'rawat_jalan' | 'vaksin' — tabel asal / jenis jadwal
   unit:           string | null // kelompok unit
   poli:           string | null // unit spesifik
+  jenis_vaksin:   string | null // jenis vaksin — hanya diisi bila sumber='vaksin'
+  keterangan:     string | null // catatan dokter (opsional)
   status:         string | null // status jadwal dari SIMRS (mis. AKTIF/BATAL) — opsional
 }
 
@@ -191,14 +193,18 @@ function mockRencanaKontrol(tanggalBasis: string, n: number): SimrsRencanaKontro
   return Array.from({ length: n }, (_, i) => {
     const t = new Date(tanggalBasis)
     t.setDate(t.getDate() + (i % 14) + 1)   // dijadwalkan 1-14 hari ke depan
+    // Tiap kelipatan 3 dibuat baris vaksin (untuk menguji pemisahan sumber).
+    const isVaksin = i % 3 === 2
     return {
-      rencana_id: `RK-${tanggalBasis.replace(/-/g, '')}-${String(i + 1).padStart(4, '0')}`,
-      no_rm:      mockNoRm(i),
-      tanggal:    t.toISOString().slice(0, 10),
-      sumber:     i % 2 === 0 ? 'pondok_sehat' : 'rawat_jalan',
-      unit:       i % 2 === 0 ? 'Pondok Sehat' : 'Rawat Jalan',
-      poli:       i % 2 === 0 ? 'Check Up' : MOCK_POLI[i % MOCK_POLI.length],
-      status:     'AKTIF',
+      rencana_id:   `RK-${tanggalBasis.replace(/-/g, '')}-${String(i + 1).padStart(4, '0')}`,
+      no_rm:        mockNoRm(i),
+      tanggal:      t.toISOString().slice(0, 10),
+      sumber:       isVaksin ? 'vaksin' : (i % 2 === 0 ? 'pondok_sehat' : 'rawat_jalan'),
+      unit:         isVaksin ? 'Poli Imunisasi' : (i % 2 === 0 ? 'Pondok Sehat' : 'Rawat Jalan'),
+      poli:         isVaksin ? 'Imunisasi' : (i % 2 === 0 ? 'Check Up' : MOCK_POLI[i % MOCK_POLI.length]),
+      jenis_vaksin: isVaksin ? ['Influenza', 'Hepatitis B', 'HPV'][i % 3] : null,
+      keterangan:   isVaksin ? 'Dosis lanjutan, bawa kartu vaksin.' : null,
+      status:       'AKTIF',
     }
   })
 }

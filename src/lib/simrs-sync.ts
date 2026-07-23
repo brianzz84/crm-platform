@@ -280,11 +280,13 @@ export async function syncRencanaKontrol(tenantSlug: string, mode: 'cron' | 'man
         create: {
           tenant_slug: tenantSlug, person_id: person.id, no_rm_sumber: r.no_rm,
           rencana_id_sumber: r.rencana_id, tanggal_rencana: new Date(r.tanggal),
-          sumber: r.sumber, unit: r.unit ?? null, poli: r.poli ?? null, status: 'terjadwal',
+          sumber: r.sumber, unit: r.unit ?? null, poli: r.poli ?? null,
+          jenis_vaksin: r.jenis_vaksin ?? null, keterangan: r.keterangan ?? null, status: 'terjadwal',
         },
         update: {
           person_id: person.id, tanggal_rencana: new Date(r.tanggal),
           sumber: r.sumber, unit: r.unit ?? null, poli: r.poli ?? null,
+          jenis_vaksin: r.jenis_vaksin ?? null, keterangan: r.keterangan ?? null,
           status: 'terjadwal',   // muncul lagi = masih aktif (batalkan pembatalan jika sempat)
           last_simrs_sync_at: new Date(),
         },
