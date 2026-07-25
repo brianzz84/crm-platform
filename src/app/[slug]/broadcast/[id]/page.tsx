@@ -6,7 +6,9 @@ import CampaignActions from './CampaignActions'
 import CampaignAutoRefresh from './CampaignAutoRefresh'
 import EvaluasiCampaign from './EvaluasiCampaign'
 
-interface Props { params: { slug: string; id: string } }
+interface Props { params: { slug: string; id: string }; searchParams: { hal?: string } }
+
+const PER_HAL = 100
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   DRAFT:     { label: 'Draft',     color: '#6B7B8D', bg: '#F1F3F6' },
@@ -36,7 +38,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   } catch { return { title: 'Detail Campaign' } }
 }
 
-export default async function CampaignDetailPage({ params }: Props) {
+export default async function CampaignDetailPage({ params, searchParams }: Props) {
   let db
   try { db = await getTenantDb(params.slug) } catch { notFound() }
 
@@ -46,17 +48,27 @@ export default async function CampaignDetailPage({ params }: Props) {
       template: { select: { nama: true, template_name: true } },
       segment:  { select: { id: true, nama: true } },
       creator:  { select: { name: true } },
-      recipients: {
-        take: 100, orderBy: { sent_at: 'desc' },
-        select: {
-          id: true, no_hp: true, nama: true, status: true,
-          sent_at: true, delivered_at: true, read_at: true,
-          replied_at: true, error_code: true, error_detail: true,
-        },
-      },
     },
   })
   if (!campaign) notFound()
+
+  // Daftar penerima — terpaginasi via ?hal= (100/halaman)
+  const totalRecipients = await db.campaignRecipient.count({ where: { campaign_id: campaign.id } })
+  const totalHal = Math.max(1, Math.ceil(totalRecipients / PER_HAL))
+  const hal      = Math.min(totalHal, Math.max(1, parseInt(searchParams?.hal ?? '1', 10) || 1))
+  const recipients = await db.campaignRecipient.findMany({
+    where: { campaign_id: campaign.id },
+    orderBy: { sent_at: 'desc' },
+    skip: (hal - 1) * PER_HAL,
+    take: PER_HAL,
+    select: {
+      id: true, no_hp: true, nama: true, status: true,
+      sent_at: true, delivered_at: true, read_at: true,
+      replied_at: true, error_code: true, error_detail: true,
+    },
+  })
+  const dariBaris = totalRecipients === 0 ? 0 : (hal - 1) * PER_HAL + 1
+  const sampaiBaris = (hal - 1) * PER_HAL + recipients.length
 
   const sc = STATUS_CFG[campaign.status] ?? STATUS_CFG.DRAFT
 
@@ -122,11 +134,11 @@ export default async function CampaignDetailPage({ params }: Props) {
       <EvaluasiCampaign slug={params.slug} campaignId={campaign.id} />
 
       {/* Recipients table */}
-      {campaign.recipients.length > 0 && (
+      {totalRecipients > 0 && (
         <div style={{ background: 'white', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
           <div style={{ padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--c-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-primary)' }}>Daftar Penerima</div>
-            <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>Menampilkan {campaign.recipients.length} dari {campaign.total_penerima}</span>
+            <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>Menampilkan {dariBaris}–{sampaiBaris} dari {totalRecipients}</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
@@ -143,7 +155,7 @@ export default async function CampaignDetailPage({ params }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {campaign.recipients.map(r => {
+                {recipients.map(r => {
                   const ms = MSG_STATUS_CFG[r.status] ?? { label: r.status, color: '#6B7B8D' }
                   return (
                     <tr key={r.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
@@ -176,8 +188,32 @@ export default async function CampaignDetailPage({ params }: Props) {
               </tbody>
             </table>
           </div>
+
+          {totalHal > 1 && (
+            <div style={{ padding: 'var(--sp-4) var(--sp-5)', borderTop: '1px solid var(--c-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>Halaman {hal} dari {totalHal}</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {hal > 1 ? (
+                  <Link href={`?hal=${hal - 1}`} scroll={false} style={pagerBtn(false)}>‹ Sebelumnya</Link>
+                ) : <span style={pagerBtn(true)}>‹ Sebelumnya</span>}
+                {hal < totalHal ? (
+                  <Link href={`?hal=${hal + 1}`} scroll={false} style={pagerBtn(false)}>Selanjutnya ›</Link>
+                ) : <span style={pagerBtn(true)}>Selanjutnya ›</span>}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
+}
+
+function pagerBtn(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '6px 14px', borderRadius: 'var(--r-sm)', fontSize: 12, fontWeight: 600,
+    border: '1.5px solid var(--c-border)', textDecoration: 'none',
+    background: disabled ? 'var(--c-bg)' : 'white',
+    color: disabled ? 'var(--c-text-faint)' : 'var(--c-secondary)',
+    cursor: disabled ? 'default' : 'pointer', pointerEvents: disabled ? 'none' : 'auto',
+  }
 }

@@ -74,6 +74,24 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
   const [error, setError]       = useState('')
   const [hitungUlang, setHitungUlang] = useState(false)
   const [pesanHitung, setPesanHitung] = useState('')
+  const [tampilBaseline, setTampilBaseline] = useState<boolean | null>(null)
+
+  // Default: sembunyikan baseline untuk konversi KEGIATAN (kurang bermakna),
+  // tampilkan untuk KUNJUNGAN. Pilihan pengguna disimpan per-campaign.
+  useEffect(() => {
+    if (!data) return
+    const key = `evaluasi-baseline-${campaignId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    setTampilBaseline(saved !== null ? saved === '1' : data.jenisKonversi !== 'KEGIATAN')
+  }, [data, campaignId])
+
+  function toggleBaseline() {
+    setTampilBaseline(prev => {
+      const next = !prev
+      try { localStorage.setItem(`evaluasi-baseline-${campaignId}`, next ? '1' : '0') } catch {}
+      return next
+    })
+  }
 
   const load = useCallback(async (h: number) => {
     setLoading(true); setError('')
@@ -318,24 +336,43 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
         )}
       </div>
 
-      {/* ── Baseline pre/post ── */}
+      {/* ── Baseline pre/post (bisa disembunyikan — kurang bermakna untuk event) ── */}
       <div style={kartu}>
-        <div style={judulKartu}>Pembanding Sebelum/Sesudah</div>
-        <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 'var(--sp-3)', lineHeight: 1.6 }}>
-          Jumlah penerima yang {isKeg ? <>mendaftar {targetNama}</> : 'berkunjung (apa pun layanannya)'} dalam {data.hariWindow} hari sebelum vs sesudah campaign.
-          <strong> Ini bukan bukti sebab-akibat</strong> — dengan jumlah penerima sekecil ini, selisihnya bisa saja kebetulan.
-        </p>
-        <div style={{ display: 'flex', gap: 'var(--sp-5)', alignItems: 'baseline' }}>
-          <div><span style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-muted)' }}>{data.baseline.sebelum}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>sebelum</span></div>
-          <span style={{ fontSize: 18, color: 'var(--c-text-faint)' }}>→</span>
-          <div><span style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-primary)' }}>{data.baseline.sesudah}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>sesudah</span></div>
-          <div style={{
-            fontSize: 14, fontWeight: 700,
-            color: data.baseline.selisih > 0 ? '#278B58' : data.baseline.selisih < 0 ? '#C0392B' : 'var(--c-text-muted)',
-          }}>
-            {data.baseline.selisih > 0 ? '+' : ''}{data.baseline.selisih}
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: tampilBaseline ? 'var(--sp-4)' : 0 }}>
+          <div style={{ ...judulKartu, marginBottom: 0 }}>Pembanding Sebelum/Sesudah</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+            <span style={{ fontSize: 12, color: 'var(--c-text-muted)', fontWeight: 600 }}>{tampilBaseline ? 'Tampilkan' : 'Sembunyikan'}</span>
+            <span onClick={toggleBaseline} role="switch" aria-checked={!!tampilBaseline}
+              style={{
+                width: 38, height: 22, borderRadius: 99, position: 'relative', flexShrink: 0,
+                background: tampilBaseline ? 'var(--c-secondary)' : 'var(--c-border)', transition: 'background .15s',
+              }}>
+              <span style={{
+                position: 'absolute', top: 2, left: tampilBaseline ? 18 : 2, width: 18, height: 18,
+                borderRadius: '50%', background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left .15s',
+              }} />
+            </span>
+          </label>
         </div>
+        {tampilBaseline && (
+          <>
+            <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 'var(--sp-3)', lineHeight: 1.6 }}>
+              Jumlah penerima yang {isKeg ? <>mendaftar {targetNama}</> : 'berkunjung (apa pun layanannya)'} dalam {data.hariWindow} hari sebelum vs sesudah campaign.
+              <strong> Ini bukan bukti sebab-akibat</strong> — dengan jumlah penerima sekecil ini, selisihnya bisa saja kebetulan.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--sp-5)', alignItems: 'baseline' }}>
+              <div><span style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-muted)' }}>{data.baseline.sebelum}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>sebelum</span></div>
+              <span style={{ fontSize: 18, color: 'var(--c-text-faint)' }}>→</span>
+              <div><span style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-primary)' }}>{data.baseline.sesudah}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>sesudah</span></div>
+              <div style={{
+                fontSize: 14, fontWeight: 700,
+                color: data.baseline.selisih > 0 ? '#278B58' : data.baseline.selisih < 0 ? '#C0392B' : 'var(--c-text-muted)',
+              }}>
+                {data.baseline.selisih > 0 ? '+' : ''}{data.baseline.selisih}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
