@@ -16,6 +16,8 @@ interface SudahTerjadwalRow { personId: string; nama: string; jadwalKontrol: str
 interface Baseline { sebelum: number; sesudah: number; selisih: number }
 interface RingkasanKonversi { orangBerkunjung: number; orangAmbilPromo: number; orangProdukLain: number; orangTanpaBalas: number }
 interface EvaluasiData {
+  jenisKonversi: 'KUNJUNGAN' | 'KEGIATAN'
+  konversiTargetNama: string | null
   belumDikirim: boolean
   hariWindow: number
   windowMulai: string | null
@@ -122,6 +124,8 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
 
   const totalSentimenTerhitung = data.sentimenRekap.reduce((a, s) => a + s.jumlah, 0)
   const r = data.ringkasanKonversi
+  const isKeg = data.jenisKonversi === 'KEGIATAN'
+  const targetNama = data.konversiTargetNama ?? 'event'
 
   return (
     <div>
@@ -255,25 +259,25 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
         )}
       </div>
 
-      {/* ── Konversi kunjungan ── */}
+      {/* ── Konversi (kunjungan ATAU mendaftar event) ── */}
       <div style={kartu}>
-        <div style={judulKartu}>Konversi Kunjungan <span style={{ fontWeight: 400, color: 'var(--c-text-muted)', textTransform: 'none' }}>(dalam {data.hariWindow} hari setelah kirim)</span></div>
+        <div style={judulKartu}>{isKeg ? <>Konversi: Mendaftar {targetNama}</> : 'Konversi Kunjungan'} <span style={{ fontWeight: 400, color: 'var(--c-text-muted)', textTransform: 'none' }}>(dalam {data.hariWindow} hari setelah kirim)</span></div>
         <div style={{ display: 'flex', gap: 'var(--sp-4)', marginBottom: 'var(--sp-4)', flexWrap: 'wrap' }}>
-          <div><span style={{ fontSize: 24, fontWeight: 800, color: 'var(--c-primary)' }}>{r.orangBerkunjung}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>orang berkunjung</span></div>
-          <div><span style={{ fontSize: 24, fontWeight: 800, color: '#278B58' }}>{r.orangAmbilPromo}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>ambil produk dipromosikan</span></div>
-          <div><span style={{ fontSize: 24, fontWeight: 800, color: '#7B5EA7' }}>{r.orangProdukLain}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>hanya produk lain</span></div>
+          <div><span style={{ fontSize: 24, fontWeight: 800, color: '#278B58' }}>{r.orangBerkunjung}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{isKeg ? 'orang mendaftar' : 'orang berkunjung'}</span></div>
+          {!isKeg && <div><span style={{ fontSize: 24, fontWeight: 800, color: '#278B58' }}>{r.orangAmbilPromo}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>ambil produk dipromosikan</span></div>}
+          {!isKeg && <div><span style={{ fontSize: 24, fontWeight: 800, color: '#7B5EA7' }}>{r.orangProdukLain}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>hanya produk lain</span></div>}
           <div><span style={{ fontSize: 24, fontWeight: 800, color: '#E8A800' }}>{r.orangTanpaBalas}</span> <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>tanpa pernah membalas</span></div>
         </div>
 
         {data.konversi.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginBottom: 6 }}>
-              Satu baris per kunjungan — orang yang datang lebih dari sekali bisa muncul beberapa kali.
+              {isKeg ? 'Satu baris per pendaftaran.' : 'Satu baris per kunjungan — orang yang datang lebih dari sekali bisa muncul beberapa kali.'}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Nama', 'Tanggal', 'H+', 'Layanan', 'Jenis', 'Sempat Balas'].map(h => (
+                  {['Nama', 'Tanggal', 'H+', isKeg ? 'Event' : 'Layanan', isKeg ? 'Status' : 'Jenis', 'Sempat Balas'].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', borderBottom: '2px solid var(--c-border)' }}>{h}</th>
                   ))}
                 </tr>
@@ -291,7 +295,7 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
                         background: k.jenis === 'langsung' ? '#E8F5E9' : '#F3EEF9',
                         color: k.jenis === 'langsung' ? '#278B58' : '#7B5EA7',
                       }}>
-                        {k.jenis === 'langsung' ? 'Produk promo' : 'Produk lain'}
+                        {isKeg ? 'Mendaftar' : (k.jenis === 'langsung' ? 'Produk promo' : 'Produk lain')}
                       </span>
                     </td>
                     <td style={{ padding: '8px 12px', color: k.pernahMembalas ? '#278B58' : 'var(--c-text-faint)' }}>
@@ -318,7 +322,7 @@ export default function EvaluasiCampaign({ slug, campaignId }: { slug: string; c
       <div style={kartu}>
         <div style={judulKartu}>Pembanding Sebelum/Sesudah</div>
         <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 'var(--sp-3)', lineHeight: 1.6 }}>
-          Jumlah penerima yang berkunjung (apa pun layanannya) dalam {data.hariWindow} hari sebelum vs sesudah campaign.
+          Jumlah penerima yang {isKeg ? <>mendaftar {targetNama}</> : 'berkunjung (apa pun layanannya)'} dalam {data.hariWindow} hari sebelum vs sesudah campaign.
           <strong> Ini bukan bukti sebab-akibat</strong> — dengan jumlah penerima sekecil ini, selisihnya bisa saja kebetulan.
         </p>
         <div style={{ display: 'flex', gap: 'var(--sp-5)', alignItems: 'baseline' }}>

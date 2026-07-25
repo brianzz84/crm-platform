@@ -22,6 +22,8 @@ interface FormState {
   jadwal_kirim:    string   // ISO string
   kirim_dua_nomor: boolean
   kode_layanan_promo: string[]
+  jenis_konversi:  'KUNJUNGAN' | 'KEGIATAN'
+  konversi_kegiatan_id: string
 }
 interface LayananOpt { kode_barang: string; nama: string; kelompok: string }
 
@@ -103,6 +105,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
   const [form, setForm]       = useState<FormState>({
     segment_id: defaultSegmentId || '', channel: 'WA', template_id: '', template_params: {},
     nama: '', jadwal_type: 'sekarang', jadwal_kirim: '', kirim_dua_nomor: false, kode_layanan_promo: [],
+    jenis_konversi: 'KUNJUNGAN', konversi_kegiatan_id: '',
   })
   const [segments, setSegments]   = useState<Segment[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
@@ -115,6 +118,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
   const [qLayanan, setQLayanan]       = useState('')
   const [hasilLayanan, setHasilLayanan] = useState<LayananOpt[]>([])
   const [layananTerpilih, setLayananTerpilih] = useState<LayananOpt[]>([])
+  const [kegiatanList, setKegiatanList] = useState<{ id: string; nama: string }[]>([])
 
   // Character counter ref
 
@@ -126,6 +130,10 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
     fetch(`/api/${slug}/broadcast/templates`)
       .then(r => r.json())
       .then(j => { if (j.success) setTemplates((j.data || []).filter((t: Template) => t.meta_status === 'APPROVED')) })
+      .catch(() => {})
+    fetch(`/api/${slug}/kegiatan`)
+      .then(r => r.json())
+      .then(j => { if (j.success) setKegiatanList((j.data || []).map((k: any) => ({ id: k.id, nama: k.nama }))) })
       .catch(() => {})
   }, [slug])
 
@@ -200,7 +208,9 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
         template_params: form.template_params,
         jadwal_kirim:    form.jadwal_type === 'jadwal' ? form.jadwal_kirim : null,
         kirim_dua_nomor: form.kirim_dua_nomor,
-        kode_layanan_promo: form.kode_layanan_promo,
+        kode_layanan_promo: form.jenis_konversi === 'KEGIATAN' ? [] : form.kode_layanan_promo,
+        jenis_konversi:  form.jenis_konversi,
+        konversi_kegiatan_id: form.jenis_konversi === 'KEGIATAN' ? (form.konversi_kegiatan_id || null) : null,
       }
       const res  = await fetch(`/api/${slug}/broadcast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const json = await res.json()
@@ -322,6 +332,20 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
               </label>
             </FieldWrap>
 
+            <FieldWrap label="Tujuan Konversi" hint="Apa yang dihitung sebagai keberhasilan campaign ini.">
+              <select value={form.jenis_konversi} onChange={e => upd('jenis_konversi', e.target.value as any)} style={inputStyle}>
+                <option value="KUNJUNGAN">Kunjungan RS (pasien datang berobat)</option>
+                <option value="KEGIATAN">Mendaftar kegiatan / event</option>
+              </select>
+              {form.jenis_konversi === 'KEGIATAN' && (
+                <select value={form.konversi_kegiatan_id} onChange={e => upd('konversi_kegiatan_id', e.target.value)} style={{ ...inputStyle, marginTop: 8 }}>
+                  <option value="">— pilih event target —</option>
+                  {kegiatanList.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
+                </select>
+              )}
+            </FieldWrap>
+
+            {form.jenis_konversi === 'KUNJUNGAN' && (
             <FieldWrap label="Produk yang Dipromosikan" hint="Untuk mengukur konversi kunjungan nanti — bisa dilewati kalau campaign ini bukan promosi produk tertentu.">
               <div style={{ position: 'relative' }}>
                 <input value={qLayanan} onChange={e => setQLayanan(e.target.value)}
@@ -366,6 +390,7 @@ export default function BroadcastWizard({ slug, defaultSegmentId }: { slug: stri
                 </div>
               )}
             </FieldWrap>
+            )}
 
             <FieldWrap label="Template Pesan" hint="Hanya template berstatus Approved yang bisa dipakai.">
               {templates.length === 0 ? (

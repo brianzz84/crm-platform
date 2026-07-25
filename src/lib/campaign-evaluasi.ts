@@ -82,6 +82,8 @@ export interface RingkasanKonversi {
 }
 
 export interface EvaluasiCampaignResult {
+  jenisKonversi: 'KUNJUNGAN' | 'KEGIATAN'
+  konversiTargetNama: string | null    // nama event target (kalau jenis KEGIATAN)
   belumDikirim: boolean
   hariWindow: number
   windowMulai: Date | null
@@ -115,12 +117,19 @@ export async function hitungEvaluasiCampaign(
   const campaign = await db.campaign.findFirst({ where: { id: campaignId, tenant_slug: tenantSlug } })
   if (!campaign) throw new Error('Campaign tidak ditemukan.')
 
+  // Metadata jenis konversi — diikutkan di setiap return supaya UI bisa menyesuaikan label.
+  const konversiTargetNama = campaign.jenis_konversi === 'KEGIATAN' && campaign.konversi_kegiatan_id
+    ? (await db.kegiatan.findFirst({ where: { id: campaign.konversi_kegiatan_id, tenant_slug: tenantSlug }, select: { nama: true } }))?.nama ?? null
+    : null
+  const metaKonv = { jenisKonversi: campaign.jenis_konversi as 'KUNJUNGAN' | 'KEGIATAN', konversiTargetNama }
+
   // Titik awal (anchor) untuk atribusi HARUS started_at, bukan jadwal_kirim: campaign
   // yang dikirim langsung (bukan dijadwalkan) tidak selalu punya jadwal_kirim, tapi
   // started_at selalu terisi begitu proses kirim benar-benar dimulai.
   const anchor = campaign.started_at ?? campaign.jadwal_kirim
   if (!anchor) {
     return {
+      ...metaKonv,
       belumDikirim: true, hariWindow, windowMulai: null, windowSelesai: null,
       funnel: kosongkanFunnel(), sentimenRekap: [], belumDihitungSentimen: 0,
       konversi: [], ringkasanKonversi: kosongkanRingkasanKonversi(),
@@ -177,10 +186,55 @@ export async function hitungEvaluasiCampaign(
 
   if (personIds.length === 0) {
     return {
+      ...metaKonv,
       belumDikirim: false, hariWindow, windowMulai, windowSelesai,
       funnel, sentimenRekap, belumDihitungSentimen,
       konversi: [], ringkasanKonversi: kosongkanRingkasanKonversi(),
       sudahTerjadwal: [], baseline: { sebelum: 0, sesudah: 0, selisih: 0 },
+    }
+  }
+
+  // ── Konversi jenis KEGIATAN: penerima yang MENDAFTAR/HADIR event target setelah
+  // broadcast. Dibaca dari KegiatanPeserta (bukan kunjungan SIMRS), cocok by person_id.
+  // Tidak ada pengecualian "sudah terjadwal" (itu khusus kunjungan). ──
+  if (campaign.jenis_konversi === 'KEGIATAN') {
+    const kegId = campaign.konversi_kegiatan_id
+    const namaEvent = konversiTargetNama ?? '(event target belum diset)'
+
+    const peserta = kegId ? await db.kegiatanPeserta.findMany({
+      where:   { kegiatan_id: kegId, person_id: { in: personIds }, created_at: { gte: windowMulai, lte: windowSelesai } },
+      select:  { person_id: true, created_at: true },
+      orderBy: { created_at: 'asc' },
+    }) : []
+
+    const konversi: KonversiRow[] = peserta.map(p => ({
+      personId:         p.person_id,
+      nama:             namaByPerson.get(p.person_id) ?? '(tidak diketahui)',
+      tanggal:          p.created_at,
+      hariSetelahKirim: Math.round((p.created_at.getTime() - anchor.getTime()) / HARI_MS),
+      layanan:          namaEvent,
+      jenis:            'langsung' as const,   // mendaftar event target = mencapai tujuan campaign
+      pernahMembalas:   pernahMembalasByPerson.has(p.person_id),
+    }))
+    const orang = Array.from(new Set(konversi.map(k => k.personId)))
+
+    // Baseline: penerima yang sudah terdaftar event target SEBELUM broadcast vs SESUDAH.
+    let sebLen = 0, sesLen = 0
+    if (kegId) {
+      const [seb, ses] = await Promise.all([
+        db.kegiatanPeserta.findMany({ where: { kegiatan_id: kegId, person_id: { in: personIds }, created_at: { gte: baselineMulai, lt: windowMulai } }, select: { person_id: true }, distinct: ['person_id'] }),
+        db.kegiatanPeserta.findMany({ where: { kegiatan_id: kegId, person_id: { in: personIds }, created_at: { gte: windowMulai, lte: windowSelesai } }, select: { person_id: true }, distinct: ['person_id'] }),
+      ])
+      sebLen = seb.length; sesLen = ses.length
+    }
+
+    return {
+      ...metaKonv,
+      belumDikirim: false, hariWindow, windowMulai, windowSelesai,
+      funnel, sentimenRekap, belumDihitungSentimen, konversi,
+      ringkasanKonversi: { orangBerkunjung: orang.length, orangAmbilPromo: orang.length, orangProdukLain: 0, orangTanpaBalas: orang.filter(id => !pernahMembalasByPerson.has(id)).length },
+      sudahTerjadwal: [],
+      baseline: { sebelum: sebLen, sesudah: sesLen, selisih: sesLen - sebLen },
     }
   }
 
@@ -271,6 +325,7 @@ export async function hitungEvaluasiCampaign(
   }
 
   return {
+    ...metaKonv,
     belumDikirim: false, hariWindow, windowMulai, windowSelesai,
     funnel, sentimenRekap, belumDihitungSentimen, konversi, ringkasanKonversi, sudahTerjadwal, baseline,
   }

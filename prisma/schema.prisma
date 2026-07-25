@@ -681,6 +681,8 @@ model Campaign {
   // sistem tidak tahu apa yang sebenarnya dijual, jadi kedua jenis konversi tidak
   // bisa dibedakan.
   kode_layanan_promo String[]     @default([])
+  jenis_konversi     KonversiJenis @default(KUNJUNGAN) // apa yang dihitung sebagai konversi
+  konversi_kegiatan_id String?     // kalau jenis_konversi=KEGIATAN: id event target (mendaftar = konversi)
   jadwal_kirim    DateTime?
   started_at      DateTime?
   finished_at     DateTime?
@@ -1116,6 +1118,11 @@ enum CampaignStatus {
   RUNNING
   DONE
   FAILED
+}
+
+enum KonversiJenis {
+  KUNJUNGAN   // konversi = kunjungan SIMRS setelah broadcast
+  KEGIATAN    // konversi = mendaftar/hadir di event target setelah broadcast
 }
 
 enum MessageStatus {

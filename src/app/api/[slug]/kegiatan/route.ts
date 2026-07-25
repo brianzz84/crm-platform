@@ -4,6 +4,19 @@ import { getTenantDb } from '@/lib/tenant'
 
 type Ctx = { params: { slug: string } }
 
+// GET — daftar kegiatan (untuk pemilih, mis. target konversi campaign)
+export async function GET(req: NextRequest, { params }: Ctx) {
+  const { error } = await requireTenantPermission(req, params.slug, 'manageKegiatan')
+  if (error) return error
+  const db = await getTenantDb(params.slug)
+  const data = await db.kegiatan.findMany({
+    where:   { tenant_slug: params.slug },
+    select:  { id: true, nama: true, jenis: true, tanggal_mulai: true },
+    orderBy: { tanggal_mulai: 'desc' },
+  })
+  return NextResponse.json({ success: true, data })
+}
+
 // POST — buat kegiatan baru
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'manageKegiatan')

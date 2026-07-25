@@ -13,6 +13,8 @@ const CreateSchema = z.object({
   jadwal_kirim:    z.string().datetime().optional().nullable(),
   kirim_dua_nomor: z.boolean().default(false),
   kode_layanan_promo: z.array(z.string()).default([]),
+  jenis_konversi:  z.enum(['KUNJUNGAN', 'KEGIATAN']).default('KUNJUNGAN'),
+  konversi_kegiatan_id: z.string().uuid().optional().nullable(),
 })
 
 export async function GET(req: NextRequest, { params }: { params: { slug: string } }) {
@@ -87,6 +89,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
         jadwal_kirim:    parsed.data.jadwal_kirim ? new Date(parsed.data.jadwal_kirim) : null,
         kirim_dua_nomor: parsed.data.kirim_dua_nomor,
         kode_layanan_promo: parsed.data.kode_layanan_promo,
+        jenis_konversi:  parsed.data.jenis_konversi,
+        konversi_kegiatan_id: parsed.data.jenis_konversi === 'KEGIATAN' ? (parsed.data.konversi_kegiatan_id ?? null) : null,
         total_penerima:  totalPenerima,
         status:          parsed.data.jadwal_kirim ? 'SCHEDULED' : 'DRAFT',
         created_by:      session!.userId,
