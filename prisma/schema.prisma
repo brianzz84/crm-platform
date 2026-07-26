@@ -777,6 +777,7 @@ model Message {
   media_type        String?
   is_internal_note  Boolean          @default(false)
   status            MessageStatus    @default(PENDING)
+  error_detail      String?
   wappin_message_id String?
   sent_by           String?
   ai_generated      Boolean          @default(false)

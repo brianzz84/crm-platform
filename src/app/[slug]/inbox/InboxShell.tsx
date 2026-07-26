@@ -38,6 +38,7 @@ interface MsgRow {
   id: string; direction: string; content: string
   media_url?: string | null; media_type?: string | null
   is_internal_note: boolean; status: string; ai_generated: boolean
+  error_detail?: string | null
   created_at: string; sent_at?: string | null
   sender?: { id: string; name: string } | null
 }
@@ -969,6 +970,12 @@ export default function InboxShell({
                               display: 'block', marginTop: 4, fontSize: 11, color: WA_GREEN_DARK,
                             }}>{m.media_type === 'video' ? '🎬 Video' : '📎 Dokumen'}</a>
                           )}
+                          {isOut && !m.is_internal_note && m.status === 'FAILED' && m.error_detail && (
+                            <div style={{
+                              clear: 'both', marginTop: 6, fontSize: 11.5, lineHeight: 1.4,
+                              color: '#B71C1C', background: '#FDECEA', borderRadius: 6, padding: '5px 8px',
+                            }}>⚠ {m.error_detail}</div>
+                          )}
                           {/* Timestamp + centang — inline di kanan bawah teks */}
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 2,
@@ -1035,6 +1042,24 @@ export default function InboxShell({
                   </button>
                 ))}
               </div>
+
+              {/* Peringatan jendela 24 jam WhatsApp (pesan bebas ditolak di luar 24 jam) */}
+              {!isNote && activeId && (() => {
+                let lastIn: string | null = null
+                for (let i = msgs.length - 1; i >= 0; i--) {
+                  if (msgs[i].direction === 'incoming') { lastIn = msgs[i].created_at; break }
+                }
+                const closed = !lastIn || (Date.now() - new Date(lastIn).getTime()) > 24 * 3600 * 1000
+                if (!closed) return null
+                return (
+                  <div style={{
+                    marginBottom: 8, fontSize: 12, lineHeight: 1.45, color: '#9A6C00',
+                    background: '#FDF3DC', border: '1px solid #F4D58A', borderRadius: 8, padding: '6px 10px',
+                  }}>
+                    ⏰ <strong>Jendela 24 jam tertutup.</strong> Pasien belum membalas dalam 24 jam terakhir, sehingga pesan bebas (teks/gambar) kemungkinan besar ditolak WhatsApp. Untuk menjangkau di luar 24 jam, gunakan <strong>template broadcast</strong> yang disetujui Meta.
+                  </div>
+                )
+              })()}
 
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
                 {/* Tombol lampiran */}

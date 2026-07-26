@@ -28,10 +28,17 @@ export async function sendMetaTextMessage(
   const json = await res.json()
   if (!res.ok) {
     console.error('[meta-client] sendText failed:', JSON.stringify(json))
-    throw new Error(json.error?.message ?? `Meta API ${res.status}`)
+    throw metaError(json, res.status)
   }
 
   return json.messages?.[0]?.id ?? null
+}
+
+/** Error yang membawa kode error Meta (mis. 131047 = di luar jendela 24 jam). */
+function metaError(json: any, httpStatus: number): Error {
+  const err = new Error(json?.error?.message ?? `Meta API ${httpStatus}`) as Error & { metaCode?: number }
+  err.metaCode = json?.error?.code
+  return err
 }
 
 export async function sendMetaMediaMessage(
@@ -64,7 +71,7 @@ export async function sendMetaMediaMessage(
   const json = await res.json()
   if (!res.ok) {
     console.error('[meta-client] sendMedia failed:', JSON.stringify(json))
-    throw new Error(json.error?.message ?? `Meta API ${res.status}`)
+    throw metaError(json, res.status)
   }
 
   return json.messages?.[0]?.id ?? null

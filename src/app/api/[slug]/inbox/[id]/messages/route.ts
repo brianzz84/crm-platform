@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       select: {
         id: true, direction: true, content: true,
         media_url: true, media_type: true,
-        is_internal_note: true, status: true,
+        is_internal_note: true, status: true, error_detail: true,
         ai_generated: true, created_at: true,
         sent_at: true, delivered_at: true, read_at: true,
         sender: { select: { id: true, name: true } },
@@ -101,11 +101,17 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       if (noHp) {
         sendToChannel(db, params.slug, noHp, msg.id, content, media_url, media_type, media_filename).catch(async e => {
           console.error(`[inbox/messages] send failed conv=${params.id}:`, e)
-          await db.message.update({ where: { id: msg.id }, data: { status: 'FAILED' } }).catch(() => null)
+          await db.message.update({
+            where: { id: msg.id },
+            data:  { status: 'FAILED', error_detail: friendlyMetaError(e) },
+          }).catch(() => null)
         })
       } else {
         // Tak ada nomor tujuan → tandai gagal, jangan biarkan PENDING selamanya
-        await db.message.update({ where: { id: msg.id }, data: { status: 'FAILED' } })
+        await db.message.update({
+          where: { id: msg.id },
+          data:  { status: 'FAILED', error_detail: 'Pasien belum punya nomor WhatsApp di data.' },
+        })
         msg.status = 'FAILED'
       }
     }
@@ -116,7 +122,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 }
 
-// Kirim via Meta jika ada MetaConfig aktif, fallback ke Wappin
+// Kirim via Meta jika ada MetaConfig aktif, fallback ke Wappin.
+// Melempar Error saat gagal (dengan .metaCode bila dari Meta) agar pemanggil
+// bisa menyimpan alasan yang jelas ke Message.error_detail.
 async function sendToChannel(
   db:           any,
   slug:         string,
@@ -133,31 +141,45 @@ async function sendToChannel(
     const extMsgId = media_url && media_type
       ? await sendMetaMediaMessage(metaCfg, noHp, media_type as any, media_url, content || undefined, media_filename)
       : await sendMetaTextMessage(metaCfg, noHp, content)
+    if (!extMsgId) throw new Error('Meta tidak mengembalikan ID pesan.')
 
     await db.message.update({
       where: { id: msgId },
-      data: extMsgId
-        ? { status: 'SENT', sent_at: new Date(), wappin_message_id: extMsgId }
-        : { status: 'FAILED' },
+      data:  { status: 'SENT', sent_at: new Date(), wappin_message_id: extMsgId },
     })
     return
   }
 
   // Fallback: Wappin
   const wCfg = await db.wappinConfig.findUnique({ where: { tenant_slug: slug } })
-  if (!wCfg?.aktif) return
+  if (!wCfg?.aktif) throw new Error('Tidak ada channel WhatsApp aktif (Meta/Wappin).')
 
   const token = await getWappinToken(wCfg)
-  if (!token) return
+  if (!token) throw new Error('Gagal memperoleh token Wappin.')
 
   const result = media_url && media_type
     ? await sendWaMedia(wCfg, token, noHp, media_type as any, media_url, content || undefined, media_filename)
     : await sendWaMessage(wCfg, token, noHp, content)
+  if (!result?.message_id) throw new Error('Wappin gagal mengirim pesan.')
 
   await db.message.update({
     where: { id: msgId },
-    data: result?.message_id
-      ? { status: 'SENT', sent_at: new Date(), wappin_message_id: result.message_id }
-      : { status: 'FAILED' },
+    data:  { status: 'SENT', sent_at: new Date(), wappin_message_id: result.message_id },
   })
+}
+
+// Terjemahkan error pengiriman → pesan singkat berbahasa Indonesia untuk staf.
+function friendlyMetaError(e: any): string {
+  const code: number | undefined = e?.metaCode
+  const map: Record<number, string> = {
+    131047: 'Di luar jendela 24 jam — pasien belum membalas dalam 24 jam terakhir. Untuk menjangkau di luar 24 jam, kirim lewat template broadcast yang disetujui Meta.',
+    131051: 'Tipe pesan tidak didukung WhatsApp.',
+    131053: 'Media gagal diakses/diunggah oleh Meta.',
+    131026: 'Pesan tak terkirim — nomor tujuan tidak dapat menerima (mungkin bukan WhatsApp aktif).',
+    130472: 'Nomor tujuan sedang dibatasi Meta untuk pesan pemasaran.',
+    100:    'Parameter pengiriman tidak valid.',
+  }
+  if (code && map[code]) return map[code]
+  const base = String(e?.message || 'Pengiriman gagal.').slice(0, 300)
+  return code ? `${base} (kode ${code})` : base
 }
