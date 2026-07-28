@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { PrismaClient } from '@/generated/prisma/client'
-import { ExcelImportRow, ImportRowError } from '@/types'
+import { ExcelImportRow, ExcelRencanaRow, ImportRowError } from '@/types'
 import { normalizePhone } from '@/lib/phone'
 
 export interface ImportResult {
@@ -9,12 +9,18 @@ export interface ImportResult {
   newPersons:     number
   updatedPersons: number
   newVisits:      number
+  newRencana:     number
+  updatedRencana: number
   skippedRows:    number
   errors:         ImportRowError[]
 }
 
-// Kolom wajib
-const REQUIRED_COLS = ['nama', 'no_hp']
+/** Sheet kedua yang OPSIONAL — jadwal kontrol/vaksin yang belum terjadi. */
+export const NAMA_SHEET_RENCANA = 'Rencana Kontrol'
+
+// Kolom wajib per sheet
+const REQUIRED_COLS         = ['nama', 'no_hp']
+const REQUIRED_COLS_RENCANA = ['no_hp', 'tanggal_rencana']
 
 
 // Nama → Title Case, trim spasi berlebih
@@ -117,56 +123,91 @@ function mapUnit(raw: string | null): string | null {
   return raw.trim()
 }
 
-export function parseExcelBuffer(buffer: Buffer): ExcelImportRow[] {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, {
-    header: 1,
-    defval: '',
-  }) as unknown[][]
-
+/**
+ * Baca satu sheet menjadi array objek {header → nilai}. Header dinormalisasi ke
+ * lowercase + underscore supaya variasi penulisan di Excel tetap terbaca.
+ * Kolom yang tidak ada pada sheet akan bernilai undefined saat diambil.
+ */
+function bacaSheet(ws: XLSX.WorkSheet | undefined): Record<string, string>[] {
+  if (!ws) return []
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' }) as unknown[][]
   if (raw.length < 2) return []
 
-  // Baris pertama = header, normalisasi ke lowercase + underscore
   const headers = (raw[0] as unknown[]).map(h =>
     String(h).toLowerCase().trim().replace(/\s+/g, '_')
   )
 
-  // Validasi kolom wajib
-  const missing = REQUIRED_COLS.filter(c => !headers.includes(c))
+  const out: Record<string, string>[] = []
+  for (let i = 1; i < raw.length; i++) {
+    const cells = raw[i] as unknown[]
+    const rec: Record<string, string> = {}
+    headers.forEach((h, idx) => { rec[h] = String(cells[idx] ?? '').trim() })
+    out.push(rec)
+  }
+  return out
+}
+
+export function parseExcelBuffer(buffer: Buffer): ExcelImportRow[] {
+  const wb   = XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  const recs = bacaSheet(wb.Sheets[wb.SheetNames[0]])
+  if (recs.length === 0) return []
+
+  const missing = REQUIRED_COLS.filter(c => !(c in recs[0]))
   if (missing.length) {
     throw new Error(`Kolom wajib tidak ditemukan: ${missing.join(', ')}`)
   }
 
-  const rows: ExcelImportRow[] = []
-  for (let i = 1; i < raw.length; i++) {
-    const cells = raw[i] as unknown[]
-    const get = (col: string) => {
-      const idx = headers.indexOf(col)
-      return idx >= 0 ? String(cells[idx] || '').trim() : ''
-    }
-
-    rows.push({
-      no_rm:             get('no_rm')             || null,
-      nama:              get('nama'),
-      no_hp:             get('no_hp'),
-      email:             get('email')             || null,
-      tanggal_lahir:     get('tanggal_lahir')     || null,
-      unit:              get('unit')              || null,
-      poli:              get('poli')              || null,
-      dokter:            get('dokter')            || null,
-      tanggal_kunjungan: get('tanggal_kunjungan') || null,
-      diagnosa_icd:      get('diagnosa_icd')      || null,
-      diagnosa_nama:     get('diagnosa_nama')     || null,
-      tindakan:          get('tindakan')          || null,
-      tindakan_kode:     get('tindakan_kode')     || null,
-      jenis_pembayaran:  get('jenis_pembayaran')  || null,
-      nama_instansi:     get('nama_instansi')     || null,
-      status_kunjungan:  get('status_kunjungan')  || null,
-    })
-  }
+  const rows: ExcelImportRow[] = recs.map(r => ({
+    no_rm:             r.no_rm             || null,
+    nama:              r.nama              ?? '',
+    no_hp:             r.no_hp             ?? '',
+    email:             r.email             || null,
+    tanggal_lahir:     r.tanggal_lahir     || null,
+    unit:              r.unit              || null,
+    poli:              r.poli              || null,
+    dokter:            r.dokter            || null,
+    tanggal_kunjungan: r.tanggal_kunjungan || null,
+    diagnosa_icd:      r.diagnosa_icd      || null,
+    diagnosa_nama:     r.diagnosa_nama     || null,
+    tindakan:          r.tindakan          || null,
+    tindakan_kode:     r.tindakan_kode     || null,
+    jenis_pembayaran:  r.jenis_pembayaran  || null,
+    nama_instansi:     r.nama_instansi     || null,
+    status_kunjungan:  r.status_kunjungan  || null,
+  }))
 
   return rows.filter(r => r.nama || r.no_hp)
+}
+
+/**
+ * Baca sheet "Rencana Kontrol" bila ada. Berkas lama yang hanya punya satu sheet
+ * tetap sah — fungsi ini cukup mengembalikan array kosong.
+ */
+export function parseExcelRencana(buffer: Buffer): ExcelRencanaRow[] {
+  const wb   = XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  const nama = wb.SheetNames.find(n => n.toLowerCase().trim() === NAMA_SHEET_RENCANA.toLowerCase())
+  if (!nama) return []
+
+  const recs = bacaSheet(wb.Sheets[nama])
+  if (recs.length === 0) return []
+
+  const missing = REQUIRED_COLS_RENCANA.filter(c => !(c in recs[0]))
+  if (missing.length) {
+    throw new Error(`Sheet "${NAMA_SHEET_RENCANA}" — kolom wajib tidak ditemukan: ${missing.join(', ')}`)
+  }
+
+  return recs.map(r => ({
+    no_hp:           r.no_hp           ?? '',
+    no_rm:           r.no_rm           || null,
+    rencana_id:      r.rencana_id      || null,
+    tanggal_rencana: r.tanggal_rencana ?? '',
+    jenis:           r.jenis           || null,
+    poli:            r.poli            || null,
+    unit:            r.unit            || null,
+    jenis_vaksin:    r.jenis_vaksin    || null,
+    keterangan:      r.keterangan      || null,
+    status:          r.status          || null,
+  })).filter(r => r.no_hp || r.tanggal_rencana)
 }
 
 /** Satu baris Excel yang lolos validasi dasar. */
@@ -295,6 +336,8 @@ export async function processImport(
     newPersons:     0,
     updatedPersons: 0,
     newVisits:      0,
+    newRencana:     0,
+    updatedRencana: 0,
     skippedRows:    0,
     errors:         [],
   }
@@ -373,11 +416,19 @@ export async function processImport(
     }
   }
 
-  // Error dikumpulkan dari beberapa fase, jadi urutannya tidak mengikuti berkas.
-  // Diurutkan supaya admin bisa menyusurinya sejajar dengan barisnya di Excel.
-  result.errors.sort((a, b) => a.row - b.row)
+  urutkanError(result.errors)
 
   return result
+}
+
+/**
+ * Error dikumpulkan dari beberapa fase dan dua sheet, jadi urutan aslinya tidak
+ * mengikuti berkas. Diurutkan (Data Pasien dulu, lalu Rencana Kontrol, masing-masing
+ * menurut nomor baris) supaya admin bisa menyusurinya sejajar dengan berkas Excel.
+ */
+function urutkanError(errors: ImportRowError[]): void {
+  const rank = (e: ImportRowError) => (e.sheet === NAMA_SHEET_RENCANA ? 1 : 0)
+  errors.sort((a, b) => rank(a) - rank(b) || a.row - b.row)
 }
 
 /**
@@ -436,4 +487,145 @@ async function insertVisit(
     if (err?.code === 'P2002') return
     throw err   // error lain harus terlihat, jangan ditelan diam-diam
   }
+}
+
+// ──────────────────────────────────────────────
+// Rencana kontrol / vaksin — sheet "Rencana Kontrol"
+// ──────────────────────────────────────────────
+
+/**
+ * `sumber` menentukan cabang pengingat di worker sapaan: bernilai 'vaksin' →
+ * Pengingat Vaksin (H-7/H-3/H-1); nilai lain → Pengingat Kontrol (H-3/H-1).
+ * Karena itu hanya kata vaksin/imunisasi yang boleh memetakan ke 'vaksin'.
+ */
+function normalizeSumberRencana(jenis: string | null): string {
+  const v = (jenis ?? '').toLowerCase().trim()
+  if (!v) return 'rawat_jalan'
+  if (v.includes('vaksin') || v.includes('imunisasi')) return 'vaksin'
+  if (v.includes('kontrol')) return 'rawat_jalan'
+  return v.replace(/\s+/g, '_')   // tenant boleh memakai istilahnya sendiri, mis. "pondok sehat"
+}
+
+/** Hanya status 'terjadwal' yang diproses menjadi pengingat oleh worker. */
+function normalizeStatusRencana(status: string | null): 'terjadwal' | 'batal' | 'terpenuhi' {
+  const v = (status ?? '').toLowerCase().trim()
+  if (v.includes('batal') || v.includes('cancel'))                     return 'batal'
+  if (v.includes('penuh') || v.includes('selesai') || v.includes('hadir')) return 'terpenuhi'
+  return 'terjadwal'
+}
+
+/**
+ * Cari pasien yang SUDAH ada. Sheet jadwal sengaja tidak boleh membuat pasien
+ * baru — ia tidak punya kolom nama, jadi pasien hasil bentukan akan cacat.
+ */
+async function cariPerson(db: PrismaClient, tenantSlug: string, noHp: string, noRm: string | null) {
+  if (noRm) {
+    const p = await db.person.findFirst({
+      where: { tenant_slug: tenantSlug, no_rm: noRm }, select: { id: true, no_rm: true },
+    })
+    if (p) return p
+  }
+  return db.person.findFirst({
+    where:  { tenant_slug: tenantSlug, OR: [{ no_hp: noHp }, { no_hp_2: noHp }] },
+    select: { id: true, no_rm: true },
+  })
+}
+
+/**
+ * Identitas jadwal. Kalau RS mengisi `rencana_id` (ID jadwal di sistem mereka),
+ * itu yang dipakai — jadwalnya bisa digeser tanggalnya lewat impor ulang. Tanpa
+ * itu, identitas terpaksa menyertakan tanggal, sehingga mengubah tanggal
+ * menghasilkan baris baru dan jadwal lama perlu dibatalkan lewat kolom `status`.
+ */
+function kunciRencanaExcel(row: ExcelRencanaRow, personId: string, tanggal: Date, sumber: string): string {
+  const eksplisit = row.rencana_id?.trim()
+  if (eksplisit) return `xls:${eksplisit}`
+  const tgl  = tanggal.toISOString().slice(0, 10)
+  const poli = (row.poli || '-').trim().toLowerCase()
+  return `xls:${personId}:${tgl}:${sumber}:${poli}`
+}
+
+/**
+ * Impor jadwal kontrol/vaksin. Menambah ke `result` yang sama dengan impor pasien
+ * supaya satu berkas menghasilkan satu laporan.
+ *
+ * BEDA PENTING dari jalur SIMRS live (`syncRencanaKontrol`): di sini TIDAK ada
+ * rekonsiliasi. Feed SIMRS mengirim SELURUH jadwal dalam satu jendela waktu,
+ * sehingga jadwal yang hilang dari feed boleh disimpulkan batal. Berkas Excel
+ * hanyalah potongan sebagian — menyimpulkan hal yang sama akan membatalkan jadwal
+ * yang kebetulan tidak diikutkan. Pembatalan di jalur ini harus eksplisit lewat
+ * kolom `status`.
+ */
+export async function processImportRencana(
+  db: PrismaClient,
+  rows: ExcelRencanaRow[],
+  tenantSlug: string,
+  result: ImportResult,
+): Promise<void> {
+  result.totalRows += rows.length
+
+  for (let i = 0; i < rows.length; i++) {
+    const row    = rows[i]
+    const rowNum = i + 2
+    const gagal  = (alasan: string) => {
+      result.errors.push({ row: rowNum, noHp: row.no_hp || null, alasan, sheet: NAMA_SHEET_RENCANA })
+      result.skippedRows++
+    }
+
+    try {
+      if (!row.no_hp?.trim()) { gagal('Kolom no_hp kosong'); continue }
+
+      const tanggal = parseDate(row.tanggal_rencana)
+      if (!tanggal) { gagal(`tanggal_rencana kosong atau tidak terbaca: ${row.tanggal_rencana || '(kosong)'}`); continue }
+
+      const person = await cariPerson(db, tenantSlug, normalizePhone(row.no_hp), row.no_rm)
+      if (!person) { gagal('Pasien belum terdaftar — masukkan dulu lewat sheet "Data Pasien"'); continue }
+
+      const sumber    = normalizeSumberRencana(row.jenis)
+      const rencanaId = kunciRencanaExcel(row, person.id, tanggal, sumber)
+
+      const isi = {
+        person_id:       person.id,
+        no_rm_sumber:    row.no_rm || person.no_rm || '',
+        tanggal_rencana: tanggal,
+        sumber,
+        unit:            row.unit         || null,
+        poli:            row.poli         || null,
+        jenis_vaksin:    row.jenis_vaksin || null,
+        keterangan:      row.keterangan   || null,
+        status:          normalizeStatusRencana(row.status),
+      }
+
+      const ada = await db.simrsRencanaKontrol.findUnique({
+        where:  { tenant_slug_rencana_id_sumber: { tenant_slug: tenantSlug, rencana_id_sumber: rencanaId } },
+        select: { id: true, tanggal_rencana: true },
+      })
+
+      if (ada) {
+        // Jadwal digeser → stempel pengingat lama tidak lagi relevan. Tanpa reset,
+        // pengingat untuk tanggal yang baru tidak akan pernah terkirim.
+        const tanggalBergeser = ada.tanggal_rencana.getTime() !== tanggal.getTime()
+        await db.simrsRencanaKontrol.update({
+          where: { id: ada.id },
+          data: {
+            ...isi,
+            last_simrs_sync_at: new Date(),
+            ...(tanggalBergeser ? { reminder_h7_at: null, reminder_h3_at: null, reminder_h1_at: null } : {}),
+          },
+        })
+        result.updatedRencana++
+      } else {
+        await db.simrsRencanaKontrol.create({
+          data: { tenant_slug: tenantSlug, rencana_id_sumber: rencanaId, ...isi },
+        })
+        result.newRencana++
+      }
+      result.processedRows++
+
+    } catch (err) {
+      gagal(err instanceof Error ? err.message : 'Error tidak diketahui')
+    }
+  }
+
+  urutkanError(result.errors)
 }

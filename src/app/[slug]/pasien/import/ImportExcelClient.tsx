@@ -23,8 +23,10 @@ interface ImportResult {
   newPersons:     number
   updatedPersons: number
   newVisits:      number
+  newRencana:     number
+  updatedRencana: number
   skippedRows:    number
-  errors:         { row: number; noHp: string | null; alasan: string }[]
+  errors:         { row: number; noHp: string | null; alasan: string; sheet?: string }[]
 }
 
 interface Props {
@@ -173,7 +175,7 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
           }}>
             {[
               { n: '1', judul: 'Unduh template', isi: 'Klik "Unduh Template" di atas. Berkasnya sudah berisi contoh pengisian dan sheet "Petunjuk" yang menjelaskan setiap kolom.' },
-              { n: '2', judul: 'Isi data', isi: 'Satu baris = satu pasien + (opsional) satu kunjungan. Untuk pasien dengan banyak kunjungan, buat beberapa baris memakai no_hp yang sama.' },
+              { n: '2', judul: 'Isi data', isi: 'Sheet "Data Pasien": satu baris = satu pasien + (opsional) satu kunjungan. Sheet "Rencana Kontrol" opsional — isi bila ingin mengaktifkan pengingat kontrol & vaksin.' },
               { n: '3', judul: 'Unggah & periksa', isi: 'Unggah berkas di bawah. Setelah selesai, hasil per baris — termasuk yang dilewati beserta alasannya — langsung ditampilkan.' },
             ].map(s => (
               <div key={s.n} style={{ display: 'flex', gap: 'var(--sp-3)' }}>
@@ -198,13 +200,25 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
           {/* Kolom, dikelompokkan menurut perannya */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
             {[
-              { grup: 'Wajib diisi',        wajib: true,  cols: ['nama', 'no_hp'] },
+              { sheet: 'Sheet “Data Pasien”', grup: 'Wajib diisi', wajib: true, cols: ['nama', 'no_hp'] },
               { grup: 'Data pasien',        wajib: false, cols: ['no_rm', 'email', 'tanggal_lahir'] },
               { grup: 'Data kunjungan — hanya diproses bila tanggal_kunjungan diisi', wajib: false,
                 cols: ['tanggal_kunjungan', 'unit', 'poli', 'dokter', 'diagnosa_icd', 'diagnosa_nama',
                        'tindakan', 'tindakan_kode', 'jenis_pembayaran', 'nama_instansi', 'status_kunjungan'] },
+              { sheet: 'Sheet “Rencana Kontrol” — opsional, mengaktifkan Pengingat Kontrol & Pengingat Vaksin',
+                grup: 'Wajib diisi', wajib: true, cols: ['no_hp', 'tanggal_rencana'] },
+              { grup: 'Rincian jadwal', wajib: false,
+                cols: ['no_rm', 'rencana_id', 'jenis', 'poli', 'unit', 'jenis_vaksin', 'keterangan', 'status'] },
             ].map(g => (
-              <div key={g.grup}>
+              <div key={(g.sheet ?? '') + g.grup} style={g.sheet ? { marginTop: 'var(--sp-2)' } : undefined}>
+                {g.sheet && (
+                  <div style={{
+                    fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--c-primary)',
+                    marginBottom: 'var(--sp-2)',
+                  }}>
+                    {g.sheet}
+                  </div>
+                )}
                 <div style={{
                   fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text-muted)',
                   textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 'var(--sp-2)',
@@ -252,6 +266,15 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
             <div>
               <strong>Kunjungan batal.</strong> Baris dengan <code>status_kunjungan</code> berisi BATAL/CANCEL tetap
               memperbarui data pasien, tetapi kunjungannya tidak disimpan sebagai riwayat.
+            </div>
+            <div>
+              <strong>Jadwal tidak dibatalkan otomatis.</strong> Jadwal yang sudah tersimpan tetap aktif meskipun
+              tidak ikut disertakan pada impor berikutnya — satu berkas hanya memuat sebagian data. Untuk
+              membatalkan, impor ulang baris jadwal itu dengan <code>status</code> = batal.
+            </div>
+            <div>
+              <strong>Pasien harus ada lebih dulu.</strong> Baris jadwal tidak membuat pasien baru. Kalau pasiennya
+              belum terdaftar, sertakan dulu di sheet “Data Pasien” pada berkas yang sama.
             </div>
             <div style={{ color: 'var(--c-text-muted)' }}>
               Format no_hp: 08xxx atau +628xxx · Format tanggal: DD/MM/YYYY atau YYYY-MM-DD
@@ -399,27 +422,39 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
             </button>
           </div>
 
-          {/* Stat cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid var(--c-border)' }}>
-            {[
-              { label: 'Total Baris', value: result.totalRows, color: 'var(--c-primary)' },
-              { label: 'Pasien Baru', value: result.newPersons, color: 'var(--c-success)' },
-              { label: 'Diperbarui', value: result.updatedPersons, color: 'var(--c-secondary)' },
-              { label: 'Kunjungan Baru', value: result.newVisits, color: '#7C3AED' },
-            ].map((s, i) => (
-              <div key={i} style={{
-                padding: 'var(--sp-5)',
-                borderRight: i < 3 ? '1px solid var(--c-border)' : 'none',
+          {/* Stat cards — kartu jadwal hanya muncul bila berkas memuat sheet Rencana Kontrol */}
+          {(() => {
+            const kartu = [
+              { label: 'Total Baris',    value: result.totalRows,      color: 'var(--c-primary)' },
+              { label: 'Pasien Baru',    value: result.newPersons,     color: 'var(--c-success)' },
+              { label: 'Diperbarui',     value: result.updatedPersons, color: 'var(--c-secondary)' },
+              { label: 'Kunjungan Baru', value: result.newVisits,      color: '#7C3AED' },
+              ...(result.newRencana || result.updatedRencana ? [
+                { label: 'Jadwal Baru',       value: result.newRencana,     color: '#0E7490' },
+                { label: 'Jadwal Diperbarui', value: result.updatedRencana, color: '#0E7490' },
+              ] : []),
+            ]
+            return (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                gap: 0, borderBottom: '1px solid var(--c-border)',
               }}>
-                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 'var(--sp-1)' }}>
-                  {s.label}
-                </div>
-                <div style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 800, color: s.color, lineHeight: 1 }}>
-                  {s.value}
-                </div>
+                {kartu.map((s, i) => (
+                  <div key={s.label} style={{
+                    padding: 'var(--sp-5)',
+                    borderRight: i < kartu.length - 1 ? '1px solid var(--c-border)' : 'none',
+                  }}>
+                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 'var(--sp-1)' }}>
+                      {s.label}
+                    </div>
+                    <div style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 800, color: s.color, lineHeight: 1 }}>
+                      {s.value}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )
+          })()}
 
           {/* Baris gagal */}
           {result.skippedRows > 0 && (
@@ -431,7 +466,7 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-xs)' }}>
                   <thead>
                     <tr style={{ background: 'var(--c-bg)' }}>
-                      {['Baris', 'No. HP', 'Alasan'].map(h => (
+                      {['Sheet', 'Baris', 'No. HP', 'Alasan'].map(h => (
                         <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
                       ))}
                     </tr>
@@ -439,6 +474,7 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
                   <tbody>
                     {result.errors.map((e, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                        <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)', whiteSpace: 'nowrap' }}>{e.sheet || 'Data Pasien'}</td>
                         <td style={{ padding: '8px 12px', color: 'var(--c-text-muted)' }}>{e.row}</td>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{e.noHp || '—'}</td>
                         <td style={{ padding: '8px 12px', color: 'var(--c-error)' }}>{e.alasan}</td>

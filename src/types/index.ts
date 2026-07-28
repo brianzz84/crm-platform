@@ -371,6 +371,7 @@ export interface ImportRowError {
   row:     number
   noHp:    string | null
   alasan:  string
+  sheet?:  string   // nama sheet asal; kosong = "Data Pasien" (berkas lama tak punya field ini)
 }
 
 // Template kolom Excel yang diterima sistem
@@ -391,6 +392,27 @@ export interface ExcelImportRow {
   jenis_pembayaran: string | null // TUNAI | NON_TUNAI (varian tulisan diterima, lihat normalizeJenisPembayaran)
   nama_instansi:  string | null   // nama penjamin, mis. "BPJS Kesehatan", "Prudential"
   status_kunjungan: string | null // isi "Batal"/"Cancel" dll → kunjungan TIDAK disimpan sbg riwayat
+}
+
+/**
+ * Sheet "Rencana Kontrol" pada berkas impor — jadwal yang BELUM terjadi, sumber
+ * data Pengingat Kontrol & Pengingat Vaksin. Berbeda dari ExcelImportRow yang
+ * mencatat kunjungan yang SUDAH terjadi.
+ */
+export interface ExcelRencanaRow {
+  no_hp:           string        // wajib — pasien harus sudah ada di sistem
+  no_rm:           string | null // opsional, prioritas pencocokan lebih tinggi
+  // ID jadwal di sistem RS. Kalau diisi, jadwal ini bisa DIUBAH lewat impor ulang
+  // (termasuk digeser tanggalnya). Kalau kosong, identitas jadwal terpaksa ikut
+  // menyertakan tanggal — sehingga mengubah tanggal akan membuat baris baru.
+  rencana_id:      string | null
+  tanggal_rencana: string        // wajib — DD/MM/YYYY atau YYYY-MM-DD
+  jenis:           string | null // "vaksin" → pengingat vaksin; selain itu → pengingat kontrol
+  poli:            string | null
+  unit:            string | null
+  jenis_vaksin:    string | null // hanya untuk baris vaksin
+  keterangan:      string | null // catatan dokter
+  status:          string | null // terjadwal (default) | batal | terpenuhi
 }
 
 // ─────────────────────────────────────────────

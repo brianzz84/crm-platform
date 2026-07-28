@@ -1068,6 +1068,8 @@ model ImportLog {
   new_persons      Int          @default(0)   // pasien baru yang dibuat
   updated_persons  Int          @default(0)   // pasien existing yang diupdate
   new_visits       Int          @default(0)   // kunjungan baru
+  new_rencana      Int          @default(0)   // rencana kontrol/vaksin baru (sheet "Rencana Kontrol")
+  updated_rencana  Int          @default(0)   // rencana yang sudah ada lalu diperbarui
   skipped_rows     Int          @default(0)   // baris yang dilewati (duplikat/error)
   error_detail     Json?        // array error per baris
   started_at       DateTime     @default(now())

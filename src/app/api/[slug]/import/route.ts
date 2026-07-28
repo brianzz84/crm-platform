@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/tenant'
 import { requireTenantPermission } from "@/lib/auth"
-import { parseExcelBuffer, processImport } from '@/lib/excel-import'
+import { parseExcelBuffer, parseExcelRencana, processImport, processImportRencana } from '@/lib/excel-import'
 
 // GET — daftar riwayat import
 export async function GET(
@@ -54,25 +54,34 @@ export async function POST(
   })
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const rows   = parseExcelBuffer(buffer)
+    const buffer     = Buffer.from(await file.arrayBuffer())
+    const rows       = parseExcelBuffer(buffer)
+    const barisJadwal = parseExcelRencana(buffer)   // sheet opsional; [] kalau tidak ada
 
     await db.importLog.update({
       where: { id: log.id },
-      data:  { total_rows: rows.length },
+      data:  { total_rows: rows.length + barisJadwal.length },
     })
 
+    // Urutan wajib: pasien dulu, baru jadwal — jadwal menunjuk ke pasien dan
+    // sengaja tidak boleh membuat pasien baru sendiri.
     const result = await processImport(db, rows, params.slug, session.userId, log.id)
+    if (barisJadwal.length > 0) {
+      await processImportRencana(db, barisJadwal, params.slug, result)
+    }
 
     // Simpan hasil akhir
     await db.importLog.update({
       where: { id: log.id },
       data:  {
         status:          'DONE',
+        total_rows:      result.totalRows,
         processed_rows:  result.processedRows,
         new_persons:     result.newPersons,
         updated_persons: result.updatedPersons,
         new_visits:      result.newVisits,
+        new_rencana:     result.newRencana,
+        updated_rencana: result.updatedRencana,
         skipped_rows:    result.skippedRows,
         error_detail:    result.errors.length ? (result.errors as object[]) : undefined,
         finished_at:     new Date(),
