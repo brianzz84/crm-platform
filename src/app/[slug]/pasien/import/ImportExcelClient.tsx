@@ -153,44 +153,110 @@ export default function ImportExcelClient({ slug, initialLogs }: Props) {
         </div>
       </div>
 
-      {/* Info kolom */}
+      {/* Panduan penggunaan */}
       <div style={{
-        background: 'var(--c-secondary-light)', border: '1px solid #b3e0ea',
-        borderRadius: 'var(--r-md)', padding: 'var(--sp-4)',
-        marginBottom: 'var(--sp-6)', fontSize: 'var(--font-size-sm)',
+        background: 'var(--c-surface)', border: '1px solid var(--c-border)',
+        borderRadius: 'var(--r-lg)', marginBottom: 'var(--sp-6)', overflow: 'hidden',
       }}>
-        <div style={{ fontWeight: 700, color: 'var(--c-secondary-dark)', marginBottom: 'var(--sp-2)' }}>
-          📋 Format kolom Excel
+        <div style={{
+          padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--c-border)',
+          fontWeight: 700, color: 'var(--c-primary)', fontSize: 'var(--font-size-md)',
+        }}>
+          Cara Menggunakan
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', color: 'var(--c-text)' }}>
-          {[
-            { col: 'nama', req: true },
-            { col: 'no_hp', req: true },
-            { col: 'no_rm', req: false },
-            { col: 'email', req: false },
-            { col: 'tanggal_lahir', req: false },
-            { col: 'unit', req: false },
-            { col: 'poli', req: false },
-            { col: 'dokter', req: false },
-            { col: 'tanggal_kunjungan', req: false },
-            { col: 'diagnosa_icd', req: false },
-            { col: 'diagnosa_nama', req: false },
-            { col: 'tindakan', req: false },
-          ].map(({ col, req }) => (
-            <span key={col} style={{
-              background: req ? 'var(--c-secondary)' : 'white',
-              color:      req ? 'white' : 'var(--c-text-muted)',
-              border:     req ? 'none' : '1px solid var(--c-border)',
-              padding: '2px 8px', borderRadius: 'var(--r-full)',
-              fontSize: 'var(--font-size-xs)', fontWeight: 600,
-              fontFamily: 'monospace',
-            }}>
-              {col}{req ? ' *' : ''}
-            </span>
-          ))}
-        </div>
-        <div style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>
-          * Wajib diisi. Format no_hp: 08xxx atau +628xxx. Format tanggal: DD/MM/YYYY atau YYYY-MM-DD.
+
+        <div style={{ padding: 'var(--sp-5)' }}>
+          {/* Tiga langkah */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+            gap: 'var(--sp-4)', marginBottom: 'var(--sp-5)',
+          }}>
+            {[
+              { n: '1', judul: 'Unduh template', isi: 'Klik "Unduh Template" di atas. Berkasnya sudah berisi contoh pengisian dan sheet "Petunjuk" yang menjelaskan setiap kolom.' },
+              { n: '2', judul: 'Isi data', isi: 'Satu baris = satu pasien + (opsional) satu kunjungan. Untuk pasien dengan banyak kunjungan, buat beberapa baris memakai no_hp yang sama.' },
+              { n: '3', judul: 'Unggah & periksa', isi: 'Unggah berkas di bawah. Setelah selesai, hasil per baris — termasuk yang dilewati beserta alasannya — langsung ditampilkan.' },
+            ].map(s => (
+              <div key={s.n} style={{ display: 'flex', gap: 'var(--sp-3)' }}>
+                <div style={{
+                  flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+                  background: 'var(--c-secondary)', color: 'white',
+                  fontWeight: 800, fontSize: 'var(--font-size-sm)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>{s.n}</div>
+                <div>
+                  <div style={{ fontWeight: 700, color: 'var(--c-primary)', fontSize: 'var(--font-size-sm)', marginBottom: 2 }}>
+                    {s.judul}
+                  </div>
+                  <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', lineHeight: 1.55 }}>
+                    {s.isi}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Kolom, dikelompokkan menurut perannya */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+            {[
+              { grup: 'Wajib diisi',        wajib: true,  cols: ['nama', 'no_hp'] },
+              { grup: 'Data pasien',        wajib: false, cols: ['no_rm', 'email', 'tanggal_lahir'] },
+              { grup: 'Data kunjungan — hanya diproses bila tanggal_kunjungan diisi', wajib: false,
+                cols: ['tanggal_kunjungan', 'unit', 'poli', 'dokter', 'diagnosa_icd', 'diagnosa_nama',
+                       'tindakan', 'tindakan_kode', 'jenis_pembayaran', 'nama_instansi', 'status_kunjungan'] },
+            ].map(g => (
+              <div key={g.grup}>
+                <div style={{
+                  fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text-muted)',
+                  textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 'var(--sp-2)',
+                }}>
+                  {g.grup}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+                  {g.cols.map(col => (
+                    <span key={col} style={{
+                      background: g.wajib ? 'var(--c-secondary)' : 'var(--c-bg)',
+                      color:      g.wajib ? 'white' : 'var(--c-text)',
+                      border:     g.wajib ? 'none' : '1px solid var(--c-border)',
+                      padding: '2px 8px', borderRadius: 'var(--r-full)',
+                      fontSize: 'var(--font-size-xs)', fontWeight: 600, fontFamily: 'monospace',
+                    }}>
+                      {col}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Perilaku yang perlu diketahui sebelum mengunggah */}
+          <div style={{
+            marginTop: 'var(--sp-5)', background: 'var(--c-secondary-light)',
+            border: '1px solid #b3e0ea', borderRadius: 'var(--r-md)',
+            padding: 'var(--sp-4)', fontSize: 'var(--font-size-xs)',
+            color: 'var(--c-text)', lineHeight: 1.6,
+            display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div>
+              <strong>Aman diunggah ulang.</strong> Berkas yang sama boleh diunggah lagi tanpa menggandakan data.
+              Kunjungan dianggap sama bila tanggal, poli, dan tindakannya sama.
+            </div>
+            <div>
+              <strong>Pencocokan pasien.</strong> Sistem mencari lewat no_rm lebih dulu, lalu no_hp — pasien yang
+              sudah ada akan diperbarui, bukan dibuat ganda.
+            </div>
+            <div>
+              <strong>Penjamin.</strong> Isi <code>jenis_pembayaran</code> dengan TUNAI atau NON_TUNAI, lalu
+              <code> nama_instansi</code> untuk penjaminnya (mis. BPJS Kesehatan, Prudential). Ini yang membuat
+              segmentasi berdasarkan penjamin bisa dipakai.
+            </div>
+            <div>
+              <strong>Kunjungan batal.</strong> Baris dengan <code>status_kunjungan</code> berisi BATAL/CANCEL tetap
+              memperbarui data pasien, tetapi kunjungannya tidak disimpan sebagai riwayat.
+            </div>
+            <div style={{ color: 'var(--c-text-muted)' }}>
+              Format no_hp: 08xxx atau +628xxx · Format tanggal: DD/MM/YYYY atau YYYY-MM-DD
+            </div>
+          </div>
         </div>
       </div>
 

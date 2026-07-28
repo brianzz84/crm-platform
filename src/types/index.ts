@@ -387,6 +387,10 @@ export interface ExcelImportRow {
   diagnosa_icd:   string | null
   diagnosa_nama:  string | null
   tindakan:       string | null
+  tindakan_kode:  string | null   // kode_barang SimrsLayananLibrary — jika kosong, dicoba dicocokkan otomatis dari nama `tindakan`
+  jenis_pembayaran: string | null // TUNAI | NON_TUNAI (varian tulisan diterima, lihat normalizeJenisPembayaran)
+  nama_instansi:  string | null   // nama penjamin, mis. "BPJS Kesehatan", "Prudential"
+  status_kunjungan: string | null // isi "Batal"/"Cancel" dll → kunjungan TIDAK disimpan sbg riwayat
 }
 
 // ─────────────────────────────────────────────
