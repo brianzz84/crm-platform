@@ -609,6 +609,32 @@ model WappinConfig {
 }
 
 // Konfigurasi Meta Cloud API per-tenant (disimpan di tenant DB)
+/**
+ * Google Business Profile — kredensial per tenant.
+ *
+ * Autentikasinya OAuth 2.0 milik AKUN PENGELOLA listing (bukan service account:
+ * Google Business Profile tidak mendukungnya di luar Workspace domain-wide
+ * delegation). Karena itu yang disimpan adalah refresh token hasil consent, lalu
+ * ditukar jadi access token berumur pendek saat dipakai.
+ *
+ * client_secret & refresh_token bersifat RAHASIA — tidak pernah dikirim ke klien.
+ */
+model GoogleBisnisConfig {
+  id             String    @id @default(uuid())
+  tenant_slug    String    @unique
+  client_id      String                        // OAuth Client ID dari project Google Cloud
+  client_secret  String                        // RAHASIA
+  refresh_token  String                        // RAHASIA — hasil consent akun pengelola listing
+  account_id     String?                       // "accounts/123..." dari Account Management API
+  location_utama String?                       // "locations/456..." — lokasi default untuk dashboard
+  aktif          Boolean   @default(true)
+  tested_at      DateTime?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  @@map("crm_google_bisnis_configs")
+}
+
 model MetaConfig {
   id               String   @id @default(uuid())
   tenant_slug      String   @unique

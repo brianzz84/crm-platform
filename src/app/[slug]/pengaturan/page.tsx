@@ -15,10 +15,11 @@ export default async function PengaturanPage({ params }: { params: { slug: strin
 
   const db = await getTenantDb(params.slug)
 
-  const [profile, wappinCfg, eflyerCfg, users, tenant] = await Promise.all([
+  const [profile, wappinCfg, eflyerCfg, gbpCfg, users, tenant] = await Promise.all([
     db.tenantProfile.findUnique({ where: { tenant_slug: params.slug } }),
     db.wappinConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.eflyerConfig.findUnique({ where: { tenant_slug: params.slug } }),
+    db.googleBisnisConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.appUser.count({ where: { tenant_slug: params.slug, aktif: true } }),
     masterDb.tenant.findUnique({
       where:  { slug: params.slug },
@@ -52,6 +53,10 @@ export default async function PengaturanPage({ params }: { params: { slug: strin
         meta={{
           wappinAktif:  !!wappinCfg?.aktif,
           wappinTested: !!wappinCfg?.tested_at,
+          // "Terhubung" hanya kalau sudah pernah diuji DAN aktif — sebelum itu
+          // statusnya jujur: menunggu akses API Google.
+          googleBisnisAda:   !!gbpCfg,
+          googleBisnisAktif: !!gbpCfg?.aktif && !!gbpCfg?.tested_at,
           eflyerAktif:  !!eflyerCfg?.aktif,
           aiEnabled:    !!tenant?.config?.ai_enabled,
           aiProvider:   tenant?.config?.ai_provider ?? 'CLAUDE',

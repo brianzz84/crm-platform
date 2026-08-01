@@ -15,6 +15,10 @@ interface Profile {
 interface Meta {
   wappinAktif:  boolean
   wappinTested: boolean
+  // Google Business: "ada" = kredensial sudah disimpan, "aktif" = sudah diuji & hidup.
+  // Dibedakan karena masa menunggu persetujuan API Google bisa panjang.
+  googleBisnisAda:   boolean
+  googleBisnisAktif: boolean
   eflyerAktif:  boolean
   aiEnabled:    boolean
   aiProvider:   string
@@ -72,6 +76,15 @@ const SUB_MENUS = [
     href:  (slug: string) => `/${slug}/pengaturan/meta`,
     badge: () => 'Direct API',
     badgeColor: () => '#1D4ED8',
+  },
+  {
+    key:   'google-bisnis',
+    icon:  '📍',
+    label: 'Integrasi Google Business',
+    desc:  'Tarik ulasan, performa lokasi, dan status listing Google Business Profile ke dalam CRM.',
+    href:  (slug: string) => `/${slug}/pengaturan/google-bisnis`,
+    badge: (meta: Meta) => meta.googleBisnisAktif ? 'Terhubung' : meta.googleBisnisAda ? 'Menunggu akses API' : 'Belum dikonfigurasi',
+    badgeColor: (meta: Meta) => meta.googleBisnisAktif ? '#22C55E' : meta.googleBisnisAda ? '#F59E0B' : '#94A3B8',
   },
   {
     key:   'eflyer',
