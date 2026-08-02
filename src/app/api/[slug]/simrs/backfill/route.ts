@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const body   = await req.json()
     const parsed = BackfillSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'Input tidak valid' }, { status: 400 })
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Input tidak valid' }, { status: 400 })
     }
 
     const { dari, sampai } = parsed.data

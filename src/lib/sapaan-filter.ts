@@ -58,14 +58,20 @@ export async function filterPersonsBySapaanRules(
     where:  { person_id: { in: personIds }, aktif: true },
     _count: { _all: true },
   })
-  const visitCountByPerson = new Map(visitCounts.map((v: any) => [v.person_id, v._count._all]))
+  const visitCountByPerson = new Map<string, number>(
+    visitCounts.map((v: any) => [v.person_id as string, v._count._all as number]),
+  )
 
   const kegiatanCounts = await db.kegiatanPeserta.groupBy({
     by:     ['person_id'],
     where:  { person_id: { in: personIds }, hadir: true },
     _count: { _all: true },
   })
-  const kegiatanCountByPerson = new Map(kegiatanCounts.map((v: any) => [v.person_id, v._count._all]))
+  // Anotasi eksplisit: tanpa ini TS menyimpulkan nilai Map sebagai `{}` sehingga
+  // penjumlahan di bawah ditolak, padahal isinya memang angka dari _count._all.
+  const kegiatanCountByPerson = new Map<string, number>(
+    kegiatanCounts.map((v: any) => [v.person_id as string, v._count._all as number]),
+  )
 
   async function hitungKeterlibatan(personId: string, cond: FilterCondition): Promise<number> {
     const sumberList = cond.sumberKeterlibatan?.length ? cond.sumberKeterlibatan : ['SIMRS_VISIT']

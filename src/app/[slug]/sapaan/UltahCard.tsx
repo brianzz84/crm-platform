@@ -85,7 +85,10 @@ function ConditionRow({
               return (
                 <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                   <input type="checkbox" checked={checked} onChange={e => {
-                    const cur = new Set(cond.sumberKeterlibatan ?? ['SIMRS_VISIT'])
+                    // Set diberi tipe eksplisit: tanpa itu literal ['SIMRS_VISIT']
+                    // menyempit jadi string[] dan hasil Array.from tidak lagi cocok
+                    // dengan KeterlibatanSumber[].
+                    const cur = new Set<KeterlibatanSumber>(cond.sumberKeterlibatan ?? ['SIMRS_VISIT'])
                     if (e.target.checked) cur.add(s); else cur.delete(s)
                     onChange({ ...cond, sumberKeterlibatan: Array.from(cur) })
                   }} />

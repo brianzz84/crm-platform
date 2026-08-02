@@ -84,7 +84,10 @@ export function resolveTemplateField(p: PersonForTemplate, key: string, extra?: 
  * `extra` mengisi field non-person (mis. tanggal_kontrol, poli_kontrol).
  */
 export function buildTemplateComponents(
-  template: { components_schema?: any[] },
+  // `any` (bukan `any[]`) supaya kolom Json dari Prisma diterima apa adanya —
+  // di DB ini memang JSON bebas, dan pemanggil meneruskan baris Prisma langsung.
+  // Bentuknya tetap dijaga oleh `|| []` di bawah.
+  template: { components_schema?: any },
   person:   PersonForTemplate,
   params:   Record<string, string>,
   extra?:   Record<string, string>,

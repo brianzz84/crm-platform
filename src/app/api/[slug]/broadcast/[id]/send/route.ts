@@ -179,25 +179,8 @@ async function sendBatchAsync(
   })
 }
 
-function buildMetaComponents(template: any, person: PersonForTemplate, params: Record<string, string>) {
-  return (template.components_schema || []).map((comp: any) => ({
-    type:       comp.type,
-    sub_type:   comp.sub_type,
-    index:      comp.index,
-    parameters: (comp.parameters || []).map((p: any) => {
-      let text: string
-      if (p.source === 'field' && p.field) {
-        // Variabel dinamis — ambil dari data pasien
-        text = resolveTemplateField(person, p.field) || p.example || ''
-      } else {
-        // Variabel statis — nilai dari campaign, fallback ke contoh
-        text = params[p.param_key] ?? p.example ?? ''
-      }
-      // Kompat lama: template yang masih pakai token literal {{nama}}/{{no_hp}}
-      text = text
-        .replace(/\{\{nama\}\}/g, person.name ?? '')
-        .replace(/\{\{no_hp\}\}/g, person.no_hp ?? '')
-      return { type: 'text', text }
-    }),
-  }))
-}
+// CATATAN: fungsi lokal `buildMetaComponents` dihapus di sini. Ia sudah tidak
+// pernah dipanggil sejak perakitan komponen template dipindahkan ke
+// `buildTemplateComponents` di src/lib/template-fields.ts (dipakai bersama worker
+// sapaan). Sisa itu bahkan memanggil `resolveTemplateField` yang tidak lagi
+// diimpor — tidak pernah meledak hanya karena kodenya memang tak terjangkau.

@@ -44,6 +44,9 @@ interface MsgRow {
 }
 interface ConvDetail {
   id: string; channel: string; channel_user_id: string; status: string
+  // Dikirim API sejak awal (lihat select di /api/[slug]/inbox/[id]) tapi belum
+  // pernah dideklarasikan di sini — nama agen tetap tampil, hanya tipenya bolong.
+  assigned_user: { id: string; name: string } | null
   person: {
     id: string; name: string; no_hp: string; no_rm: string | null
     email: string | null; tanggal_lahir: string | null

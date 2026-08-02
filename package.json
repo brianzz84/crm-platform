@@ -13,7 +13,8 @@
     "worker": "tsx --tsconfig tsconfig.json src/workers/index.ts",
     "worker:dev": "tsx watch --tsconfig tsconfig.json src/workers/index.ts",
     "worker:start": "node --import tsx/esm src/workers/index.ts",
-    "sapaan:cron": "tsx --tsconfig tsconfig.json scripts/sapaan-cron.ts"
+    "sapaan:cron": "tsx --tsconfig tsconfig.json scripts/sapaan-cron.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
@@ -45,6 +46,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/web-push": "^3.6.4",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "mysql2": "^3.22.6",

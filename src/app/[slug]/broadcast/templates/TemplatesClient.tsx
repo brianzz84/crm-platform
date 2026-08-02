@@ -26,6 +26,9 @@ interface Template {
   id:                 string
   nama:               string
   template_name:      string
+  // Dikirim API (route daftar template mengembalikan seluruh kolom) dan sudah
+  // dipakai di tampilan, tapi belum pernah dideklarasikan di sini.
+  template_namespace: string | null
   template_language:  string
   meta_category:      string | null
   meta_status:        MetaStatus

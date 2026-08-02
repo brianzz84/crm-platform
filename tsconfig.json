@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    // Tanpa ini tsc menganggap target ES3/ES5, lalu mengeluh soal iterasi Map/string
+    // (`downlevelIteration`) pada kode yang sebenarnya sah — Next/SWC yang melakukan
+    // emit sesungguhnya, tsc di sini murni pemeriksa.
+    "target": "es2020",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -22,5 +26,10 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // `scripts/` sengaja dikecualikan. Isinya skrip sekali-pakai yang dijalankan lewat
+  // tsx, sebagian sudah menyimpang dari skema terkini. Satu error SINTAKS di sana
+  // (migrate-akar.ts) membuat tsc berhenti pada tahap parsing, sehingga seluruh
+  // pemeriksaan semantik src/ tidak pernah berjalan — "typecheck bersih" jadi
+  // sinyal palsu yang menyembunyikan 15 error selama berminggu-minggu.
+  "exclude": ["node_modules", "scripts"]
 }

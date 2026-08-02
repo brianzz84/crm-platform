@@ -23,6 +23,7 @@ export default async function TemplatesPage({ params }: { params: { slug: string
     id:                 t.id,
     nama:               t.nama,
     template_name:      t.template_name,
+    template_namespace: t.template_namespace,
     template_language:  t.template_language,
     meta_category:      (t as any).meta_category ?? null,
     meta_status:        (t as any).meta_status ?? null,
