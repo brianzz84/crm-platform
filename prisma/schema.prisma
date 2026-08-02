@@ -619,20 +619,40 @@ model WappinConfig {
  *
  * client_secret & refresh_token bersifat RAHASIA — tidak pernah dikirim ke klien.
  */
-model GoogleBisnisConfig {
+/**
+ * Satu sambungan Google per tenant. Sengaja SATU baris untuk tiga layanan
+ * (Business Profile, YouTube, Analytics) karena ketiganya memakai OAuth yang
+ * sama — satu consent menghasilkan satu refresh_token yang menutup semuanya.
+ * Memecahnya per layanan berarti meminta user login tiga kali tanpa manfaat.
+ */
+model GoogleConfig {
   id             String    @id @default(uuid())
   tenant_slug    String    @unique
   client_id      String                        // OAuth Client ID dari project Google Cloud
   client_secret  String                        // RAHASIA
-  refresh_token  String                        // RAHASIA — hasil consent akun pengelola listing
+  // RAHASIA. Diisi OTOMATIS oleh alur "Hubungkan dengan Google" — bukan diketik
+  // admin. Kosong = belum pernah tersambung.
+  refresh_token  String    @default("")
+  scopes         String[]  @default([])        // scope yang benar-benar disetujui pada consent terakhir
+  connected_at   DateTime?                     // kapan terakhir berhasil tersambung
+  connected_email String?                      // akun Google pemberi izin — ditampilkan agar salah akun cepat ketahuan
+
+  // ── Google Business Profile ──
   account_id     String?                       // "accounts/123..." dari Account Management API
   location_utama String?                       // "locations/456..." — lokasi default untuk dashboard
+
+  // ── Google Analytics 4 ──
+  ga4_property_id String?                      // "properties/123456789" — properti website utama
+
+  // ── YouTube ──
+  youtube_channel_id String?                   // "UC..." — channel yang dipantau
+
   aktif          Boolean   @default(true)
   tested_at      DateTime?
   created_at     DateTime  @default(now())
   updated_at     DateTime  @updatedAt
 
-  @@map("crm_google_bisnis_configs")
+  @@map("crm_google_configs")
 }
 
 model MetaConfig {

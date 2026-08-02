@@ -14,7 +14,7 @@ export default async function GoogleBisnisPage({ params }: { params: { slug: str
   if (!canDo(session.roles, 'configSystem')) redirect(`/${params.slug}/dashboard`)
 
   const db  = await getTenantDb(params.slug)
-  const cfg = await db.googleBisnisConfig.findUnique({ where: { tenant_slug: params.slug } })
+  const cfg = await db.googleConfig.findUnique({ where: { tenant_slug: params.slug } })
 
   return (
     <div style={{ padding: 'var(--sp-6)', flex: 1 }}>
@@ -72,14 +72,19 @@ export default async function GoogleBisnisPage({ params }: { params: { slug: str
       <GoogleBisnisConfigForm
         slug={params.slug}
         initialData={cfg ? {
-          id:                cfg.id,
-          client_id:         cfg.client_id,
-          account_id:        cfg.account_id,
-          location_utama:    cfg.location_utama,
-          aktif:             cfg.aktif,
-          has_client_secret: !!cfg.client_secret,
-          has_refresh_token: !!cfg.refresh_token,
-          tested_at:         cfg.tested_at?.toISOString() ?? null,
+          id:                 cfg.id,
+          client_id:          cfg.client_id,
+          account_id:         cfg.account_id,
+          location_utama:     cfg.location_utama,
+          ga4_property_id:    cfg.ga4_property_id,
+          youtube_channel_id: cfg.youtube_channel_id,
+          aktif:              cfg.aktif,
+          has_client_secret:  !!cfg.client_secret,
+          has_refresh_token:  !!cfg.refresh_token,
+          scopes:             cfg.scopes,
+          connected_at:       cfg.connected_at?.toISOString() ?? null,
+          connected_email:    cfg.connected_email,
+          tested_at:          cfg.tested_at?.toISOString() ?? null,
         } : null}
       />
 

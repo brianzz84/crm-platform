@@ -19,7 +19,7 @@ export default async function PengaturanPage({ params }: { params: { slug: strin
     db.tenantProfile.findUnique({ where: { tenant_slug: params.slug } }),
     db.wappinConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.eflyerConfig.findUnique({ where: { tenant_slug: params.slug } }),
-    db.googleBisnisConfig.findUnique({ where: { tenant_slug: params.slug } }),
+    db.googleConfig.findUnique({ where: { tenant_slug: params.slug } }),
     db.appUser.count({ where: { tenant_slug: params.slug, aktif: true } }),
     masterDb.tenant.findUnique({
       where:  { slug: params.slug },

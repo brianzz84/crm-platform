@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
   try {
     const db  = await getTenantDb(params.slug)
-    const cfg = await db.googleBisnisConfig.findUnique({ where: { tenant_slug: params.slug } })
+    const cfg = await db.googleConfig.findUnique({ where: { tenant_slug: params.slug } })
     if (!cfg) {
       return NextResponse.json(
         { success: false, error: 'Konfigurasi Google Business belum ada. Simpan dulu di form di atas.' },
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     })
 
     // Catat kapan terakhir diuji — dipakai badge di daftar Pengaturan.
-    await db.googleBisnisConfig.update({
+    await db.googleConfig.update({
       where: { tenant_slug: params.slug },
       data:  { tested_at: new Date() },
     }).catch(() => null)
