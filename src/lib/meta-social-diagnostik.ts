@@ -18,6 +18,12 @@ export interface HasilCek {
   status: StatusCek
   pesan:  string
   detail?: string
+  /**
+   * Fase yang membutuhkan cek ini. Ditampilkan sebagai chip di UI supaya merah
+   * pada kebutuhan fase lanjut tidak terbaca sebagai penghalang fase sekarang —
+   * mis. iklan baru dipakai di F4, jadi gagalnya tidak menahan dashboard konten.
+   */
+  fase?:   string
 }
 
 export interface ConfigProbe {
@@ -44,6 +50,27 @@ function cekBatasLaju(slug: string) {
 }
 
 const potong = (v: any, n = 240) => JSON.stringify(v ?? {}).slice(0, n)
+
+/**
+ * Kandidat metric Page Insights beserta period yang sah untuknya.
+ *
+ * Meta memangkas banyak metric Page Insights (berlaku 2024) dan memangkasnya lagi
+ * tiap versi Graph. Menembak SATU metric seperti sebelumnya membuat probe merah
+ * dengan galat "(#100) must be a valid insights metric" — yang terbaca seolah izin
+ * kurang, padahal izinnya baik-baik saja dan hanya nama metric-nya yang sudah mati.
+ *
+ * Maka: uji beberapa kandidat satu per satu (satu metric tak sah menggagalkan
+ * seluruh permintaan bila digabung), lalu laporkan mana yang benar-benar hidup.
+ * Hasilnya sekaligus menjadi daftar metric yang boleh dipakai data collector F1.
+ */
+const KANDIDAT_METRIK_PAGE: { metric: string; period: string }[] = [
+  { metric: 'page_impressions',          period: 'day' },
+  { metric: 'page_impressions_unique',   period: 'day' },
+  { metric: 'page_post_engagements',     period: 'day' },
+  { metric: 'page_daily_follows_unique', period: 'day' },
+  { metric: 'page_fan_adds',             period: 'day' },
+  { metric: 'page_views_total',          period: 'day' },
+]
 
 export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promise<HasilCek[]> {
   cekBatasLaju(slug)
@@ -75,20 +102,44 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
   }
 
   // Helper cek berbasis endpoint
-  async function cek(kunci: string, label: string, idField: string | null | undefined, path: string, sukses: (j: any) => string) {
-    if (!idField) { hasil.push({ kunci, label, status: 'lewati', pesan: 'ID belum diisi di form.' }); return }
+  async function cek(kunci: string, label: string, idField: string | null | undefined, path: string, sukses: (j: any) => string, fase?: string) {
+    if (!idField) { hasil.push({ kunci, label, status: 'lewati', pesan: 'ID belum diisi di form.', fase }); return }
     const r: GraphResult = await graphGet(path, token)
-    if (r.ok) hasil.push({ kunci, label, status: 'ok', pesan: sukses(r.json), detail: potong(r.json) })
-    else      hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r) })
+    if (r.ok) hasil.push({ kunci, label, status: 'ok', pesan: sukses(r.json), detail: potong(r.json), fase })
+    else      hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r), fase })
   }
 
   // 2) Facebook Page
   await cek('page', 'Facebook Page', cfg.page_id, `${cfg.page_id}?fields=name,followers_count,fan_count`,
     j => `Page "${j.name}" — ${j.followers_count ?? j.fan_count ?? '?'} follower.`)
 
-  // 3) Facebook Page Insights (sampel 1 metric)
-  await cek('page_insights', 'Facebook Page Insights', cfg.page_id, `${cfg.page_id}/insights?metric=page_impressions&period=day`,
-    j => `Insights Page bisa ditarik (${j.data?.length ?? 0} metric).`)
+  // 3) Facebook Page Insights — uji beberapa kandidat metric, laporkan yang hidup
+  if (!cfg.page_id) {
+    hasil.push({ kunci: 'page_insights', label: 'Facebook Page Insights', status: 'lewati', pesan: 'Page ID belum diisi di form.' })
+  } else {
+    const hidup: string[] = []
+    const mati:  string[] = []
+    let galatIzin = ''
+
+    for (const { metric, period } of KANDIDAT_METRIK_PAGE) {
+      const r = await graphGet(`${cfg.page_id}/insights?metric=${metric}&period=${period}`, token)
+      if (r.ok) { hidup.push(metric); continue }
+      // code 100 = nama metric tidak dikenal versi Graph ini (bukan soal izin).
+      if (r.json?.error?.code === 100) mati.push(metric)
+      else if (!galatIzin) galatIzin = pesanErrorGraph(r)
+    }
+
+    hasil.push({
+      kunci: 'page_insights', label: 'Facebook Page Insights',
+      status: hidup.length ? 'ok' : 'gagal',
+      pesan: hidup.length
+        ? `${hidup.length} dari ${KANDIDAT_METRIK_PAGE.length} metric bisa ditarik: ${hidup.join(', ')}.`
+        : galatIzin
+          ? `Tidak ada metric yang bisa ditarik — ${galatIzin}`
+          : 'Semua kandidat metric ditolak Graph sebagai nama tak dikenal. Daftar metric Page kemungkinan berubah lagi di versi Graph ini.',
+      detail: `hidup: ${hidup.join(', ') || '(tidak ada)'}\nditolak (nama tak dikenal): ${mati.join(', ') || '(tidak ada)'}${galatIzin ? `\ngalat lain: ${galatIzin}` : ''}`,
+    })
+  }
 
   // 4) Instagram account
   await cek('ig', 'Instagram Account', cfg.ig_business_id, `${cfg.ig_business_id}?fields=username,followers_count,media_count`,
@@ -102,13 +153,13 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
   await cek('ig_media', 'Instagram Media', cfg.ig_business_id, `${cfg.ig_business_id}/media?fields=id,media_type,timestamp&limit=1`,
     j => `Daftar media IG bisa ditarik (${j.data?.length ?? 0} contoh).`)
 
-  // 7) Marketing API (iklan)
+  // 7) Marketing API (iklan) — butuh ads_read, DAN pemilik Ad Account memberi akses app.
   await cek('ads', 'Marketing API (Iklan)', cfg.ad_account_id, `${cfg.ad_account_id}/insights?date_preset=last_7d&fields=spend,impressions&limit=1`,
-    j => `Ad Account bisa ditarik (${j.data?.length ?? 0} baris 7 hari terakhir).`)
+    j => `Ad Account bisa ditarik (${j.data?.length ?? 0} baris 7 hari terakhir).`, 'Fase 4')
 
-  // 8) Langganan webhook Page
+  // 8) Langganan webhook Page — butuh pages_manage_metadata (satu-satunya izin non-baca).
   await cek('webhook', 'Langganan Webhook Page', cfg.page_id, `${cfg.page_id}/subscribed_apps`,
-    j => `${j.data?.length ?? 0} app berlangganan webhook Page ini.`)
+    j => `${j.data?.length ?? 0} app berlangganan webhook Page ini.`, 'Fase 2')
 
   return hasil
 }

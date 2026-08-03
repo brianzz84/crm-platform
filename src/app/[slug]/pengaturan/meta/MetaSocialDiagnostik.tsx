@@ -8,6 +8,7 @@ interface HasilCek {
   status: 'ok' | 'gagal' | 'lewati'
   pesan:  string
   detail?: string
+  fase?:  string
 }
 
 const BADGE: Record<HasilCek['status'], { txt: string; bg: string; fg: string; icon: string }> = {
@@ -16,13 +17,20 @@ const BADGE: Record<HasilCek['status'], { txt: string; bg: string; fg: string; i
   lewati: { txt: 'Dilewati', bg: '#F1F5F9', fg: '#64748B', icon: '–' },
 }
 
+/**
+ * Urutan yang TERBUKTI berhasil (3 Agu 2026). Sengaja tidak menyebut App Review
+ * maupun System User: token Page lahir dari PERAN DI PAGE, bukan dari kepemilikan
+ * Business Portfolio, dan admin app bisa memakai izin sensitif tanpa App Review.
+ */
 const PERSIAPAN = [
-  'Jadikan akun Instagram sebagai Professional / Business account.',
-  'Tautkan Instagram itu ke Facebook Page RKZ (via Meta Business Suite).',
-  'Tambahkan Page & IG ke App Meta, lalu ajukan permission: pages_read_engagement, read_insights, instagram_manage_insights, ads_read.',
-  'Selesaikan Business Verification + App Review (Advanced Access) — bisa makan waktu beberapa hari.',
-  'Buat token Page / System User ber-scope di atas, isikan ke "Token Insights/Ads".',
-  'Beri akses Ad Account (act_…) ke System User untuk Marketing API.',
+  'Instagram harus akun Professional/Business dan tertaut ke Facebook Page RKZ.',
+  'Pastikan Anda punya peran penuh DI PAGE itu — bukan sekadar lewat portofolio bisnis.',
+  'Dasbor App Meta → Kasus penggunaan → tambahkan "Kelola segala sesuatu di Halaman Anda" dan kasus penggunaan Instagram.',
+  'Buka "Sesuaikan kasus penggunaan", lalu klik + Tambahkan pada TIAP izin satu per satu: pages_show_list, pages_read_engagement, read_insights, instagram_basic, instagram_manage_insights. Menambah kasus penggunaannya saja tidak cukup — tanpa langkah ini Facebook mengabaikan izin tersebut tanpa pesan galat.',
+  'Graph API Explorer → Generate Access Token → WAJIB diperpanjang di Access Token Debugger (Extend). Kalau langkah ini dilewat, token mati dalam hitungan jam.',
+  'GET /me/accounts → salin access_token milik entri Page RKZ → isikan ke "Token Insights/Ads". Token Page turunan token panjang tidak kedaluwarsa.',
+  'Fase 2 (inbox DM) nanti: tambahkan pages_manage_metadata.',
+  'Fase 4 (iklan) nanti: tambahkan ads_read, dan pemilik Ad Account harus memberi akses ke app ini.',
 ]
 
 export default function MetaSocialDiagnostik({ slug }: { slug: string }) {
@@ -80,7 +88,14 @@ export default function MetaSocialDiagnostik({ slug }: { slug: string }) {
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: h.detail ? 'pointer' : 'default' }}>
                   <span style={{ width: 22, height: 22, borderRadius: '50%', background: b.bg, color: b.fg, fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{b.icon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text)' }}>{h.label}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text)' }}>{h.label}</span>
+                      {h.fase && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#EFF6FF', color: '#1D4ED8' }}>
+                          baru dipakai {h.fase}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--c-text-muted)', lineHeight: 1.5 }}>{h.pesan}</div>
                   </div>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: b.bg, color: b.fg, flexShrink: 0 }}>{b.txt}</span>
