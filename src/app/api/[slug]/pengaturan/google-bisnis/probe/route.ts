@@ -5,9 +5,10 @@ import { jalankanProbeGoogleBisnis } from '@/lib/google-business-diagnostik'
 
 type Ctx = { params: { slug: string } }
 
-// POST /api/[slug]/pengaturan/google-bisnis/probe — verifikasi akses API Google
-// Business Profile (akun, lokasi, performa, ulasan). Read-only ke resource milik
-// tenant. Guard: configSystem.
+// POST /api/[slug]/pengaturan/google-bisnis/probe — verifikasi akses SELURUH
+// layanan Google yang berbagi satu OAuth: Business Profile (akun, lokasi,
+// performa, ulasan), Google Analytics (properti + data), dan YouTube (channel +
+// analytics). Read-only ke resource milik tenant. Guard: configSystem.
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'configSystem')
   if (error) return error
@@ -26,8 +27,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       client_id:      cfg.client_id,
       client_secret:  cfg.client_secret,
       refresh_token:  cfg.refresh_token,
-      account_id:     cfg.account_id,
-      location_utama: cfg.location_utama,
+      account_id:         cfg.account_id,
+      location_utama:     cfg.location_utama,
+      ga4_property_id:    cfg.ga4_property_id,
+      youtube_channel_id: cfg.youtube_channel_id,
     })
 
     // Catat kapan terakhir diuji — dipakai badge di daftar Pengaturan.

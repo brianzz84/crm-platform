@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
-import { lupakanTokenTenant } from '@/lib/google-business-client'
+import { lupakanTokenTenant } from '@/lib/google-client'
 import { z } from 'zod'
 
 type Ctx = { params: { slug: string } }

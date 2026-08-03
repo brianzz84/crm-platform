@@ -15,10 +15,11 @@
  *  - Dibatasi laju sederhana per tenant agar tidak membebani kuota API.
  */
 import {
-  ambilAccessToken, gbpGet, pesanErrorGbp, namaLokasiV4,
+  ambilAccessToken, googleGet, googlePost, pesanErrorGoogle, namaLokasiV4,
   GBP_AKUN, GBP_INFO, GBP_PERFORMA, GBP_LAMA_V4,
-  type KredensialGbp,
-} from './google-business-client'
+  GA4_ADMIN, GA4_DATA, YT_DATA, YT_ANALYTICS,
+  type KredensialGoogle,
+} from './google-client'
 
 export type StatusCek = 'ok' | 'gagal' | 'lewati'
 
@@ -30,9 +31,11 @@ export interface HasilCek {
   detail?: string
 }
 
-export interface ConfigProbeGbp extends KredensialGbp {
-  account_id?:     string | null
-  location_utama?: string | null
+export interface ConfigProbeGbp extends KredensialGoogle {
+  account_id?:         string | null
+  location_utama?:     string | null
+  ga4_property_id?:    string | null
+  youtube_channel_id?: string | null
 }
 
 // ── Rate limit sederhana per tenant (proses ini): maks 10 probe / 5 menit ──
@@ -50,6 +53,11 @@ const potong = (v: any, n = 240) => JSON.stringify(v ?? {}).slice(0, n)
 function mundurHari(n: number): { year: number; month: number; day: number } {
   const d = new Date(Date.now() - n * 86_400_000)
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() }
+}
+
+/** "YYYY-MM-DD" n hari lalu — format tanggal yang dipakai GA4 & YouTube Analytics. */
+function tanggalMundur(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 }
 
 export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGbp): Promise<HasilCek[]> {
@@ -81,11 +89,11 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
 
   // ── 2. Account Management API ────────────────────────────────────────
   let accountId = cfg.account_id?.trim() || ''
-  const rAkun = await gbpGet(`${GBP_AKUN}/accounts?pageSize=20`, token)
+  const rAkun = await googleGet(`${GBP_AKUN}/accounts?pageSize=20`, token)
   if (!rAkun.ok) {
     hasil.push({
       kunci: 'akun', label: 'Account Management API', status: 'gagal',
-      pesan: pesanErrorGbp(rAkun) + (rAkun.status === 403
+      pesan: pesanErrorGoogle(rAkun) + (rAkun.status === 403
         ? ' — API belum diaktifkan di project Google Cloud, atau project belum disetujui Google.'
         : ''),
       detail: potong(rAkun.json),
@@ -112,13 +120,13 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
   } else {
     // readMask wajib diisi. Sengaja minimal (name,title) supaya cek ini menguji
     // AKSES, bukan ketersediaan field; penggalian field dilakukan di fase berikutnya.
-    const rLok = await gbpGet(
+    const rLok = await googleGet(
       `${GBP_INFO}/${accountId}/locations?readMask=name,title&pageSize=100`, token,
     )
     if (!rLok.ok) {
       hasil.push({
         kunci: 'lokasi', label: 'Business Information API', status: 'gagal',
-        pesan: pesanErrorGbp(rLok) + (rLok.status === 403
+        pesan: pesanErrorGoogle(rLok) + (rLok.status === 403
           ? ' — API belum diaktifkan di Google Cloud Console.'
           : ''),
         detail: potong(rLok.json),
@@ -154,13 +162,13 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
     q.set('dailyRange.endDate.month',   String(selesai.month))
     q.set('dailyRange.endDate.day',     String(selesai.day))
 
-    const rPerf = await gbpGet(
+    const rPerf = await googleGet(
       `${GBP_PERFORMA}/${lokasiPertama}:fetchMultiDailyMetricsTimeSeries?${q.toString()}`, token,
     )
     if (!rPerf.ok) {
       hasil.push({
         kunci: 'performa', label: 'Business Performance API', status: 'gagal',
-        pesan: pesanErrorGbp(rPerf) + (rPerf.status === 403
+        pesan: pesanErrorGoogle(rPerf) + (rPerf.status === 403
           ? ' — API belum diaktifkan di Google Cloud Console.'
           : ''),
         detail: potong(rPerf.json),
@@ -182,7 +190,7 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
       pesan: 'Dilewati — butuh Account ID dan minimal satu lokasi.',
     })
   } else {
-    const rUlas = await gbpGet(
+    const rUlas = await googleGet(
       `${GBP_LAMA_V4}/${namaLokasiV4(accountId, lokasiPertama)}/reviews?pageSize=5`, token,
     )
     if (!rUlas.ok) {
@@ -190,7 +198,7 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
         kunci: 'ulasan', label: 'Ulasan (API v4)', status: 'gagal',
         // Ini cek yang PALING SERING merah lebih dulu: API v4 hanya terbuka untuk
         // project yang sudah lolos peninjauan Google, terpisah dari API v1.
-        pesan: pesanErrorGbp(rUlas) + (rUlas.status === 403 || rUlas.status === 404
+        pesan: pesanErrorGoogle(rUlas) + (rUlas.status === 403 || rUlas.status === 404
           ? ' — API lama (v4) khusus ulasan biasanya baru terbuka setelah project Anda disetujui Google. Ajukan akses lewat formulir Google Business Profile API.'
           : ''),
         detail: potong(rUlas.json),
@@ -201,6 +209,129 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
         kunci: 'ulasan', label: 'Ulasan (API v4)', status: 'ok',
         pesan: `Berhasil membaca ulasan — total ${rUlas.json?.totalReviewCount ?? ulasan.length} ulasan, rata-rata ${rUlas.json?.averageRating ?? '-'}.`,
         detail: ulasan.slice(0, 3).map(u => `${u.starRating ?? '-'} — ${(u.comment ?? '').slice(0, 80)}`).join('\n'),
+      })
+    }
+  }
+
+  // ══ Layanan lain yang berbagi OAuth yang sama ═════════════════════════
+  // Google Analytics & YouTube TIDAK menunggu allowlist Business Profile —
+  // keduanya seharusnya hijau begitu tersambung, meski GBP masih ditinjau.
+  // Memisahkannya di sini supaya jelas mana yang benar-benar terhambat.
+
+  // ── 6. Google Analytics — daftar properti (Admin API) ────────────────
+  let propertyId = cfg.ga4_property_id?.trim() || ''
+  const rGaAdmin = await googleGet(`${GA4_ADMIN}/accountSummaries?pageSize=50`, token)
+  if (!rGaAdmin.ok) {
+    hasil.push({
+      kunci: 'ga4_properti', label: 'Google Analytics — Properti', status: 'gagal',
+      pesan: pesanErrorGoogle(rGaAdmin) + (rGaAdmin.status === 403
+        ? ' — aktifkan "Google Analytics Admin API" di project Google Cloud, lalu sambungkan ulang bila scope analytics.readonly belum disetujui.'
+        : ''),
+      detail: potong(rGaAdmin.json),
+    })
+  } else {
+    const ringkas: any[] = rGaAdmin.json?.accountSummaries ?? []
+    const properti = ringkas.flatMap((a: any) =>
+      (a.propertySummaries ?? []).map((p: any) => ({ id: p.property, nama: p.displayName, akun: a.displayName })),
+    )
+    const cocok = propertyId ? properti.find((p: any) => p.id === propertyId) : null
+    if (!propertyId && properti.length > 0) propertyId = properti[0].id
+    hasil.push({
+      kunci: 'ga4_properti', label: 'Google Analytics — Properti', status: 'ok',
+      pesan: `${properti.length} properti terbaca` +
+        (cfg.ga4_property_id
+          ? (cocok ? ` · "${cfg.ga4_property_id}" cocok.` : ` · PERINGATAN: "${cfg.ga4_property_id}" tidak ada dalam daftar.`)
+          : properti.length ? ` · memakai "${propertyId}" untuk uji data.` : '.'),
+      detail: properti.slice(0, 20).map((p: any) => `${p.id} — ${p.nama} (${p.akun})`).join('\n'),
+    })
+  }
+
+  // ── 7. Google Analytics — tarik data (Data API) ──────────────────────
+  if (!propertyId) {
+    hasil.push({
+      kunci: 'ga4_data', label: 'Google Analytics — Data', status: 'lewati',
+      pesan: 'Dilewati — belum ada properti GA4 yang bisa diuji.',
+    })
+  } else {
+    const rGaData = await googlePost(`${GA4_DATA}/${propertyId}:runReport`, token, {
+      dateRanges: [{ startDate: tanggalMundur(28), endDate: tanggalMundur(1) }],
+      metrics:    [{ name: 'sessions' }, { name: 'activeUsers' }, { name: 'screenPageViews' }],
+    })
+    if (!rGaData.ok) {
+      hasil.push({
+        kunci: 'ga4_data', label: 'Google Analytics — Data', status: 'gagal',
+        pesan: pesanErrorGoogle(rGaData) + (rGaData.status === 403
+          ? ' — aktifkan "Google Analytics Data API" di project Google Cloud.'
+          : ''),
+        detail: potong(rGaData.json),
+      })
+    } else {
+      const baris = rGaData.json?.rows?.[0]?.metricValues ?? []
+      const [sesi, pengguna, tayang] = baris.map((m: any) => m.value ?? '0')
+      hasil.push({
+        kunci: 'ga4_data', label: 'Google Analytics — Data', status: 'ok',
+        pesan: `Data 28 hari terakhir terbaca dari ${propertyId}: ${sesi ?? 0} sesi, ${pengguna ?? 0} pengguna aktif, ${tayang ?? 0} tayangan halaman.`,
+        detail: potong(rGaData.json, 400),
+      })
+    }
+  }
+
+  // ── 8. YouTube — identitas channel (Data API) ────────────────────────
+  const rYtChannel = await googleGet(`${YT_DATA}/channels?part=snippet,statistics&mine=true`, token)
+  if (!rYtChannel.ok) {
+    hasil.push({
+      kunci: 'yt_channel', label: 'YouTube — Channel', status: 'gagal',
+      pesan: pesanErrorGoogle(rYtChannel) + (rYtChannel.status === 403
+        ? ' — aktifkan "YouTube Data API v3" di project Google Cloud.'
+        : ''),
+      detail: potong(rYtChannel.json),
+    })
+  } else {
+    const items: any[] = rYtChannel.json?.items ?? []
+    if (items.length === 0) {
+      // Bukan error teknis: akun tersambung memang tidak memiliki channel.
+      hasil.push({
+        kunci: 'yt_channel', label: 'YouTube — Channel', status: 'gagal',
+        pesan: 'API dapat diakses, tetapi akun yang tersambung tidak memiliki channel YouTube. Pastikan menyambungkan akun pemilik channel RKZ.',
+      })
+    } else {
+      const c = items[0]
+      hasil.push({
+        kunci: 'yt_channel', label: 'YouTube — Channel', status: 'ok',
+        pesan: `"${c.snippet?.title ?? '-'}" (${c.id}) — ${c.statistics?.subscriberCount ?? '?'} subscriber, ` +
+          `${c.statistics?.videoCount ?? '?'} video, ${c.statistics?.viewCount ?? '?'} total tayangan.`,
+        detail: potong(c.snippet, 300),
+      })
+    }
+  }
+
+  // ── 9. YouTube — metrik (Analytics API) ──────────────────────────────
+  {
+    const ch = cfg.youtube_channel_id?.trim()
+    const q  = new URLSearchParams({
+      // "MINE" = channel milik akun yang tersambung; dipakai bila belum diisi manual.
+      ids:       ch ? `channel==${ch}` : 'channel==MINE',
+      startDate: tanggalMundur(28),
+      endDate:   tanggalMundur(2),   // data YouTube tertinggal 1–2 hari
+      metrics:   'views,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
+    })
+    const rYtA = await googleGet(`${YT_ANALYTICS}/reports?${q.toString()}`, token)
+    if (!rYtA.ok) {
+      hasil.push({
+        kunci: 'yt_analytics', label: 'YouTube — Analytics', status: 'gagal',
+        pesan: pesanErrorGoogle(rYtA) + (rYtA.status === 403
+          ? ' — aktifkan "YouTube Analytics API" di project Google Cloud.'
+          : ''),
+        detail: potong(rYtA.json),
+      })
+    } else {
+      const b = rYtA.json?.rows?.[0] ?? []
+      hasil.push({
+        kunci: 'yt_analytics', label: 'YouTube — Analytics', status: 'ok',
+        pesan: b.length
+          ? `28 hari terakhir: ${b[0]} tayangan, ${b[1]} menit ditonton, retensi rata-rata ${b[2]}%, ${b[3]} subscriber baru.`
+          : 'API dapat diakses, tetapi belum ada data pada rentang 28 hari terakhir.',
+        detail: potong(rYtA.json, 400),
       })
     }
   }

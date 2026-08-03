@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
-import { lupakanTokenTenant } from '@/lib/google-business-client'
+import { lupakanTokenTenant } from '@/lib/google-client'
 import {
   alamatAplikasi, ambilEmailPemberiIzin, COOKIE_STATE, tukarKodeDenganToken,
 } from '@/lib/google-oauth'
