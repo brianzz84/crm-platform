@@ -52,24 +52,69 @@ function cekBatasLaju(slug: string) {
 const potong = (v: any, n = 240) => JSON.stringify(v ?? {}).slice(0, n)
 
 /**
- * Kandidat metric Page Insights beserta period yang sah untuknya.
+ * Kandidat metric untuk "penemuan metric".
  *
- * Meta memangkas banyak metric Page Insights (berlaku 2024) dan memangkasnya lagi
- * tiap versi Graph. Menembak SATU metric seperti sebelumnya membuat probe merah
- * dengan galat "(#100) must be a valid insights metric" — yang terbaca seolah izin
- * kurang, padahal izinnya baik-baik saja dan hanya nama metric-nya yang sudah mati.
+ * Meta memangkas metric Insights berkali-kali (gelombang besar 2024, lalu tiap versi
+ * Graph). Menembak SATU nama metric membuat probe merah dengan galat "(#100) must be
+ * a valid insights metric" — yang terbaca seolah izin kurang, padahal izinnya baik
+ * dan hanya nama metric-nya yang sudah mati.
  *
- * Maka: uji beberapa kandidat satu per satu (satu metric tak sah menggagalkan
- * seluruh permintaan bila digabung), lalu laporkan mana yang benar-benar hidup.
- * Hasilnya sekaligus menjadi daftar metric yang boleh dipakai data collector F1.
+ * Maka tiap kandidat diuji SATU PER SATU: kalau digabung dalam satu permintaan, satu
+ * nama tak sah menggagalkan seluruh permintaan sehingga yang sah pun ikut tak
+ * terlihat. Hasilnya = daftar metric yang benar-benar hidup, dan itulah kontrak yang
+ * dipakai data collector F1. Lebih baik memetakannya sekarang lewat probe yang murah
+ * daripada menemukannya satu-satu saat dashboard sudah dibangun di atasnya.
  */
-const KANDIDAT_METRIK_PAGE: { metric: string; period: string }[] = [
-  { metric: 'page_impressions',          period: 'day' },
-  { metric: 'page_impressions_unique',   period: 'day' },
-  { metric: 'page_post_engagements',     period: 'day' },
-  { metric: 'page_daily_follows_unique', period: 'day' },
-  { metric: 'page_fan_adds',             period: 'day' },
-  { metric: 'page_views_total',          period: 'day' },
+interface KandidatMetrik { metric: string; query: string }
+
+const q = (metric: string, extra = 'period=day'): KandidatMetrik =>
+  ({ metric, query: `metric=${metric}&${extra}` })
+
+/** Hasil terverifikasi 3 Agu 2026: hidup = post_engagements, daily_follows_unique, views_total. */
+const KANDIDAT_PAGE: KandidatMetrik[] = [
+  q('page_impressions'), q('page_impressions_unique'), q('page_post_engagements'),
+  q('page_daily_follows_unique'), q('page_fan_adds'), q('page_views_total'),
+  q('page_follows'), q('page_video_views'), q('page_total_actions'),
+  q('page_fans', 'period=lifetime'), q('page_fans_country', 'period=lifetime'),
+]
+
+/**
+ * IG memakai dua gaya: metric lama (`period=day` saja) dan metric generasi baru yang
+ * WAJIB disertai `metric_type=total_value`. Keduanya diuji karena kita belum tahu
+ * mana yang masih dilayani versi Graph ini.
+ */
+const KANDIDAT_IG_AKUN: KandidatMetrik[] = [
+  q('reach'), q('impressions'), q('profile_views'), q('website_clicks'), q('follower_count'),
+  q('accounts_engaged',   'period=day&metric_type=total_value'),
+  q('total_interactions', 'period=day&metric_type=total_value'),
+  q('views',              'period=day&metric_type=total_value'),
+  q('likes',              'period=day&metric_type=total_value'),
+  q('saves',              'period=day&metric_type=total_value'),
+]
+
+/** Metric per-konten IG — fondasi "Content Intelligence", bagian paling bernilai di F1. */
+const KANDIDAT_IG_MEDIA: KandidatMetrik[] = [
+  { metric: 'reach', query: 'metric=reach' },
+  { metric: 'impressions', query: 'metric=impressions' },
+  { metric: 'saved', query: 'metric=saved' },
+  { metric: 'likes', query: 'metric=likes' },
+  { metric: 'comments', query: 'metric=comments' },
+  { metric: 'shares', query: 'metric=shares' },
+  { metric: 'total_interactions', query: 'metric=total_interactions' },
+  { metric: 'views', query: 'metric=views' },
+]
+
+/**
+ * Metric per-postingan Facebook. Penting justru KARENA page_impressions mati:
+ * kalau reach tingkat Page tidak ada lagi, tingkat postingan adalah satu-satunya
+ * jalan tersisa untuk mengukur jangkauan Facebook.
+ */
+const KANDIDAT_FB_POST: KandidatMetrik[] = [
+  { metric: 'post_impressions', query: 'metric=post_impressions' },
+  { metric: 'post_impressions_unique', query: 'metric=post_impressions_unique' },
+  { metric: 'post_engaged_users', query: 'metric=post_engaged_users' },
+  { metric: 'post_clicks', query: 'metric=post_clicks' },
+  { metric: 'post_reactions_by_type_total', query: 'metric=post_reactions_by_type_total' },
 ]
 
 export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promise<HasilCek[]> {
@@ -109,49 +154,83 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     else      hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r), fase })
   }
 
+  /**
+   * Penemuan metric: uji tiap kandidat sendiri-sendiri, laporkan mana yang hidup.
+   * Membedakan dua sebab kegagalan yang tampak sama di mata pengguna — nama metric
+   * yang sudah dihapus Meta (code 100) versus izin/akses yang kurang (selainnya).
+   */
+  async function temukanMetrik(kunci: string, label: string, objId: string | null | undefined, kandidat: KandidatMetrik[], fase?: string) {
+    if (!objId) { hasil.push({ kunci, label, status: 'lewati', pesan: 'ID belum tersedia.', fase }); return }
+
+    const hidup: string[] = [], mati: string[] = []
+    let galatLain = ''
+
+    for (const k of kandidat) {
+      const r = await graphGet(`${objId}/insights?${k.query}`, token)
+      if (r.ok) { hidup.push(k.metric); continue }
+      if (r.json?.error?.code === 100) mati.push(k.metric)
+      else if (!galatLain) galatLain = pesanErrorGraph(r)
+    }
+
+    hasil.push({
+      kunci, label, fase,
+      status: hidup.length ? 'ok' : 'gagal',
+      pesan: hidup.length
+        ? `${hidup.length} dari ${kandidat.length} metric bisa ditarik: ${hidup.join(', ')}.`
+        : galatLain
+          ? `Tidak ada metric yang bisa ditarik — ${galatLain}`
+          : 'Semua kandidat ditolak Graph sebagai nama tak dikenal. Daftar metric kemungkinan berubah lagi di versi Graph ini.',
+      detail: `hidup: ${hidup.join(', ') || '(tidak ada)'}\nditolak (nama tak dikenal): ${mati.join(', ') || '(tidak ada)'}${galatLain ? `\ngalat lain: ${galatLain}` : ''}`,
+    })
+  }
+
   // 2) Facebook Page
   await cek('page', 'Facebook Page', cfg.page_id, `${cfg.page_id}?fields=name,followers_count,fan_count`,
     j => `Page "${j.name}" — ${j.followers_count ?? j.fan_count ?? '?'} follower.`)
 
-  // 3) Facebook Page Insights — uji beberapa kandidat metric, laporkan yang hidup
-  if (!cfg.page_id) {
-    hasil.push({ kunci: 'page_insights', label: 'Facebook Page Insights', status: 'lewati', pesan: 'Page ID belum diisi di form.' })
-  } else {
-    const hidup: string[] = []
-    const mati:  string[] = []
-    let galatIzin = ''
-
-    for (const { metric, period } of KANDIDAT_METRIK_PAGE) {
-      const r = await graphGet(`${cfg.page_id}/insights?metric=${metric}&period=${period}`, token)
-      if (r.ok) { hidup.push(metric); continue }
-      // code 100 = nama metric tidak dikenal versi Graph ini (bukan soal izin).
-      if (r.json?.error?.code === 100) mati.push(metric)
-      else if (!galatIzin) galatIzin = pesanErrorGraph(r)
-    }
-
-    hasil.push({
-      kunci: 'page_insights', label: 'Facebook Page Insights',
-      status: hidup.length ? 'ok' : 'gagal',
-      pesan: hidup.length
-        ? `${hidup.length} dari ${KANDIDAT_METRIK_PAGE.length} metric bisa ditarik: ${hidup.join(', ')}.`
-        : galatIzin
-          ? `Tidak ada metric yang bisa ditarik — ${galatIzin}`
-          : 'Semua kandidat metric ditolak Graph sebagai nama tak dikenal. Daftar metric Page kemungkinan berubah lagi di versi Graph ini.',
-      detail: `hidup: ${hidup.join(', ') || '(tidak ada)'}\nditolak (nama tak dikenal): ${mati.join(', ') || '(tidak ada)'}${galatIzin ? `\ngalat lain: ${galatIzin}` : ''}`,
-    })
-  }
+  await temukanMetrik('page_insights', 'Facebook Page Insights', cfg.page_id, KANDIDAT_PAGE)
 
   // 4) Instagram account
   await cek('ig', 'Instagram Account', cfg.ig_business_id, `${cfg.ig_business_id}?fields=username,followers_count,media_count`,
     j => `IG @${j.username} — ${j.followers_count ?? '?'} follower, ${j.media_count ?? '?'} media.`)
 
   // 5) Instagram account Insights
-  await cek('ig_insights', 'Instagram Insights', cfg.ig_business_id, `${cfg.ig_business_id}/insights?metric=reach&period=day`,
-    j => `Insights IG bisa ditarik (${j.data?.length ?? 0} metric).`)
+  await temukanMetrik('ig_insights', 'Instagram Insights (akun)', cfg.ig_business_id, KANDIDAT_IG_AKUN)
 
-  // 6) Instagram media (daftar konten)
-  await cek('ig_media', 'Instagram Media', cfg.ig_business_id, `${cfg.ig_business_id}/media?fields=id,media_type,timestamp&limit=1`,
-    j => `Daftar media IG bisa ditarik (${j.data?.length ?? 0} contoh).`)
+  // 6) Instagram media — ambil satu contoh, lalu pakai id-nya untuk memetakan
+  //    metric per-konten. Konten terbaru dipakai karena Insights IG hanya tersedia
+  //    untuk konten yang belum terlalu lama.
+  let contohMediaId: string | null = null
+  let contohMediaTipe = ''
+  if (!cfg.ig_business_id) {
+    hasil.push({ kunci: 'ig_media', label: 'Instagram Media', status: 'lewati', pesan: 'IG Business ID belum diisi di form.' })
+  } else {
+    const r = await graphGet(`${cfg.ig_business_id}/media?fields=id,media_type,timestamp&limit=1`, token)
+    if (r.ok) {
+      const m = r.json?.data?.[0]
+      contohMediaId   = m?.id ?? null
+      contohMediaTipe = m?.media_type ?? ''
+      hasil.push({ kunci: 'ig_media', label: 'Instagram Media', status: 'ok', detail: potong(r.json),
+        pesan: `Daftar media IG bisa ditarik (contoh: ${contohMediaTipe || 'konten'}).` })
+    } else {
+      hasil.push({ kunci: 'ig_media', label: 'Instagram Media', status: 'gagal', pesan: pesanErrorGraph(r) })
+    }
+  }
+
+  // 6b) Metric per-konten IG. Metric yang sah berbeda antar tipe konten
+  //     (REELS/VIDEO vs IMAGE), jadi tipe contohnya ikut dilaporkan.
+  await temukanMetrik('ig_media_insights', `Instagram Insights (per konten${contohMediaTipe ? ` — ${contohMediaTipe}` : ''})`,
+    contohMediaId, KANDIDAT_IG_MEDIA)
+
+  // 6c) Metric per-postingan Facebook — satu-satunya sisa jalan mengukur jangkauan
+  //     FB setelah page_impressions dihapus Meta.
+  let contohPostId: string | null = null
+  if (cfg.page_id) {
+    const r = await graphGet(`${cfg.page_id}/posts?fields=id&limit=1`, token)
+    if (r.ok) contohPostId = r.json?.data?.[0]?.id ?? null
+    else hasil.push({ kunci: 'fb_posts', label: 'Facebook Posts', status: 'gagal', pesan: pesanErrorGraph(r) })
+  }
+  await temukanMetrik('fb_post_insights', 'Facebook Insights (per postingan)', contohPostId, KANDIDAT_FB_POST)
 
   // 7) Marketing API (iklan) — butuh ads_read, DAN pemilik Ad Account memberi akses app.
   await cek('ads', 'Marketing API (Iklan)', cfg.ad_account_id, `${cfg.ad_account_id}/insights?date_preset=last_7d&fields=spend,impressions&limit=1`,
