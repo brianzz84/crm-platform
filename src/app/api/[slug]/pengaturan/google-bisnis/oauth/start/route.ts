@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
-import { buatNonce, buatUrlOtorisasi, COOKIE_STATE, STATE_TTL_DETIK } from '@/lib/google-oauth'
+import { alamatAplikasi, buatNonce, buatUrlOtorisasi, COOKIE_STATE, STATE_TTL_DETIK } from '@/lib/google-oauth'
 
 type Ctx = { params: { slug: string } }
 
@@ -14,7 +14,11 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'configSystem')
   if (error) return error
 
-  const halamanPengaturan = new URL(`/${params.slug}/pengaturan/google-bisnis`, req.nextUrl.origin)
+  // Alamat publik, bukan origin permintaan — lihat catatan di alamatAplikasi().
+  const halamanPengaturan = new URL(
+    `/${params.slug}/pengaturan/google-bisnis`,
+    alamatAplikasi(req.nextUrl.origin),
+  )
 
   try {
     const db  = await getTenantDb(params.slug)

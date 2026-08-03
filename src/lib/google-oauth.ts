@@ -44,10 +44,21 @@ export const STATE_TTL_DETIK = 600   // 10 menit — cukup untuk login, cukup pe
  * secara literal, sehingga slug di dalam path berarti tiap tenant baru menuntut
  * pendaftaran URI baru. Identitas tenant dibawa lewat cookie state.
  */
-export function alamatCallback(): string {
+/**
+ * Alamat publik aplikasi. WAJIB dipakai untuk semua pengalihan balik ke UI —
+ * JANGAN memakai `req.nextUrl.origin`. Di balik proxy Railway, origin permintaan
+ * adalah alamat bind internal (`0.0.0.0:3000`), sehingga pengalihan mendarat di
+ * halaman mati meskipun prosesnya sendiri berhasil.
+ */
+export function alamatAplikasi(fallbackOrigin?: string): string {
   const base = process.env.NEXTAUTH_URL?.replace(/\/+$/, '')
-  if (!base) throw new Error('NEXTAUTH_URL belum diset — alamat callback OAuth tidak bisa dipastikan')
-  return `${base}/api/google/oauth/callback`
+  if (base) return base
+  if (fallbackOrigin) return fallbackOrigin
+  throw new Error('NEXTAUTH_URL belum diset — alamat publik aplikasi tidak bisa dipastikan')
+}
+
+export function alamatCallback(): string {
+  return `${alamatAplikasi()}/api/google/oauth/callback`
 }
 
 /** Nilai acak untuk dipasangkan antara parameter `state` dan cookie. */

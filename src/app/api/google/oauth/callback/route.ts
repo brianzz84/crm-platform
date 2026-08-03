@@ -11,11 +11,14 @@ import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { lupakanTokenTenant } from '@/lib/google-business-client'
 import {
-  ambilEmailPemberiIzin, COOKIE_STATE, tukarKodeDenganToken,
+  alamatAplikasi, ambilEmailPemberiIzin, COOKIE_STATE, tukarKodeDenganToken,
 } from '@/lib/google-oauth'
 
 function kembali(origin: string, slug: string | null, pesan?: string) {
-  const url = new URL(slug ? `/${slug}/pengaturan/google-bisnis` : '/', origin)
+  // Alamat publik, BUKAN origin permintaan: di balik proxy Railway origin bernilai
+  // 0.0.0.0:3000 sehingga admin mendarat di halaman mati padahal penyambungannya
+  // sudah berhasil.
+  const url = new URL(slug ? `/${slug}/pengaturan/google-bisnis` : '/', alamatAplikasi(origin))
   if (pesan) {
     url.searchParams.set('oauth', 'gagal')
     url.searchParams.set('pesan', pesan)
