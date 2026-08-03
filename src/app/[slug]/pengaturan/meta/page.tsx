@@ -5,6 +5,7 @@ import { canDo } from '@/constants'
 import { getTenantDb } from '@/lib/tenant'
 import MetaConfigForm from './MetaConfigForm'
 import MetaSocialDiagnostik from './MetaSocialDiagnostik'
+import SnapshotPanel from './SnapshotPanel'
 
 export const metadata: Metadata = { title: 'Integrasi Meta Cloud API' }
 
@@ -100,6 +101,7 @@ export default async function MetaConfigPage({ params }: { params: { slug: strin
       />
 
       <MetaSocialDiagnostik slug={params.slug} />
+      <SnapshotPanel slug={params.slug} />
     </div>
   )
 }

@@ -67,6 +67,33 @@ async function main() {
 
         return result
       }
+      if (job.name === 'medsos-snapshot') {
+        const { jalankanSnapshot } = await import('@/lib/social-snapshot')
+        const { getTenantDb }      = await import('@/lib/tenant')
+
+        const hasil = await jalankanSnapshot(job.data.tenantSlug)
+        const gagal = hasil.filter(h => h.status === 'gagal')
+        const ok    = hasil.filter(h => h.status === 'ok')
+
+        // Status disimpan supaya hari yang terlewat terlihat di Pengaturan.
+        // Sebagian data medsos tidak bisa ditarik ulang belakangan, jadi celah
+        // harus ketahuan hari itu juga — bukan saat menyusun laporan triwulanan.
+        const status = gagal.length === 0 ? 'ok' : ok.length > 0 ? 'sebagian' : 'gagal'
+        const db = await getTenantDb(job.data.tenantSlug)
+        await db.socialSnapshotConfig.update({
+          where: { tenant_slug: job.data.tenantSlug },
+          data:  {
+            last_run_at: new Date(),
+            last_status: status,
+            last_pesan:  hasil.map(h => `${h.kanal}: ${h.pesan}`).join(' | ').slice(0, 500),
+          },
+        })
+
+        job.log(`[MEDSOS_SNAPSHOT] ${status} — ${hasil.map(h => `${h.kanal}=${h.status}`).join(', ')}`)
+        if (gagal.length && ok.length === 0) throw new Error(gagal.map(g => g.pesan).join('; '))
+        return { status, hasil }
+      }
+
       const { processSapaanJob } = await import('./sapaan.worker') as any
       return processSapaanJob(job)
     },

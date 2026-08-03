@@ -18,15 +18,15 @@ datasource db {
 // ─────────────────────────────────────────────
 
 model Tenant {
-  id            String      @id @default(uuid())
-  slug          String      @unique   // tidak bisa diubah setelah dibuat
+  id            String     @id @default(uuid())
+  slug          String     @unique // tidak bisa diubah setelah dibuat
   name          String
-  plan          TenantPlan  @default(TRIAL)
+  plan          TenantPlan @default(TRIAL)
   database_url  String
   custom_domain String?
-  aktif         Boolean     @default(true)
-  created_at    DateTime    @default(now())
-  updated_at    DateTime    @updatedAt
+  aktif         Boolean    @default(true)
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
 
   config TenantConfig?
 
@@ -34,18 +34,18 @@ model Tenant {
 }
 
 model TenantConfig {
-  id                      String   @id @default(uuid())
-  tenant_id               String   @unique
+  id                      String     @id @default(uuid())
+  tenant_id               String     @unique
   simrs_base_url          String?
-  simrs_api_key           String?   // credential awal / static key (legacy)
-  simrs_token             String?   // bearer token aktif dari SIMRS
+  simrs_api_key           String? // credential awal / static key (legacy)
+  simrs_token             String? // bearer token aktif dari SIMRS
   simrs_token_expires_at  DateTime? // kapan token expire
-  simrs_jam_sync          Int       @default(0)  // jam WIB (0-23) untuk cron sync harian
+  simrs_jam_sync          Int        @default(0) // jam WIB (0-23) untuk cron sync harian
   meta_access_token       String?
   ai_enabled              Boolean    @default(false)
   ai_provider             AiProvider @default(CLAUDE)
-  ai_api_key              String?    // kosong = pakai env global (ANTHROPIC_API_KEY) sesuai ai_provider
-  ai_model                String?    // kosong = pakai default model per provider
+  ai_api_key              String? // kosong = pakai env global (ANTHROPIC_API_KEY) sesuai ai_provider
+  ai_model                String? // kosong = pakai default model per provider
   max_broadcast_per_month Int        @default(1000)
   created_at              DateTime   @default(now())
   updated_at              DateTime   @updatedAt
@@ -67,7 +67,7 @@ model IcdLibraryGlobal {
   nama    String
   nama_id String
   bab     String?
-  versi   String  @default("ICD10")  // ICD10 | ICD11
+  versi   String  @default("ICD10") // ICD10 | ICD11
   aktif   Boolean @default(true)
 
   @@index([kode])
@@ -83,7 +83,7 @@ model TenantProfile {
   id          String   @id @default(uuid())
   tenant_slug String   @unique
   nama_klinik String
-  nama_rs     String                   // dipakai di variabel template sapaan/broadcast
+  nama_rs     String // dipakai di variabel template sapaan/broadcast
   logo_url    String?
   alamat      String?
   telp        String?
@@ -96,23 +96,23 @@ model TenantProfile {
 }
 
 model AppUser {
-  id                 String    @id @default(uuid())
-  tenant_slug        String
-  name               String
-  email              String
-  password_hash      String
-  roles              UserRole[]
-  aktif              Boolean   @default(false)  // false sampai user set password via invite link
-  invite_token       String?   @unique
-  invite_expires_at  DateTime?
-  reset_token        String?   @unique
-  reset_expires_at   DateTime?
-  last_login_at      DateTime?
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  id                String     @id @default(uuid())
+  tenant_slug       String
+  name              String
+  email             String
+  password_hash     String
+  roles             UserRole[]
+  aktif             Boolean    @default(false) // false sampai user set password via invite link
+  invite_token      String?    @unique
+  invite_expires_at DateTime?
+  reset_token       String?    @unique
+  reset_expires_at  DateTime?
+  last_login_at     DateTime?
+  created_at        DateTime   @default(now())
+  updated_at        DateTime   @updatedAt
 
-  conversations     Conversation[]    @relation("AssignedUser")
-  sent_messages     Message[]         @relation("SentBy")
+  conversations     Conversation[] @relation("AssignedUser")
+  sent_messages     Message[]      @relation("SentBy")
   created_campaigns Campaign[]
 
   @@unique([tenant_slug, email])
@@ -136,33 +136,33 @@ model PushSubscription {
 
 // Unified person: AKAR customer + SIMRS patient
 model Person {
-  id                 String    @id @default(uuid())
-  tenant_slug        String
+  id                    String       @id @default(uuid())
+  tenant_slug           String
   // SUMBER KEBENARAN TUNGGAL untuk nomor kontak — melekat di Person, bukan tabel
   // terpisah. Semua sumber input (SIMRS sync, import Excel, simpan kontak dari
   // chat) WAJIB menulis ke sini. Alasan keputusan ini didokumentasikan di commit
   // yang menambahkan field ini — singkatnya: tabel terpisah (PersonContact lama)
   // sudah terbukti punya 1.745 baris yatim di production karena tidak konsisten
   // ditulis oleh semua sumber; melekat di Person struktural mencegah itu.
-  no_hp              String?             // nomor utama
-  no_hp_2            String?             // nomor alternatif (mis. milik keluarga/anak)
-  no_hp_2_label      String?             // keterangan no_hp_2, mis. "HP Anak", "HP Istri"
-  name               String
-  email              String?
-  tanggal_lahir      DateTime?
+  no_hp                 String? // nomor utama
+  no_hp_2               String? // nomor alternatif (mis. milik keluarga/anak)
+  no_hp_2_label         String? // keterangan no_hp_2, mis. "HP Anak", "HP Istri"
+  name                  String
+  email                 String?
+  tanggal_lahir         DateTime?
   // KUNCI IDENTITAS dari SIMRS, sekaligus satu-satunya penghubung antara API data
   // pasien dan API data kunjungan. Dijamin unik per tenant (lihat @@unique di bawah).
   // CATATAN PENTING: no_rm unik per BARIS, tapi BUKAN identitas permanen seorang
   // manusia — RKZ selalu menerbitkan RM baru, dan satu orang bisa terlanjur punya
   // beberapa RM (mis. kasir keliru membuat RM baru untuk pasien lama). Penyatuannya
   // ditangani lewat penggabungan manual: lihat digabung_ke_person_id.
-  no_rm              String?
-  simrs_patient_id   String?
-  last_simrs_sync_at DateTime?
+  no_rm                 String?
+  simrs_patient_id      String?
+  last_simrs_sync_at    DateTime?
   // Baris "rintisan": dibuat saat kunjungan SIMRS tiba lebih dulu daripada data
   // pasiennya (dua API, dua jadwal). Isinya baru no_rm; dilengkapi saat data pasien
   // menyusul. Dikecualikan dari pengiriman pesan — lihat src/lib/test-data-guard.ts.
-  is_rintisan        Boolean   @default(false)
+  is_rintisan           Boolean      @default(false)
   // ── Penggabungan orang ganda (baris nisan) ──
   // Baris yang kalah TIDAK dihapus: ia tetap memegang no_rm lamanya dan menunjuk ke
   // baris yang bertahan. Ini penting karena SIMRS tidak memberi tahu kita saat terjadi
@@ -170,44 +170,44 @@ model Person {
   // tetap ketemu barisnya, lalu diarahkan ke penyintas lewat penunjuk ini.
   digabung_ke_person_id String?
   digabung_at           DateTime?
-  digabung_oleh         String?          // AppUser.id petugas yang menggabungkan
+  digabung_oleh         String? // AppUser.id petugas yang menggabungkan
   digabung_alasan       String?
-  akar_id            String?             // ID dari sistem AKAR lama
+  akar_id               String? // ID dari sistem AKAR lama
   // Field identitas tambahan
-  nik                String?             // NIK KTP, kunci identitas utama
-  jenis_kelamin      String?             // "L" | "P"
-  alamat             String?
-  kota               String?             // kota/kabupaten — field terstruktur terpisah dari alamat bebas
-  kecamatan          String?             // kecamatan — field terstruktur terpisah dari alamat bebas
-  pekerjaan          String?
-  agama              String?             // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
+  nik                   String? // NIK KTP, kunci identitas utama
+  jenis_kelamin         String? // "L" | "P"
+  alamat                String?
+  kota                  String? // kota/kabupaten — field terstruktur terpisah dari alamat bebas
+  kecamatan             String? // kecamatan — field terstruktur terpisah dari alamat bebas
+  pekerjaan             String?
+  agama                 String? // "Islam" | "Kristen" | "Katolik" | "Hindu" | "Buddha" | "Konghucu"
   // CATATAN: penjamin (jenis_pembayaran/nama_instansi/kode_instansi) TIDAK di sini —
   // itu milik tiap KUNJUNGAN (SimrsVisit), bukan orang. Satu orang bisa BPJS di satu
   // kunjungan dan asuransi swasta di kunjungan lain. Ambil dari kunjungan saat perlu.
-  no_bpjs            String?             // nomor kartu BPJS — ini memang atribut ORANG, tetap di sini
-  kategori           String?             // "umum" | "pasien" | "keluarga" — legacy, digantikan sumber
-  sumber             PersonSumber        @default(MANUAL) // asal data person
-  is_pasien_simrs    Boolean             @default(false)  // true jika sudah tercatat di SIMRS (punya no_rm)
-  akar_kode          String?             // kode dari Akar (CST20260001, dll)
-  aktif              Boolean   @default(true)
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  no_bpjs               String? // nomor kartu BPJS — ini memang atribut ORANG, tetap di sini
+  kategori              String? // "umum" | "pasien" | "keluarga" — legacy, digantikan sumber
+  sumber                PersonSumber @default(MANUAL) // asal data person
+  is_pasien_simrs       Boolean      @default(false) // true jika sudah tercatat di SIMRS (punya no_rm)
+  akar_kode             String? // kode dari Akar (CST20260001, dll)
+  aktif                 Boolean      @default(true)
+  created_at            DateTime     @default(now())
+  updated_at            DateTime     @updatedAt
 
-  tags                     PersonTag[]
-  visits                   SimrsVisit[]
-  rencana_kontrol          SimrsRencanaKontrol[]
-  conversations            Conversation[]
-  campaign_recipients      CampaignRecipient[]
-  kegiatan_diikuti         KegiatanPeserta[]
-  kontak_langsung          KontakLangsung[]
-  loyalty_transactions     LoyaltyTransaction[]
-  sapaan_logs              SapaanLog[]
+  tags                 PersonTag[]
+  visits               SimrsVisit[]
+  rencana_kontrol      SimrsRencanaKontrol[]
+  conversations        Conversation[]
+  campaign_recipients  CampaignRecipient[]
+  kegiatan_diikuti     KegiatanPeserta[]
+  kontak_langsung      KontakLangsung[]
+  loyalty_transactions LoyaltyTransaction[]
+  sapaan_logs          SapaanLog[]
 
   // Relasi mandiri untuk baris nisan — pakai FK sungguhan supaya penunjuk gabungan
   // tidak bisa menggantung ke baris yang tidak ada (pelajaran dari baris yatim
   // PersonContact: tanpa FK, ketidakkonsistenan menumpuk diam-diam).
-  digabung_ke        Person?  @relation("PenggabunganPerson", fields: [digabung_ke_person_id], references: [id], onDelete: Restrict)
-  digabungkan_dari   Person[] @relation("PenggabunganPerson")
+  digabung_ke      Person?  @relation("PenggabunganPerson", fields: [digabung_ke_person_id], references: [id], onDelete: Restrict)
+  digabungkan_dari Person[] @relation("PenggabunganPerson")
 
   @@unique([tenant_slug, no_rm])
   @@index([tenant_slug])
@@ -232,16 +232,16 @@ model Person {
 /// dsb.) — tanpa itu pembatalan tidak mungkin dilakukan dengan benar, karena sebagian
 /// baris bisa jadi memang sudah milik penyintas sejak awal.
 model PersonMergeLog {
-  id                String    @id @default(uuid())
-  tenant_slug       String
-  person_sumber_id  String    // baris yang dilebur (jadi baris nisan)
-  person_tujuan_id  String    // baris yang bertahan
-  alasan            String
-  dipindahkan       Json      @default("{}")
-  dilakukan_oleh    String    // AppUser.id
-  dilakukan_at      DateTime  @default(now())
-  dibatalkan_at     DateTime?
-  dibatalkan_oleh   String?
+  id               String    @id @default(uuid())
+  tenant_slug      String
+  person_sumber_id String // baris yang dilebur (jadi baris nisan)
+  person_tujuan_id String // baris yang bertahan
+  alasan           String
+  dipindahkan      Json      @default("{}")
+  dilakukan_oleh   String // AppUser.id
+  dilakukan_at     DateTime  @default(now())
+  dibatalkan_at    DateTime?
+  dibatalkan_oleh  String?
 
   @@index([tenant_slug])
   @@index([person_tujuan_id])
@@ -261,7 +261,7 @@ model PersonDuplikatDiabaikan {
   person_a_id String
   person_b_id String
   alasan      String?
-  oleh        String   // AppUser.id
+  oleh        String // AppUser.id
   created_at  DateTime @default(now())
 
   @@unique([tenant_slug, person_a_id, person_b_id], map: "crm_person_duplikat_diabaikan_pasangan_key")
@@ -273,10 +273,10 @@ model Tag {
   id          String   @id @default(uuid())
   tenant_slug String
   name        String
-  kategori    String?  // pengelompokan tampilan: Spesialisasi | Tipe Kontak | Layanan | Ketertarikan | custom
+  kategori    String? // pengelompokan tampilan: Spesialisasi | Tipe Kontak | Layanan | Ketertarikan | custom
   warna       String   @default("#0089A8")
   keterangan  String?
-  aktif       Boolean  @default(true)   // TIDAK PERNAH DELETE — aktif=false saja
+  aktif       Boolean  @default(true) // TIDAK PERNAH DELETE — aktif=false saja
   created_at  DateTime @default(now())
 
   person_tags PersonTag[]
@@ -307,7 +307,7 @@ model PersonTag {
   person_id   String
   tag_id      String
   sumber      TagSource
-  confidence  Float?    // 0-1, hanya untuk auto_ai
+  confidence  Float? // 0-1, hanya untuk auto_ai
   aktif       Boolean   @default(true)
   assigned_at DateTime  @default(now())
 
@@ -320,31 +320,31 @@ model PersonTag {
 }
 
 model SimrsVisit {
-  id               String    @id @default(uuid())
-  person_id        String
-  tanggal          DateTime
-  unit             String    // KELOMPOK unit, mis. "Rawat Jalan" — cocok ke SimrsUnitLibrary.kelompok
-  poli             String?   // UNIT spesifik, mis. "Poli Jantung" — cocok ke SimrsUnitLibrary.nama
-  dokter           String?
-  diagnosa_nama    String?
-  diagnosa_icd     String?   // kode ICD-10 diagnosa utama
+  id                String   @id @default(uuid())
+  person_id         String
+  tanggal           DateTime
+  unit              String // KELOMPOK unit, mis. "Rawat Jalan" — cocok ke SimrsUnitLibrary.kelompok
+  poli              String? // UNIT spesifik, mis. "Poli Jantung" — cocok ke SimrsUnitLibrary.nama
+  dokter            String?
+  diagnosa_nama     String?
+  diagnosa_icd      String? // kode ICD-10 diagnosa utama
   diagnosa_sekunder String[] // kode ICD-10 diagnosa sekunder
-  tindakan         String?   // nama tindakan (untuk penunjang)
-  tindakan_kode    String?   // kode tindakan dari library layanan
+  tindakan          String? // nama tindakan (untuk penunjang)
+  tindakan_kode     String? // kode tindakan dari library layanan
   // CATATAN: jadwal kontrol (rencana kunjungan berikutnya) BUKAN di sini lagi. Di SIMRS
   // ia berasal dari tabel-tabel terpisah (Pondok Sehat & rawat jalan punya tabel
   // sendiri) dan sifatnya BELUM TERJADI + bisa berubah/batal — beda dengan kunjungan
   // yang SUDAH terjadi & immutable. Lihat model SimrsRencanaKontrol.
-  status_kunjungan String?   // SELESAI | BATAL | dll dari SIMRS
-  jenis_pembayaran String?   // "TUNAI" | "NON_TUNAI" — aktual per kunjungan ini
-  nama_instansi    String?   // nama penjamin kunjungan ini
-  kode_instansi    String?   // kode master instansi dari SIMRS
-  simrs_visit_id   String?   // ID asli dari SIMRS (untuk dedup delta sync)
+  status_kunjungan  String? // SELESAI | BATAL | dll dari SIMRS
+  jenis_pembayaran  String? // "TUNAI" | "NON_TUNAI" — aktual per kunjungan ini
+  nama_instansi     String? // nama penjamin kunjungan ini
+  kode_instansi     String? // kode master instansi dari SIMRS
+  simrs_visit_id    String? // ID asli dari SIMRS (untuk dedup delta sync)
   // No. RM MENTAH seperti dikirim SIMRS, disimpan apa adanya di sebelah person_id
   // hasil resolusi. Tanpa ini, kalau resolusi keliru atau orangnya digabung, tidak
   // ada jalan menelusuri balik atau menautkan ulang kunjungan ini.
-  no_rm_sumber     String?
-  aktif            Boolean   @default(true)   // TIDAK PERNAH DELETE
+  no_rm_sumber      String?
+  aktif             Boolean  @default(true) // TIDAK PERNAH DELETE
 
   person Person @relation(fields: [person_id], references: [id])
 
@@ -363,24 +363,24 @@ model SimrsVisit {
 /// ke depan lalu rekonsiliasi" (rencana yang hilang dari feed ditandai batal), bukan
 /// delta append seperti kunjungan.
 model SimrsRencanaKontrol {
-  id                String    @id @default(uuid())
-  tenant_slug       String    // denormalisasi — untuk scan reminder per tenant per tanggal
-  person_id         String
-  no_rm_sumber      String    // RM mentah dari SIMRS, jejak penautan ulang jika digabung
-  rencana_id_sumber String    // ID jadwal asli dari SIMRS — kunci dedup/rekonsiliasi
-  tanggal_rencana   DateTime  // kapan kontrol dijadwalkan
-  sumber            String    // 'pondok_sehat' | 'rawat_jalan' | ... (tabel asal di SIMRS)
-  unit              String?   // kelompok unit
-  poli              String?   // unit spesifik
-  status            String    @default("terjadwal") // 'terjadwal' | 'terpenuhi' | 'batal'
-  jenis_vaksin      String?   // jenis vaksin dari SIMRS — hanya baris sumber='vaksin'
-  keterangan        String?   // catatan dokter (vaksin & bisa juga kontrol)
-  reminder_h7_at    DateTime? // stempel pengingat H-7 (idempotency) — dipakai vaksin
-  reminder_h3_at    DateTime? // kapan pengingat H-3 dikirim (null = belum) — sumber status dashboard & idempotency
-  reminder_h1_at    DateTime? // kapan pengingat H-1 dikirim (null = belum)
-  last_simrs_sync_at DateTime @default(now())
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  tenant_slug        String // denormalisasi — untuk scan reminder per tenant per tanggal
+  person_id          String
+  no_rm_sumber       String // RM mentah dari SIMRS, jejak penautan ulang jika digabung
+  rencana_id_sumber  String // ID jadwal asli dari SIMRS — kunci dedup/rekonsiliasi
+  tanggal_rencana    DateTime // kapan kontrol dijadwalkan
+  sumber             String // 'pondok_sehat' | 'rawat_jalan' | ... (tabel asal di SIMRS)
+  unit               String? // kelompok unit
+  poli               String? // unit spesifik
+  status             String    @default("terjadwal") // 'terjadwal' | 'terpenuhi' | 'batal'
+  jenis_vaksin       String? // jenis vaksin dari SIMRS — hanya baris sumber='vaksin'
+  keterangan         String? // catatan dokter (vaksin & bisa juga kontrol)
+  reminder_h7_at     DateTime? // stempel pengingat H-7 (idempotency) — dipakai vaksin
+  reminder_h3_at     DateTime? // kapan pengingat H-3 dikirim (null = belum) — sumber status dashboard & idempotency
+  reminder_h1_at     DateTime? // kapan pengingat H-1 dikirim (null = belum)
+  last_simrs_sync_at DateTime  @default(now())
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
 
   person Person @relation(fields: [person_id], references: [id])
 
@@ -393,16 +393,16 @@ model SimrsRencanaKontrol {
 
 // Log setiap eksekusi sync SIMRS — untuk tracking catchup dan error
 model SimrsSyncLog {
-  id           String          @id @default(uuid())
-  tenant_slug  String
-  tanggal_data DateTime        // tanggal kunjungan yang di-sync (bukan tanggal sync)
-  status       SimrsSyncStatus
-  jumlah_baru  Int             @default(0) // baris baru yang berhasil diinsert
-  jumlah_update Int            @default(0) // baris yang diupdate
-  error_msg    String?
-  mode         String          @default("cron")  // cron | manual
-  started_at   DateTime        @default(now())
-  finished_at  DateTime?
+  id            String          @id @default(uuid())
+  tenant_slug   String
+  tanggal_data  DateTime // tanggal kunjungan yang di-sync (bukan tanggal sync)
+  status        SimrsSyncStatus
+  jumlah_baru   Int             @default(0) // baris baru yang berhasil diinsert
+  jumlah_update Int             @default(0) // baris yang diupdate
+  error_msg     String?
+  mode          String          @default("cron") // cron | manual
+  started_at    DateTime        @default(now())
+  finished_at   DateTime?
 
   @@index([tenant_slug, tanggal_data])
   @@index([tenant_slug, status])
@@ -419,16 +419,16 @@ model SimrsSyncLog {
 model SimrsDiagnostikLog {
   id             String   @id @default(uuid())
   tenant_slug    String
-  jenis          String   // 'kunjungan' | 'pasien'
-  parameter      Json     // { tanggal: '...' } atau { no_rm: '...' } — bukan data pasien
+  jenis          String // 'kunjungan' | 'pasien'
+  parameter      Json // { tanggal: '...' } atau { no_rm: '...' } — bukan data pasien
   berhasil       Boolean
   http_status    Int?
   durasi_ms      Int
-  jumlah_baris   Int?     // untuk 'kunjungan': berapa baris dikembalikan API
+  jumlah_baris   Int? // untuk 'kunjungan': berapa baris dikembalikan API
   field_hilang   String[] // field WAJIB yang tidak ada di respons
   field_asing    String[] // field di respons yang tidak kita kenali
   pesan_error    String?
-  dilakukan_oleh String   // AppUser.id
+  dilakukan_oleh String // AppUser.id
   created_at     DateTime @default(now())
 
   @@index([tenant_slug, created_at])
@@ -448,7 +448,7 @@ model SimrsDiagnostikLog {
 model SimrsKontrakField {
   id          String   @id @default(uuid())
   tenant_slug String
-  endpoint    String   // 'kunjungan' | 'pasien'
+  endpoint    String // 'kunjungan' | 'pasien'
   field_nama  String
   contoh      String?
   catatan     String?
@@ -465,10 +465,10 @@ model SimrsKontrakField {
 model SimrsKontrakItem {
   id          String   @id @default(uuid())
   tenant_slug String
-  bagian      String   // 'non_fungsional' | 'kesepakatan' | 'pertanyaan_terbuka'
-  judul       String?  // dipakai 'non_fungsional' (nama aspek); kosong untuk bagian lain
+  bagian      String // 'non_fungsional' | 'kesepakatan' | 'pertanyaan_terbuka'
+  judul       String? // dipakai 'non_fungsional' (nama aspek); kosong untuk bagian lain
   isi         String
-  status      String?  // 'non_fungsional': teks bebas; 'pertanyaan_terbuka': 'terbuka' | 'terjawab'
+  status      String? // 'non_fungsional': teks bebas; 'pertanyaan_terbuka': 'terbuka' | 'terjawab'
   urutan      Int      @default(0)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
@@ -494,8 +494,8 @@ model SimrsLayananLibrary {
   kode_barang  String  @unique
   nama         String
   nama_generik String? // nama medis umum hasil AI enrichment, bisa diedit admin
-  kelompok     String  // Rawat Inap, Rawat Jalan, Penunjang, Pondok Sehat, Home Care, One Day Care
-  jenis        String  // sub-unit: Laboratorium, Radiologi, Gigi, Anak, dll
+  kelompok     String // Rawat Inap, Rawat Jalan, Penunjang, Pondok Sehat, Home Care, One Day Care
+  jenis        String // sub-unit: Laboratorium, Radiologi, Gigi, Anak, dll
   aktif        Boolean @default(true)
 
   @@index([nama])
@@ -521,11 +521,11 @@ model SimrsLayananLibrary {
 model SimrsUnitLibrary {
   id          String   @id @default(uuid())
   tenant_slug String
-  nama        String   // unit spesifik: "Poli Jantung", "Laboratorium", "Pondok Sehat"
-  kelompok    String   // grup: "Rawat Jalan", "Penunjang", "Pondok Sehat" — teks bebas, beda tiap RS
-  warna       String   @default("#0089A8")  // warna badge di UI
-  urutan      Int      @default(0)          // urutan tampil dalam kelompok
-  aktif       Boolean  @default(true)       // TIDAK PERNAH DELETE — nonaktifkan saja
+  nama        String // unit spesifik: "Poli Jantung", "Laboratorium", "Pondok Sehat"
+  kelompok    String // grup: "Rawat Jalan", "Penunjang", "Pondok Sehat" — teks bebas, beda tiap RS
+  warna       String   @default("#0089A8") // warna badge di UI
+  urutan      Int      @default(0) // urutan tampil dalam kelompok
+  aktif       Boolean  @default(true) // TIDAK PERNAH DELETE — nonaktifkan saja
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
@@ -541,7 +541,7 @@ model IcdLibrary {
   nama    String
   nama_id String
   bab     String?
-  versi   String  @default("ICD10")  // ICD10 | ICD11
+  versi   String  @default("ICD10") // ICD10 | ICD11
   aktif   Boolean @default(true)
 
   @@index([kode])
@@ -550,20 +550,20 @@ model IcdLibrary {
 }
 
 model Segment {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   tenant_slug     String
   nama            String
   deskripsi       String?
-  tipe            String   @default("AI") // AI | FILTER | TAG | MANUAL
-  nlp_query       String?  // query natural language dari admin (hanya tipe AI)
-  simrs_params    Json?    // parameter hasil AI (kompat lama)
-  filter_def      Json?    // definisi filter tersimpan → untuk refresh segmen dinamis
+  tipe            String    @default("AI") // AI | FILTER | TAG | MANUAL
+  nlp_query       String? // query natural language dari admin (hanya tipe AI)
+  simrs_params    Json? // parameter hasil AI (kompat lama)
+  filter_def      Json? // definisi filter tersimpan → untuk refresh segmen dinamis
   last_refresh_at DateTime?
   created_by      String
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
-  campaigns      Campaign[]
+  campaigns       Campaign[]
   segment_persons SegmentPerson[]
 
   @@index([tenant_slug])
@@ -583,27 +583,27 @@ model SegmentPerson {
 
 // Konfigurasi Wappin per-tenant (disimpan di tenant DB)
 model WappinConfig {
-  id               String   @id @default(uuid())
-  tenant_slug      String   @unique
-  api_version      String   @default("v2")    // "v1" | "v2"
+  id             String    @id @default(uuid())
+  tenant_slug    String    @unique
+  api_version    String    @default("v2") // "v1" | "v2"
   // V1 credentials
-  client_id        String?
-  project_id       String?
-  secret_key       String?
+  client_id      String?
+  project_id     String?
+  secret_key     String?
   // V2 credentials
-  username         String?
-  password         String?
-  base_url         String   @default("https://api.chat.wappin.app")
-  login_url        String   @default("/auth/login")
-  messages_url     String   @default("/v1/messages")
-  namespace        String?
+  username       String?
+  password       String?
+  base_url       String    @default("https://api.chat.wappin.app")
+  login_url      String    @default("/auth/login")
+  messages_url   String    @default("/v1/messages")
+  namespace      String?
   // Webhook security
-  webhook_secret   String   @default(uuid())  // random secret untuk URL webhook
+  webhook_secret String    @default(uuid()) // random secret untuk URL webhook
   // Meta
-  aktif            Boolean  @default(true)
-  tested_at        DateTime?                  // last successful connection test
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  aktif          Boolean   @default(true)
+  tested_at      DateTime? // last successful connection test
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
 
   @@map("crm_wappin_configs")
 }
@@ -611,12 +611,10 @@ model WappinConfig {
 // Konfigurasi Meta Cloud API per-tenant (disimpan di tenant DB)
 /**
  * Google Business Profile — kredensial per tenant.
- *
  * Autentikasinya OAuth 2.0 milik AKUN PENGELOLA listing (bukan service account:
  * Google Business Profile tidak mendukungnya di luar Workspace domain-wide
  * delegation). Karena itu yang disimpan adalah refresh token hasil consent, lalu
  * ditukar jadi access token berumur pendek saat dipakai.
- *
  * client_secret & refresh_token bersifat RAHASIA — tidak pernah dikirim ke klien.
  */
 /**
@@ -626,50 +624,50 @@ model WappinConfig {
  * Memecahnya per layanan berarti meminta user login tiga kali tanpa manfaat.
  */
 model GoogleConfig {
-  id             String    @id @default(uuid())
-  tenant_slug    String    @unique
-  client_id      String                        // OAuth Client ID dari project Google Cloud
-  client_secret  String                        // RAHASIA
+  id              String    @id @default(uuid())
+  tenant_slug     String    @unique
+  client_id       String // OAuth Client ID dari project Google Cloud
+  client_secret   String // RAHASIA
   // RAHASIA. Diisi OTOMATIS oleh alur "Hubungkan dengan Google" — bukan diketik
   // admin. Kosong = belum pernah tersambung.
-  refresh_token  String    @default("")
-  scopes         String[]  @default([])        // scope yang benar-benar disetujui pada consent terakhir
-  connected_at   DateTime?                     // kapan terakhir berhasil tersambung
-  connected_email String?                      // akun Google pemberi izin — ditampilkan agar salah akun cepat ketahuan
+  refresh_token   String    @default("")
+  scopes          String[]  @default([]) // scope yang benar-benar disetujui pada consent terakhir
+  connected_at    DateTime? // kapan terakhir berhasil tersambung
+  connected_email String? // akun Google pemberi izin — ditampilkan agar salah akun cepat ketahuan
 
   // ── Google Business Profile ──
-  account_id     String?                       // "accounts/123..." dari Account Management API
-  location_utama String?                       // "locations/456..." — lokasi default untuk dashboard
+  account_id     String? // "accounts/123..." dari Account Management API
+  location_utama String? // "locations/456..." — lokasi default untuk dashboard
 
   // ── Google Analytics 4 ──
-  ga4_property_id String?                      // "properties/123456789" — properti website utama
+  ga4_property_id String? // "properties/123456789" — properti website utama
 
   // ── YouTube ──
-  youtube_channel_id String?                   // "UC..." — channel yang dipantau
+  youtube_channel_id String? // "UC..." — channel yang dipantau
 
-  aktif          Boolean   @default(true)
-  tested_at      DateTime?
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
+  aktif      Boolean   @default(true)
+  tested_at  DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
 
   @@map("crm_google_configs")
 }
 
 model MetaConfig {
-  id               String   @id @default(uuid())
-  tenant_slug      String   @unique
-  phone_number_id  String                         // Meta Phone Number ID
-  access_token     String                         // System User permanent token
-  waba_id          String?                        // WhatsApp Business Account ID
-  app_id           String?                        // Meta App ID — untuk resumable upload media header template
-  page_id          String?                        // Facebook Page ID — analitik & DM Page
-  ig_business_id   String?                        // Instagram Business Account ID — analitik & DM IG
-  ad_account_id    String?                        // Ad Account (act_...) — Marketing API
-  insights_token   String?                        // Token terpisah ber-scope Insights/Ads (Page/System User)
-  aktif            Boolean  @default(true)
-  tested_at        DateTime?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  id              String    @id @default(uuid())
+  tenant_slug     String    @unique
+  phone_number_id String // Meta Phone Number ID
+  access_token    String // System User permanent token
+  waba_id         String? // WhatsApp Business Account ID
+  app_id          String? // Meta App ID — untuk resumable upload media header template
+  page_id         String? // Facebook Page ID — analitik & DM Page
+  ig_business_id  String? // Instagram Business Account ID — analitik & DM IG
+  ad_account_id   String? // Ad Account (act_...) — Marketing API
+  insights_token  String? // Token terpisah ber-scope Insights/Ads (Page/System User)
+  aktif           Boolean   @default(true)
+  tested_at       DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
   @@map("crm_meta_configs")
 }
@@ -677,9 +675,9 @@ model MetaConfig {
 model EflyerConfig {
   id          String   @id @default(uuid())
   tenant_slug String   @unique
-  aktif       Boolean  @default(false)   // toggle per tenant oleh Admin IT
-  api_url     String?                    // URL proxy PHP di Hostgator
-  api_key     String?                    // secret key untuk autentikasi proxy
+  aktif       Boolean  @default(false) // toggle per tenant oleh Admin IT
+  api_url     String? // URL proxy PHP di Hostgator
+  api_key     String? // secret key untuk autentikasi proxy
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
@@ -690,15 +688,15 @@ model EflyerConfig {
 model BroadcastTemplate {
   id                 String   @id @default(uuid())
   tenant_slug        String
-  nama               String                   // nama lokal (untuk UI)
-  template_name      String                   // nama di Wappin (untuk API call)
+  nama               String // nama lokal (untuk UI)
+  template_name      String // nama di Wappin (untuk API call)
   template_namespace String?
   template_language  String   @default("id")
-  components_schema  Json     @default("[]")  // array ComponentRequest V2
-  preview_text       String?                  // preview isi pesan (untuk UI)
-  meta_template_id   String?                  // ID template di Meta
-  meta_status        String?                  // PENDING | APPROVED | REJECTED | PAUSED
-  meta_category      String?                  // MARKETING | UTILITY | AUTHENTICATION
+  components_schema  Json     @default("[]") // array ComponentRequest V2
+  preview_text       String? // preview isi pesan (untuk UI)
+  meta_template_id   String? // ID template di Meta
+  meta_status        String? // PENDING | APPROVED | REJECTED | PAUSED
+  meta_category      String? // MARKETING | UTILITY | AUTHENTICATION
   aktif              Boolean  @default(true)
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt
@@ -711,38 +709,38 @@ model BroadcastTemplate {
 }
 
 model Campaign {
-  id              String         @id @default(uuid())
-  tenant_slug     String
-  nama            String
-  status          CampaignStatus @default(DRAFT)
-  channel         Channel        @default(WA)
-  template_id     String?
+  id                   String         @id @default(uuid())
+  tenant_slug          String
+  nama                 String
+  status               CampaignStatus @default(DRAFT)
+  channel              Channel        @default(WA)
+  template_id          String?
   // Params untuk template: { "1": "nama", "2": "tanggal" } (V1) atau diganti dari components
-  template_params Json           @default("{}")
-  segment_id      String?
-  kirim_dua_nomor Boolean        @default(false) // kirim ke no_hp DAN no_hp_2 (kalau ada), bukan cuma no_hp
+  template_params      Json           @default("{}")
+  segment_id           String?
+  kirim_dua_nomor      Boolean        @default(false) // kirim ke no_hp DAN no_hp_2 (kalau ada), bukan cuma no_hp
   // Kode layanan (SimrsLayananLibrary.kode_barang) yang DIPROMOSIKAN campaign ini.
   // Dipakai evaluasi untuk membedakan konversi LANGSUNG (kunjungan pakai kode ini)
   // dari konversi ke PRODUK LAIN (kunjungan lain di luar kode ini). Tanpa field ini
   // sistem tidak tahu apa yang sebenarnya dijual, jadi kedua jenis konversi tidak
   // bisa dibedakan.
-  kode_layanan_promo String[]     @default([])
-  jenis_konversi     KonversiJenis @default(KUNJUNGAN) // apa yang dihitung sebagai konversi
-  konversi_kegiatan_id String?     // kalau jenis_konversi=KEGIATAN: id event target (mendaftar = konversi)
-  jadwal_kirim    DateTime?
-  started_at      DateTime?
-  finished_at     DateTime?
+  kode_layanan_promo   String[]       @default([])
+  jenis_konversi       KonversiJenis  @default(KUNJUNGAN) // apa yang dihitung sebagai konversi
+  konversi_kegiatan_id String? // kalau jenis_konversi=KEGIATAN: id event target (mendaftar = konversi)
+  jadwal_kirim         DateTime?
+  started_at           DateTime?
+  finished_at          DateTime?
   // Counter (di-update secara incremental saat webhook masuk)
-  total_penerima  Int            @default(0)
-  total_terkirim  Int            @default(0)
-  total_diterima  Int            @default(0)
-  total_dibaca    Int            @default(0)
-  total_dibalas   Int            @default(0)
-  total_gagal     Int            @default(0)
-  error_summary   Json?                       // ringkasan error code dari Wappin
-  created_by      String
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @updatedAt
+  total_penerima       Int            @default(0)
+  total_terkirim       Int            @default(0)
+  total_diterima       Int            @default(0)
+  total_dibaca         Int            @default(0)
+  total_dibalas        Int            @default(0)
+  total_gagal          Int            @default(0)
+  error_summary        Json? // ringkasan error code dari Wappin
+  created_by           String
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
 
   segment    Segment?            @relation(fields: [segment_id], references: [id])
   template   BroadcastTemplate?  @relation(fields: [template_id], references: [id])
@@ -759,12 +757,12 @@ model CampaignRecipient {
   id                String        @id @default(uuid())
   campaign_id       String
   person_id         String
-  no_hp             String        // snapshot saat campaign dibuat (immutable)
+  no_hp             String // snapshot saat campaign dibuat (immutable)
   nomor_ke          String        @default("utama") // "utama" | "alternatif" — nomor mana yang dipakai
-  nama              String        // snapshot nama pasien
+  nama              String // snapshot nama pasien
   status            MessageStatus @default(PENDING)
-  wappin_message_id String?       @unique   // dari response Wappin → kunci korelasi webhook
-  error_code        String?       // kode error dari Wappin (601 = no WA, dll)
+  wappin_message_id String?       @unique // dari response Wappin → kunci korelasi webhook
+  error_code        String? // kode error dari Wappin (601 = no WA, dll)
   error_detail      String?
   sent_at           DateTime?
   delivered_at      DateTime?
@@ -774,7 +772,7 @@ model CampaignRecipient {
   // ulang sentimen" (bukan tiap halaman dibuka), supaya angkanya stabil dan tidak
   // memanggil AI berulang. sentimen_alasan berisi 1 kalimat alasan supaya admin
   // bisa menilai wajar-tidaknya klasifikasi, bukan percaya buta ke AI.
-  sentimen          String?   // 'tertarik' | 'tanya' | 'menolak' | 'komplain' | 'salah_sasaran' | 'lainnya'
+  sentimen          String? // 'tertarik' | 'tanya' | 'menolak' | 'komplain' | 'salah_sasaran' | 'lainnya'
   sentimen_alasan   String?
   sentimen_at       DateTime?
 
@@ -796,7 +794,7 @@ model Conversation {
   tenant_slug     String
   person_id       String?
   channel         Channel
-  channel_user_id String             // WA number / IG user ID / FB user ID
+  channel_user_id String // WA number / IG user ID / FB user ID
   status          ConversationStatus @default(OPEN)
   assigned_to     String?
   last_message_at DateTime           @default(now())
@@ -841,17 +839,17 @@ model Message {
 }
 
 model SapaanConfig {
-  id          String      @id @default(uuid())
-  tenant_slug String
-  jenis       SapaanJenis
-  aktif       Boolean     @default(false)
-  template         String?  // legacy teks bebas — masih dipakai HARI_RAYA/KONTROL_REMINDER
-  template_id      String?  // FK BroadcastTemplate — dipakai ULTAH (wajib template approved Meta)
-  template_params  Json?    // nilai variabel statis template (mirip Campaign.template_params)
-  filter_groups    Json?    // grup filter AND/OR audiens ULTAH — null/[] = semua yang berulang tahun
-  jam_kirim   Int         @default(7)
-  created_at  DateTime    @default(now())
-  updated_at  DateTime    @updatedAt
+  id              String      @id @default(uuid())
+  tenant_slug     String
+  jenis           SapaanJenis
+  aktif           Boolean     @default(false)
+  template        String? // legacy teks bebas — masih dipakai HARI_RAYA/KONTROL_REMINDER
+  template_id     String? // FK BroadcastTemplate — dipakai ULTAH (wajib template approved Meta)
+  template_params Json? // nilai variabel statis template (mirip Campaign.template_params)
+  filter_groups   Json? // grup filter AND/OR audiens ULTAH — null/[] = semua yang berulang tahun
+  jam_kirim       Int         @default(7)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
 
   @@unique([tenant_slug, jenis])
   @@map("crm_sapaan_configs")
@@ -908,7 +906,7 @@ model Kegiatan {
   tenant_slug     String
   kode            String
   nama            String
-  jenis           String    // Seminar | Pelatihan | Bakti Sosial | dll
+  jenis           String // Seminar | Pelatihan | Bakti Sosial | dll
   tanggal_mulai   DateTime
   tanggal_selesai DateTime?
   lokasi          String?
@@ -956,7 +954,7 @@ model KontakLangsung {
   id          String   @id @default(uuid())
   tenant_slug String
   person_id   String
-  sub_tipe    String   // telepon | walk_in | referral | medsos | lainnya
+  sub_tipe    String // telepon | walk_in | referral | medsos | lainnya
   tanggal     DateTime
   catatan     String?
   operator_id String?
@@ -977,7 +975,7 @@ model KontakLangsung {
 model LoyaltyRule {
   id          String   @id @default(uuid())
   tenant_slug String
-  jenis       String   // KUNJUNGAN_RAWAT_JALAN | KUNJUNGAN_RAWAT_INAP | KUNJUNGAN_PENUNJANG | KEGIATAN | MANUAL
+  jenis       String // KUNJUNGAN_RAWAT_JALAN | KUNJUNGAN_RAWAT_INAP | KUNJUNGAN_PENUNJANG | KEGIATAN | MANUAL
   poin        Int      @default(0)
   aktif       Boolean  @default(true)
   keterangan  String?
@@ -991,9 +989,9 @@ model LoyaltyTransaction {
   id          String   @id @default(uuid())
   tenant_slug String
   person_id   String
-  jenis       String   // KUNJUNGAN_RAWAT_JALAN | KUNJUNGAN_RAWAT_INAP | KUNJUNGAN_PENUNJANG | KEGIATAN | MANUAL | REDEEM
-  poin        Int      // bisa negatif untuk redeem
-  ref_id      String?  // id kegiatan atau id simrs_visit
+  jenis       String // KUNJUNGAN_RAWAT_JALAN | KUNJUNGAN_RAWAT_INAP | KUNJUNGAN_PENUNJANG | KEGIATAN | MANUAL | REDEEM
+  poin        Int // bisa negatif untuk redeem
+  ref_id      String? // id kegiatan atau id simrs_visit
   keterangan  String?
   created_at  DateTime @default(now())
 
@@ -1011,24 +1009,24 @@ model LoyaltyTransaction {
 // ─────────────────────────────────────────────
 
 model TagRule {
-  id               String   @id @default(uuid())
-  tenant_slug      String
-  tag_id           String
-  aktif            Boolean  @default(true)
+  id              String   @id @default(uuid())
+  tenant_slug     String
+  tag_id          String
+  aktif           Boolean  @default(true)
   // Trigger: kondisi yang memicu tag ini
-  icd_codes        String[] // kode ICD-10 yang menjadi trigger (e.g. ["E10","E11"])
-  icd_exclude      String[] // kode ICD yang dikecualikan
-  keyword_include  String[] // kata kunci dalam diagnosa/tindakan
-  keyword_exclude  String[] // kata kunci yang dikecualikan
+  icd_codes       String[] // kode ICD-10 yang menjadi trigger (e.g. ["E10","E11"])
+  icd_exclude     String[] // kode ICD yang dikecualikan
+  keyword_include String[] // kata kunci dalam diagnosa/tindakan
+  keyword_exclude String[] // kata kunci yang dikecualikan
   // Panduan natural language untuk Haiku
-  instruksi_ai     String   // instruksi eksplisit untuk AI
-  contoh_positif   String[] // contoh diagnosa yang HARUS dapat tag ini
-  contoh_negatif   String[] // contoh diagnosa yang TIDAK boleh dapat tag ini
+  instruksi_ai    String // instruksi eksplisit untuk AI
+  contoh_positif  String[] // contoh diagnosa yang HARUS dapat tag ini
+  contoh_negatif  String[] // contoh diagnosa yang TIDAK boleh dapat tag ini
   // Meta
-  confidence_min   Float    @default(0.80) // threshold minimum untuk auto-apply
-  created_by       String
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  confidence_min  Float    @default(0.80) // threshold minimum untuk auto-apply
+  created_by      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   tag Tag @relation(fields: [tag_id], references: [id])
 
@@ -1046,9 +1044,9 @@ model TagRule {
 // ─────────────────────────────────────────────
 
 enum AiRuleKategori {
-  PERILAKU  // cara AI merespons (mis. wajib tanya balik saat ambigu)
-  PERSONA   // gaya bahasa, fokus marketing RS ini
-  BATASAN   // ruang lingkup topik yang boleh/tidak boleh dibahas
+  PERILAKU // cara AI merespons (mis. wajib tanya balik saat ambigu)
+  PERSONA // gaya bahasa, fokus marketing RS ini
+  BATASAN // ruang lingkup topik yang boleh/tidak boleh dibahas
 }
 
 model AiPartnerRule {
@@ -1089,7 +1087,7 @@ model AiPartnerMessage {
   session_id String
   role       AiMessageRole
   content    String
-  tool_calls Json?         // jejak pemanggilan tool (cari_kode_icd, dll) — transparansi & audit
+  tool_calls Json? // jejak pemanggilan tool (cari_kode_icd, dll) — transparansi & audit
   created_at DateTime      @default(now())
 
   session AiPartnerSession @relation(fields: [session_id], references: [id])
@@ -1104,23 +1102,23 @@ model AiPartnerMessage {
 // ─────────────────────────────────────────────
 
 model ImportLog {
-  id               String       @id @default(uuid())
-  tenant_slug      String
-  sumber           ImportSumber @default(EXCEL)
-  status           ImportStatus @default(PENDING)
-  filename         String?
-  total_rows       Int          @default(0)
-  processed_rows   Int          @default(0)
-  new_persons      Int          @default(0)   // pasien baru yang dibuat
-  updated_persons  Int          @default(0)   // pasien existing yang diupdate
-  new_visits       Int          @default(0)   // kunjungan baru
-  new_rencana      Int          @default(0)   // rencana kontrol/vaksin baru (sheet "Rencana Kontrol")
-  updated_rencana  Int          @default(0)   // rencana yang sudah ada lalu diperbarui
-  skipped_rows     Int          @default(0)   // baris yang dilewati (duplikat/error)
-  error_detail     Json?        // array error per baris
-  started_at       DateTime     @default(now())
-  finished_at      DateTime?
-  created_by       String
+  id              String       @id @default(uuid())
+  tenant_slug     String
+  sumber          ImportSumber @default(EXCEL)
+  status          ImportStatus @default(PENDING)
+  filename        String?
+  total_rows      Int          @default(0)
+  processed_rows  Int          @default(0)
+  new_persons     Int          @default(0) // pasien baru yang dibuat
+  updated_persons Int          @default(0) // pasien existing yang diupdate
+  new_visits      Int          @default(0) // kunjungan baru
+  new_rencana     Int          @default(0) // rencana kontrol/vaksin baru (sheet "Rencana Kontrol")
+  updated_rencana Int          @default(0) // rencana yang sudah ada lalu diperbarui
+  skipped_rows    Int          @default(0) // baris yang dilewati (duplikat/error)
+  error_detail    Json? // array error per baris
+  started_at      DateTime     @default(now())
+  finished_at     DateTime?
+  created_by      String
 
   @@index([tenant_slug])
   @@index([status])
@@ -1170,8 +1168,8 @@ enum CampaignStatus {
 }
 
 enum KonversiJenis {
-  KUNJUNGAN   // konversi = kunjungan SIMRS setelah broadcast
-  KEGIATAN    // konversi = mendaftar/hadir di event target setelah broadcast
+  KUNJUNGAN // konversi = kunjungan SIMRS setelah broadcast
+  KEGIATAN // konversi = mendaftar/hadir di event target setelah broadcast
 }
 
 enum MessageStatus {
@@ -1209,7 +1207,7 @@ enum SapaanJenis {
 
 enum ImportSumber {
   EXCEL
-  SIMRS_API   // placeholder untuk integrasi API SIMRS di masa depan
+  SIMRS_API // placeholder untuk integrasi API SIMRS di masa depan
 }
 
 enum ImportStatus {
@@ -1220,16 +1218,140 @@ enum ImportStatus {
 }
 
 enum PersonSumber {
-  SIMRS      // masuk via sync API SIMRS, punya no_rm
-  KEGIATAN   // masuk via QR check-in atau input peserta kegiatan
-  IMPORT     // masuk via import Excel manual
-  MANUAL     // diinput langsung oleh admin CRM
+  SIMRS // masuk via sync API SIMRS, punya no_rm
+  KEGIATAN // masuk via QR check-in atau input peserta kegiatan
+  IMPORT // masuk via import Excel manual
+  MANUAL // diinput langsung oleh admin CRM
   REGISTRASI // mendaftar sendiri via form publik
 }
 
 enum SimrsSyncStatus {
-  RUNNING   // sedang berjalan
-  DONE      // selesai sukses
-  FAILED    // gagal total
-  PARTIAL   // sebagian berhasil (misal timeout di halaman tertentu)
+  RUNNING // sedang berjalan
+  DONE // selesai sukses
+  FAILED // gagal total
+  PARTIAL // sebagian berhasil (misal timeout di halaman tertentu)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Snapshot Kanal Publik
+//
+// Dashboard Kanal Publik membaca LANGSUNG dari API tiap halaman dibuka, dan untuk
+// tampilan harian itu tetap cara yang benar. Tabel di bawah ada untuk kebutuhan
+// yang berbeda: LAPORAN TRIWULANAN.
+//
+// Dua alasan yang membuatnya wajib, dan keduanya terbukti — bukan dugaan:
+//  1. API akan lupa. Deret harian Instagram (reach, follower_count) pulang KOSONG
+//     untuk periode 30–60 hari lalu. Perbandingan antar triwulan mustahil ditarik
+//     belakangan karena datanya sudah hilang dari sumbernya.
+//  2. Tidak bisa "diumurkan ulang". Insight konten IG/FB selalu berupa total
+//     sepanjang masa, jadi "bagaimana performanya di 7 hari pertama" hanya bisa
+//     diketahui kalau diukur tepat pada hari ke-7.
+//
+// YouTube sengaja TIDAK disimpan di tingkat konten: YouTube Analytics bisa ditanya
+// per rentang tanggal untuk satu video, jadi umur berapa pun bisa dihitung ulang
+// kapan saja. Menyalinnya hanya menduplikasi tanpa menambah kemampuan.
+//
+// Konsekuensi yang harus diterima: snapshot hanya merekam sejak hari ia dinyalakan.
+// Periode sebelum itu tidak akan pernah bisa direkonstruksi.
+// ─────────────────────────────────────────────────────────────
+
+enum KanalSosial {
+  IG
+  FB
+  YOUTUBE
+  GA4
+}
+
+model SocialSnapshotConfig {
+  id           String    @id @default(uuid())
+  tenant_slug  String    @unique
+  // Default mati. Menarik data Meta/Google untuk tenant yang tidak memakainya
+  // hanya menghabiskan kuota API mereka.
+  aktif        Boolean   @default(false)
+  jam_snapshot Int       @default(2) // jam WIB — dini hari, saat angka kemarin sudah mengendap
+  last_run_at  DateTime?
+  last_status  String? // 'ok' | 'sebagian' | 'gagal'
+  last_pesan   String?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@map("crm_social_snapshot_configs")
+}
+
+model SocialAccountDaily {
+  id               String      @id @default(uuid())
+  tenant_slug      String
+  kanal            KanalSosial
+  tanggal          DateTime    @db.Date
+  jangkauan        Int         @default(0)
+  tayangan         Int         @default(0)
+  interaksi        Int         @default(0)
+  suka             Int         @default(0)
+  disimpan         Int         @default(0)
+  follower_baru    Int         @default(0)
+  follower_total   Int         @default(0) // nilai saat diambil — bukan nilai historis
+  kunjungan_profil Int         @default(0)
+  diambil_pada     DateTime    @default(now())
+
+  // TIDAK BOLEH memuat kolom nullable: Postgres menganggap tiap NULL berbeda,
+  // sehingga unique constraint yang mengandungnya diam-diam berhenti mencegah
+  // duplikat — pelajaran mahal dari impor Excel.
+  @@unique([tenant_slug, kanal, tanggal])
+  @@index([tenant_slug, kanal])
+  @@map("crm_social_account_daily")
+}
+
+model SocialContent {
+  id          String      @id @default(uuid())
+  tenant_slug String
+  kanal       KanalSosial
+  konten_id   String // ID asli dari platform
+  jenis       String // Foto | Carousel | Reels | Video
+  terbit_pada DateTime
+  teks        String?
+  permalink   String?
+  sampul_url  String? // URL CDN berumur pendek — disegarkan tiap snapshot
+
+  // Sifat konten (Edukasi, Info Layanan, dst) mengikuti taksonomi laporan triwulanan.
+  // `sifat` diisi/disetujui manusia; `sifat_usulan` diisi AI dan TIDAK dipakai
+  // menghitung laporan sampai disetujui — salah mengklasifikasi konten duka cita
+  // sebagai promo akan merusak kredibilitas seluruh laporan.
+  sifat        String?
+  sifat_usulan String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  snapshots SocialContentSnapshot[]
+
+  @@unique([tenant_slug, kanal, konten_id])
+  @@index([tenant_slug, terbit_pada])
+  @@map("crm_social_contents")
+}
+
+model SocialContentSnapshot {
+  id         String @id @default(uuid())
+  content_id String
+  // Umur konten saat diukur: 1, 7, atau 30 hari. UMUR_TERAKHIR (-1) adalah baris
+  // berjalan yang ditimpa tiap malam. Snapshot berumur tetap hanya ditulis kalau
+  // konten benar-benar berusia segitu hari ini — menandai konten 30 hari sebagai
+  // "H+1" akan membuat perbandingan antar konten menipu.
+  umur_hari  Int
+
+  jangkauan        Int @default(0)
+  tayangan         Int @default(0)
+  suka             Int @default(0)
+  komentar         Int @default(0)
+  dibagikan        Int @default(0)
+  disimpan         Int @default(0)
+  interaksi        Int @default(0)
+  follower_baru    Int @default(0) // metric `follows` — hanya tersedia utk Foto/Carousel
+  kunjungan_profil Int @default(0) // metric `profile_visits`
+
+  diambil_pada DateTime @default(now())
+
+  content SocialContent @relation(fields: [content_id], references: [id], onDelete: Cascade)
+
+  @@unique([content_id, umur_hari])
+  @@map("crm_social_content_snapshots")
 }

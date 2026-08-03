@@ -118,6 +118,8 @@ export interface KontenIg {
   id: string; jenis: string; tanggal: string; permalink: string; teks: string
   /** URL sampul dari CDN Instagram. Berumur pendek — jangan disimpan ke DB. */
   gambar: string
+  /** Tayangan (`views`) dibedakan dari jangkauan: satu orang bisa menonton berkali-kali. */
+  tayangan: number
   jangkauan: number; suka: number; komentar: number; dibagikan: number
   disimpan: number; interaksi: number
   /** Interaksi per 100 jangkauan — membandingkan konten besar dan kecil secara adil. */
@@ -304,6 +306,7 @@ async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
       tanggal: String(m.timestamp ?? '').slice(0, 10),
       permalink: String(m.permalink ?? ''),
       teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 140),
+      tayangan: nilai(m, 'views'),
       // Sampul video didahulukan atas berkas videonya sendiri, supaya yang dimuat
       // di daftar selalu gambar — bukan video berukuran besar.
       gambar: String(m.thumbnail_url || m.media_url || anak?.thumbnail_url || anak?.media_url || ''),

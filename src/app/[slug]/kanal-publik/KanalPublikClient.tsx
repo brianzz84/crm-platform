@@ -36,6 +36,7 @@ interface RingkasGa4 {
 interface TotalIg { jangkauan: number; tayangan: number; interaksi: number; akunTerlibat: number; suka: number; disimpan: number; followerBaru: number }
 interface KontenIg {
   id: string; jenis: string; tanggal: string; permalink: string; teks: string; gambar: string
+  tayangan: number
   jangkauan: number; suka: number; komentar: number; dibagikan: number
   disimpan: number; interaksi: number; rasioInteraksi: number
 }
@@ -628,7 +629,7 @@ export default function KanalPublikClient({
                 baris={ig.teratas.map(k => ({
                   kiri: labelKonten(k),
                   gambar: k.gambar,
-                  sub: `${k.jenis} · ${k.tanggal} · ${persen(k.rasioInteraksi)} interaksi · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
+                  sub: `${k.jenis} · ${k.tanggal} · ${angka(k.tayangan)} tayangan · ${persen(k.rasioInteraksi)} interaksi · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
                   kanan: angka(k.jangkauan),
                 }))} />
 

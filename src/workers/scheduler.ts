@@ -148,6 +148,32 @@ export async function runScanner(job: Job) {
         job.log(`[scanner] Enqueue SIMRS_SYNC untuk ${tenant.slug} (jam ${simrsJam}:00 WIB)`)
       }
 
+      // SNAPSHOT KANAL PUBLIK: hanya tenant yang mengaktifkannya sendiri —
+      // menarik data Meta/Google untuk tenant yang tidak memakainya hanya
+      // menghabiskan kuota API mereka.
+      const snap = await db.socialSnapshotConfig.findUnique({
+        where: { tenant_slug: tenant.slug },
+      })
+      if (snap?.aktif && snap.jam_snapshot === hourWib) {
+        const today = nowWib.toISOString().slice(0, 10)
+        await queue.add(
+          'medsos-snapshot',
+          { type: 'MEDSOS_SNAPSHOT', tenantSlug: tenant.slug },
+          {
+            jobId: `medsos-snapshot-${tenant.slug}-${today}`,
+            // Sebagian data hanya ada di jendela sempit dan tidak bisa ditarik
+            // ulang besok, jadi kegagalan sesaat wajib dicoba lagi — bukan
+            // dibiarkan sampai jadwal berikutnya.
+            attempts: 3,
+            backoff:  { type: 'exponential', delay: 60_000 },
+            removeOnComplete: 20,
+            removeOnFail:     30,
+          },
+        )
+        enqueued++
+        job.log(`[scanner] Enqueue MEDSOS_SNAPSHOT untuk ${tenant.slug} (jam ${snap.jam_snapshot}:00 WIB)`)
+      }
+
     } catch (e: any) {
       job.log(`[scanner] Error tenant ${tenant.slug}: ${e.message}`)
     }
