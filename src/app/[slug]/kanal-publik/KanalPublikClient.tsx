@@ -43,6 +43,7 @@ interface RingkasInstagram {
   akun: { id: string; username: string; follower: number; media: number; nama: string } | null
   periode: TotalIg
   banding: TotalIg | null
+  bandingSeriKosong: boolean
   harian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   teratas: KontenIg[]
@@ -57,6 +58,7 @@ interface RingkasFacebook {
   page: { id: string; nama: string; follower: number } | null
   periode: TotalFb
   banding: TotalFb | null
+  bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number }[]
@@ -581,18 +583,30 @@ export default function KanalPublikClient({
                   </div>
                 )}
                 <Statistik items={[
+                  // Jangkauan & follower baru berasal dari deret harian. Kalau deret
+                  // pembandingnya kosong, selisihnya SENGAJA tidak ditampilkan —
+                  // lihat catatan di bawah kartu.
                   { label: 'Jangkauan', nilai: angka(ig.periode.jangkauan), warna: 'var(--c-primary)',
-                    delta: <Delta kini={ig.periode.jangkauan} dulu={ig.banding?.jangkauan} />,
+                    delta: <Delta kini={ig.periode.jangkauan} dulu={ig.bandingSeriKosong ? null : ig.banding?.jangkauan} />,
                     catatan: 'penjumlahan jangkauan harian' },
                   { label: 'Tayangan', nilai: angka(ig.periode.tayangan), warna: 'var(--c-secondary)', delta: <Delta kini={ig.periode.tayangan} dulu={ig.banding?.tayangan} /> },
                   { label: 'Interaksi', nilai: angka(ig.periode.interaksi), warna: 'var(--c-success)',
                     delta: <Delta kini={ig.periode.interaksi} dulu={ig.banding?.interaksi} />,
                     catatan: `${persen(ig.periode.jangkauan ? (ig.periode.interaksi / ig.periode.jangkauan) * 100 : 0)} dari jangkauan · ${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
-                  { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED', delta: <Delta kini={ig.periode.followerBaru} dulu={ig.banding?.followerBaru} /> },
+                  { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED',
+                    delta: <Delta kini={ig.periode.followerBaru} dulu={ig.bandingSeriKosong ? null : ig.banding?.followerBaru} /> },
                 ]} />
                 {labelBanding && (
                   <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
                     Dibandingkan dengan {labelBanding}
+                    {ig.bandingSeriKosong && (
+                      <span style={{ color: '#B45309', fontWeight: 600 }}>
+                        {' '}— kecuali <strong>Jangkauan</strong> dan <strong>Follower Baru</strong>: Instagram tidak
+                        mengembalikan data harian untuk periode pembanding itu, jadi selisihnya tidak ditampilkan.
+                        Riwayat kedua metrik ini disimpan Instagram jauh lebih pendek daripada tayangan dan interaksi.
+                        Pilih periode pembanding yang lebih dekat ke hari ini agar bisa dibandingkan.
+                      </span>
+                    )}
                   </div>
                 )}
                 <TrenBatang label={`Jangkauan per hari — ${mulai} s/d ${selesai}`} data={ig.harian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan }))} />
@@ -664,15 +678,23 @@ export default function KanalPublikClient({
                     </span>
                   </div>
                 )}
+                {/* Seluruh angka Facebook berasal dari deret harian, jadi kalau deret
+                    pembandingnya kosong TIDAK ADA selisih yang boleh ditampilkan. */}
                 <Statistik items={[
-                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-primary)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.banding?.interaksi} /> },
-                  { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.banding?.kunjunganProfil} /> },
-                  { label: 'Follower Baru', nilai: angka(fb.periode.followerBaru), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.followerBaru} dulu={fb.banding?.followerBaru} /> },
-                  { label: 'Tayangan Video', nilai: angka(fb.periode.tayanganVideo), warna: '#7C3AED', delta: <Delta kini={fb.periode.tayanganVideo} dulu={fb.banding?.tayanganVideo} /> },
+                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-primary)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.bandingSeriKosong ? null : fb.banding?.interaksi} /> },
+                  { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.bandingSeriKosong ? null : fb.banding?.kunjunganProfil} /> },
+                  { label: 'Follower Baru', nilai: angka(fb.periode.followerBaru), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.followerBaru} dulu={fb.bandingSeriKosong ? null : fb.banding?.followerBaru} /> },
+                  { label: 'Tayangan Video', nilai: angka(fb.periode.tayanganVideo), warna: '#7C3AED', delta: <Delta kini={fb.periode.tayanganVideo} dulu={fb.bandingSeriKosong ? null : fb.banding?.tayanganVideo} /> },
                 ]} />
                 {labelBanding && (
                   <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
                     Dibandingkan dengan {labelBanding}
+                    {fb.bandingSeriKosong && (
+                      <span style={{ color: '#B45309', fontWeight: 600 }}>
+                        {' '}— Facebook tidak mengembalikan data harian untuk periode itu, jadi selisihnya tidak
+                        ditampilkan. Pilih periode pembanding yang lebih dekat ke hari ini.
+                      </span>
+                    )}
                   </div>
                 )}
                 <TrenBatang label={`Interaksi per hari — ${mulai} s/d ${selesai}`} data={fb.harian.map(h => ({ tanggal: h.tanggal, nilai: h.interaksi }))} />

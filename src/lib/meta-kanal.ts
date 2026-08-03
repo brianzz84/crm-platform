@@ -66,9 +66,11 @@ type SeriHarian = Record<string, Record<string, number>>
  */
 async function tarikSeri(
   objId: string, metrics: string[], token: string, periode: Rentang, extra = '',
-): Promise<{ seri: SeriHarian; galat?: string }> {
+): Promise<{ seri: SeriHarian; galat?: string; titik: number }> {
   const seri: SeriHarian = {}
   let galat: string | undefined
+  // Dihitung supaya "tidak ada datanya" bisa dibedakan dari "datanya nol".
+  let titik = 0
 
   for (const jendela of pecahJendela(periode)) {
     const r = await graphGet(
@@ -84,10 +86,11 @@ async function tarikSeri(
         const tgl = tanggalDariEndTime(v.end_time)
         if (tgl < periode.mulai || tgl > periode.selesai) continue
         ;(seri[tgl] ??= {})[nama] = Number(v.value ?? 0)
+        titik += 1
       }
     }
   }
-  return { seri, galat }
+  return { seri, galat, titik }
 }
 
 /** Jumlahkan satu metric sepanjang seri. */
@@ -124,6 +127,12 @@ export interface RingkasInstagram {
   akun: { id: string; username: string; follower: number; media: number; nama: string } | null
   periode: TotalIg
   banding: TotalIg | null
+  /**
+   * Deret harian periode pembanding pulang KOSONG, bukan nol. Jangkauan dan
+   * follower baru pada `banding` karena itu tidak boleh dipakai menghitung
+   * selisih — nilainya 0 hanya karena datanya tidak ada.
+   */
+  bandingSeriKosong: boolean
   harian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   teratas: KontenIg[]
@@ -152,11 +161,23 @@ const IG_KOSONG: TotalIg = {
  */
 const AMBANG_JANGKAUAN_RASIO = 300
 
-/** Metric total_value dikembalikan sebagai satu angka per jendela, bukan deret. */
-async function totalIg(igId: string, token: string, periode: Rentang): Promise<TotalIg> {
+/**
+ * Ringkasan satu periode: deret harian + metric total_value, sekali jalan.
+ *
+ * `seriKosong` menandai Graph tidak mengembalikan SATU titik pun untuk deret
+ * harian — berbeda dari deret yang nilainya nol. Pembedaan ini wajib: Instagram
+ * menyimpan riwayat `reach` dan `follower_count` jauh lebih pendek daripada
+ * metric total_value, jadi periode pembanding yang agak lampau bisa pulang
+ * kosong sementara tayangan dan interaksinya tetap terisi. Tanpa penanda ini,
+ * kosong terbaca sebagai nol dan melahirkan "▲ 56.431" — klaim tumbuh dari nol
+ * yang sepenuhnya palsu.
+ */
+async function ringkasPeriodeIg(
+  igId: string, token: string, periode: Rentang,
+): Promise<{ total: TotalIg; seri: SeriHarian; seriKosong: boolean; galat?: string }> {
   const hasil = { ...IG_KOSONG }
 
-  const { seri } = await tarikSeri(igId, IG_SERI, token, periode)
+  const { seri, galat, titik } = await tarikSeri(igId, IG_SERI, token, periode)
   hasil.jangkauan    = jumlah(seri, 'reach')
   hasil.followerBaru = jumlah(seri, 'follower_count')
 
@@ -177,14 +198,14 @@ async function totalIg(igId: string, token: string, periode: Rentang): Promise<T
       }
     }
   }
-  return hasil
+  return { total: hasil, seri, seriKosong: titik === 0, galat }
 }
 
 export async function ringkasInstagram(
   cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
 ): Promise<RingkasInstagram> {
   const kosong: RingkasInstagram = {
-    akun: null, periode: IG_KOSONG, banding: null,
+    akun: null, periode: IG_KOSONG, banding: null, bandingSeriKosong: false,
     harian: [], followerHarian: [], teratas: [], engagementTeratas: [],
     jenisKonten: [], hariFollower: [], catatanUnik: null,
   }
@@ -197,12 +218,14 @@ export async function ringkasInstagram(
   const rAkun = await graphGet(`${igId}?fields=username,name,followers_count,media_count`, token)
   if (!rAkun.ok) return { ...kosong, galat: pesanErrorGraph(rAkun) }
 
-  const [{ seri, galat }, total, totalBanding, rMedia] = await Promise.all([
-    tarikSeri(igId, IG_SERI, token, periode),
-    totalIg(igId, token, periode),
-    banding ? totalIg(igId, token, banding) : Promise.resolve(null),
+  // Satu panggilan per periode: sebelumnya deret harian ditarik dua kali untuk
+  // periode utama — sekali di sini, sekali lagi di dalam penghitung total.
+  const [utama, bandingHasil, rMedia] = await Promise.all([
+    ringkasPeriodeIg(igId, token, periode),
+    banding ? ringkasPeriodeIg(igId, token, banding) : Promise.resolve(null),
     ambilMediaIg(igId, token, periode),
   ])
+  const { seri, galat } = utama
 
   const tanggal = Object.keys(seri).sort()
   const banyakJendela = pecahJendela(periode).length > 1
@@ -215,8 +238,9 @@ export async function ringkasInstagram(
       follower: Number(rAkun.json?.followers_count ?? 0),
       media:    Number(rAkun.json?.media_count ?? 0),
     },
-    periode: total,
-    banding: totalBanding,
+    periode: utama.total,
+    banding: bandingHasil?.total ?? null,
+    bandingSeriKosong: !!bandingHasil?.seriKosong,
     harian:         tanggal.map(t => ({ tanggal: t, jangkauan: seri[t].reach ?? 0 })),
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
     teratas:           rMedia.teratas,
@@ -340,6 +364,8 @@ export interface RingkasFacebook {
   page: { id: string; nama: string; follower: number } | null
   periode: TotalFb
   banding: TotalFb | null
+  /** Sama seperti Instagram: kosong bukan nol, jadi selisihnya tak boleh dihitung. */
+  bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   teratas: {
@@ -367,7 +393,8 @@ export async function ringkasFacebook(
   cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
 ): Promise<RingkasFacebook> {
   const kosong: RingkasFacebook = {
-    page: null, periode: FB_KOSONG, banding: null, harian: [], followerHarian: [], teratas: [],
+    page: null, periode: FB_KOSONG, banding: null, bandingSeriKosong: false,
+    harian: [], followerHarian: [], teratas: [],
   }
 
   const token  = cfg.insights_token || cfg.access_token || ''
@@ -394,6 +421,7 @@ export async function ringkasFacebook(
     },
     periode: totalDariSeri(utama.seri),
     banding: seriBanding ? totalDariSeri(seriBanding.seri) : null,
+    bandingSeriKosong: !!seriBanding && seriBanding.titik === 0,
     harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: utama.seri[t].page_daily_follows_unique ?? 0 })),
     teratas: post.items,
