@@ -113,6 +113,8 @@ export interface TotalIg {
 }
 export interface KontenIg {
   id: string; jenis: string; tanggal: string; permalink: string; teks: string
+  /** URL sampul dari CDN Instagram. Berumur pendek — jangan disimpan ke DB. */
+  gambar: string
   jangkauan: number; suka: number; komentar: number; dibagikan: number
   disimpan: number; interaksi: number
   /** Interaksi per 100 jangkauan — membandingkan konten besar dan kecil secara adil. */
@@ -244,15 +246,25 @@ const LABEL_JENIS_IG: Record<string, string> = {
 
 /**
  * Daftar konten + metric per konten dalam SATU permintaan lewat field bersarang.
- * Kalau Graph menolak bagian insights-nya (metric yang sah berbeda antar jenis
- * konten), diulang tanpa insights supaya daftar kontennya tetap tampil.
+ *
+ * Penurunan bertingkat, dari yang terkaya ke yang paling aman. Urutannya penting:
+ * gambar diminta di lapis TERLUAR supaya kalau Graph menolaknya, yang hilang hanya
+ * gambar — bukan angka insights yang jauh lebih berharga. Pelajaran dari postingan
+ * Facebook: satu field bersarang yang ditolak menggugurkan seluruh permintaan.
  */
 async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
-  const dasar = `id,caption,media_type,timestamp,permalink`
+  const dasar   = 'id,caption,media_type,timestamp,permalink'
+  const wawasan = `insights.metric(${IG_KONTEN})`
+  // Video menyimpan gambar sampulnya di thumbnail_url, foto di media_url; carousel
+  // kadang hanya menyediakannya lewat anak-anaknya. Ketiganya diminta sekaligus.
+  const gambar  = 'media_url,thumbnail_url,children{media_url,thumbnail_url}'
   const rentang = kueriRentang(periode)
 
-  let r = await graphGet(`${igId}/media?fields=${dasar},insights.metric(${IG_KONTEN})&limit=30&${rentang}`, token)
-  if (!r.ok) r = await graphGet(`${igId}/media?fields=${dasar}&limit=30&${rentang}`, token)
+  const minta = (fields: string) => graphGet(`${igId}/media?fields=${fields}&limit=30&${rentang}`, token)
+
+  let r = await minta(`${dasar},${wawasan},${gambar}`)
+  if (!r.ok) r = await minta(`${dasar},${wawasan}`)
+  if (!r.ok) r = await minta(dasar)
   if (!r.ok) return { semua: [], teratas: [], engagementTeratas: [], jenisKonten: [] }
 
   const nilai = (m: any, nama: string) =>
@@ -261,12 +273,16 @@ async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
   const items: KontenIg[] = (r.json?.data ?? []).map((m: any) => {
     const jangkauan = nilai(m, 'reach')
     const interaksi = nilai(m, 'total_interactions')
+    const anak = m?.children?.data?.[0]
     return {
       id: String(m.id),
       jenis: LABEL_JENIS_IG[m.media_type] ?? String(m.media_type ?? '-'),
       tanggal: String(m.timestamp ?? '').slice(0, 10),
       permalink: String(m.permalink ?? ''),
       teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 140),
+      // Sampul video didahulukan atas berkas videonya sendiri, supaya yang dimuat
+      // di daftar selalu gambar — bukan video berukuran besar.
+      gambar: String(m.thumbnail_url || m.media_url || anak?.thumbnail_url || anak?.media_url || ''),
       jangkauan,
       suka:      nilai(m, 'likes'),
       komentar:  nilai(m, 'comments'),

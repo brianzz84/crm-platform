@@ -35,7 +35,7 @@ interface RingkasGa4 {
 /* ─── Tipe Meta (cerminan bentuk dari src/lib/meta-kanal.ts) ─── */
 interface TotalIg { jangkauan: number; tayangan: number; interaksi: number; akunTerlibat: number; suka: number; disimpan: number; followerBaru: number }
 interface KontenIg {
-  id: string; jenis: string; tanggal: string; permalink: string; teks: string
+  id: string; jenis: string; tanggal: string; permalink: string; teks: string; gambar: string
   jangkauan: number; suka: number; komentar: number; dibagikan: number
   disimpan: number; interaksi: number; rasioInteraksi: number
 }
@@ -245,9 +245,24 @@ function PerjalananSubscriber({ data, totalSekarang }: {
   )
 }
 
+/**
+ * Sampul konten. Sengaja memakai <img> biasa, bukan next/image: URL CDN Instagram
+ * berumur pendek dan bertanda tangan, jadi mengoptimalkan atau menyimpannya justru
+ * merugikan. Kalau tautannya sudah kedaluwarsa, elemennya disembunyikan supaya
+ * tidak menyisakan ikon gambar rusak.
+ */
+function Sampul({ url, alt }: { url: string; alt: string }) {
+  if (!url) return null
+  return (
+    <img src={url} alt={alt} loading="lazy" referrerPolicy="no-referrer"
+      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+      style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--c-bg)' }} />
+  )
+}
+
 function Peringkat({ judul, baris, catatan }: {
   judul: string; catatan?: string
-  baris: { kiri: React.ReactNode; kanan: string; sub?: string }[]
+  baris: { kiri: React.ReactNode; kanan: string; sub?: string; gambar?: string }[]
 }) {
   if (!baris.length) return null
   return (
@@ -262,6 +277,7 @@ function Peringkat({ judul, baris, catatan }: {
         {baris.map((b, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: '10px var(--sp-5)', borderBottom: i < baris.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
             <span style={{ fontSize: 11, color: 'var(--c-text-faint)', width: 18, flexShrink: 0 }}>{i + 1}</span>
+            {b.gambar && <Sampul url={b.gambar} alt="" />}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.kiri}</div>
               {b.sub && <div style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>{b.sub}</div>}
@@ -596,6 +612,7 @@ export default function KanalPublikClient({
                 catatan="Seberapa jauh konten tersebar. Berguna untuk melihat apa yang menembus keluar dari lingkaran follower — tapi jangkauan besar belum tentu berarti tanggapannya bagus."
                 baris={ig.teratas.map(k => ({
                   kiri: labelKonten(k),
+                  gambar: k.gambar,
                   sub: `${k.jenis} · ${k.tanggal} · ${persen(k.rasioInteraksi)} interaksi · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
                   kanan: angka(k.jangkauan),
                 }))} />
@@ -604,6 +621,7 @@ export default function KanalPublikClient({
                 catatan="Interaksi per 100 orang yang melihat — mengukur MUTU tanggapan, bukan besarnya sebaran. Inilah yang menunjukkan konten mana yang benar-benar mengena, karena konten kecil yang direspons hangat bisa mengalahkan konten viral yang dilewati begitu saja. Hanya konten berjangkauan ≥300 yang diikutkan, sebab rasio tidak bermakna bila penyebutnya terlalu kecil."
                 baris={ig.engagementTeratas.map(k => ({
                   kiri: labelKonten(k),
+                  gambar: k.gambar,
                   sub: `${k.jenis} · ${k.tanggal} · ${angka(k.jangkauan)} jangkauan · ${angka(k.interaksi)} interaksi`,
                   kanan: persen(k.rasioInteraksi),
                 }))} />
