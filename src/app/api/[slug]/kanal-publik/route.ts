@@ -1,30 +1,37 @@
 /**
  * GET /api/[slug]/kanal-publik
- *   ?kanal=youtube|ga4
+ *   ?kanal=youtube|ga4|instagram|facebook
  *   &mulai=YYYY-MM-DD&selesai=YYYY-MM-DD
  *   [&bandingMulai=YYYY-MM-DD&bandingSelesai=YYYY-MM-DD]
  *
- * Menarik data kanal publik langsung dari Google saat diminta. Dipisah per kanal
+ * Menarik data kanal publik langsung dari sumbernya saat diminta. Dipisah per kanal
  * supaya satu kanal yang bermasalah (mis. Business Profile yang masih menunggu
- * allowlist) tidak menggagalkan tampilan kanal lain yang sudah hidup.
+ * allowlist) tidak menggagalkan tampilan kanal lain yang sudah hidup. Kanal Google
+ * memakai GoogleConfig, kanal Meta memakai MetaConfig — dua integrasi terpisah yang
+ * sengaja tidak saling bergantung.
  *
  * Tanggal WAJIB divalidasi di sini: nilainya datang dari URL, dan tanpa penjagaan
- * ia langsung menjadi kueri ke Google — rentang bertahun-tahun bisa menghabiskan
+ * ia langsung menjadi kueri ke API luar — rentang bertahun-tahun bisa menghabiskan
  * kuota API tenant hanya karena satu URL yang diubah-ubah.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { periksaRentang, ringkasGa4, ringkasYouTube, type Rentang } from '@/lib/google-kanal'
+import { ringkasFacebook, ringkasInstagram } from '@/lib/meta-kanal'
 
 type Ctx = { params: { slug: string } }
+
+const KANAL = ['ga4', 'youtube', 'instagram', 'facebook'] as const
+type Kanal = typeof KANAL[number]
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
   if (error) return error
 
-  const q     = req.nextUrl.searchParams
-  const kanal = q.get('kanal') === 'ga4' ? 'ga4' : 'youtube'
+  const q      = req.nextUrl.searchParams
+  const minta  = q.get('kanal') ?? ''
+  const kanal: Kanal = (KANAL as readonly string[]).includes(minta) ? minta as Kanal : 'youtube'
 
   const cekUtama = periksaRentang(q.get('mulai') ?? '', q.get('selesai') ?? '')
   if (!cekUtama.ok) {
@@ -43,7 +50,31 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   }
 
   try {
-    const db  = await getTenantDb(params.slug)
+    const db = await getTenantDb(params.slug)
+
+    if (kanal === 'instagram' || kanal === 'facebook') {
+      const meta = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
+      if (!meta) {
+        return NextResponse.json({
+          success: false,
+          error: 'Config Meta belum ada. Buka Pengaturan → Integrasi Meta lalu isi bagian "Analitik Media Sosial".',
+        }, { status: 400 })
+      }
+
+      const konfigMeta = {
+        page_id:        meta.page_id,
+        ig_business_id: meta.ig_business_id,
+        insights_token: meta.insights_token,
+        access_token:   meta.access_token,
+      }
+
+      const data = kanal === 'instagram'
+        ? await ringkasInstagram(konfigMeta, cekUtama.rentang, banding)
+        : await ringkasFacebook(konfigMeta, cekUtama.rentang, banding)
+
+      return NextResponse.json({ success: true, kanal, periode: cekUtama.rentang, banding, data })
+    }
+
     const cfg = await db.googleConfig.findUnique({ where: { tenant_slug: params.slug } })
 
     if (!cfg?.aktif || !cfg.refresh_token) {

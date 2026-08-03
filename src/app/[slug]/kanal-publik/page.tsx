@@ -12,8 +12,14 @@ export default async function KanalPublikPage({ params }: { params: { slug: stri
   if (!session) redirect('/login')
   if (!canDo(session.roles, 'manageBroadcast')) redirect(`/${params.slug}/dashboard`)
 
-  const db  = await getTenantDb(params.slug)
-  const cfg = await db.googleConfig.findUnique({ where: { tenant_slug: params.slug } })
+  const db = await getTenantDb(params.slug)
+  const [cfg, meta] = await Promise.all([
+    db.googleConfig.findUnique({ where: { tenant_slug: params.slug } }),
+    db.metaConfig.findUnique({ where: { tenant_slug: params.slug } }),
+  ])
+
+  // Token Insights tidak pernah dikirim ke klien — cukup keterangan ADA/TIDAK.
+  const punyaTokenMeta = !!(meta?.insights_token || meta?.access_token)
 
   return (
     <KanalPublikClient
@@ -23,6 +29,8 @@ export default async function KanalPublikPage({ params }: { params: { slug: stri
         akun:        cfg?.connected_email ?? null,
         punyaGa4:    !!cfg?.ga4_property_id,
         punyaYoutube: true,   // channel diambil dari akun tersambung bila ID tidak diisi
+        punyaIg:      punyaTokenMeta && !!meta?.ig_business_id,
+        punyaFb:      punyaTokenMeta && !!meta?.page_id,
       }}
     />
   )

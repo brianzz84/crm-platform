@@ -32,7 +32,32 @@ interface RingkasGa4 {
   galat?: string
 }
 
-type Tab = 'website' | 'youtube' | 'google-bisnis'
+/* ─── Tipe Meta (cerminan bentuk dari src/lib/meta-kanal.ts) ─── */
+interface TotalIg { jangkauan: number; tayangan: number; interaksi: number; akunTerlibat: number; suka: number; disimpan: number; followerBaru: number }
+interface RingkasInstagram {
+  akun: { id: string; username: string; follower: number; media: number; nama: string } | null
+  periode: TotalIg
+  banding: TotalIg | null
+  harian: { tanggal: string; jangkauan: number }[]
+  followerHarian: { tanggal: string; naik: number }[]
+  teratas: { id: string; jenis: string; tanggal: string; permalink: string; teks: string; jangkauan: number; suka: number; komentar: number; dibagikan: number; disimpan: number; interaksi: number }[]
+  jenisKonten: { jenis: string; jumlah: number; jangkauan: number }[]
+  catatanUnik: string | null
+  galat?: string
+}
+interface TotalFb { interaksi: number; followerBaru: number; kunjunganProfil: number; tayanganVideo: number; totalAksi: number }
+interface RingkasFacebook {
+  page: { id: string; nama: string; follower: number } | null
+  periode: TotalFb
+  banding: TotalFb | null
+  harian: { tanggal: string; interaksi: number }[]
+  followerHarian: { tanggal: string; naik: number }[]
+  teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number; klik: number }[]
+  galat?: string
+}
+
+type Tab = 'website' | 'instagram' | 'facebook' | 'youtube' | 'google-bisnis'
+type Kanal = 'ga4' | 'youtube' | 'instagram' | 'facebook'
 
 /* ─── Bantuan tanggal ─── */
 const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -214,7 +239,7 @@ function PerjalananSubscriber({ data, totalSekarang }: {
 
 function Peringkat({ judul, baris, catatan }: {
   judul: string; catatan?: string
-  baris: { kiri: string; kanan: string; sub?: string }[]
+  baris: { kiri: React.ReactNode; kanan: string; sub?: string }[]
 }) {
   if (!baris.length) return null
   return (
@@ -256,7 +281,10 @@ export default function KanalPublikClient({
   slug, status,
 }: {
   slug: string
-  status: { tersambung: boolean; akun: string | null; punyaGa4: boolean; punyaYoutube: boolean }
+  status: {
+    tersambung: boolean; akun: string | null; punyaGa4: boolean; punyaYoutube: boolean
+    punyaIg: boolean; punyaFb: boolean
+  }
 }) {
   const [tab, setTab] = useState<Tab>('website')
 
@@ -269,6 +297,8 @@ export default function KanalPublikClient({
 
   const [yt,  setYt]  = useState<RingkasYouTube | null>(null)
   const [ga4, setGa4] = useState<RingkasGa4 | null>(null)
+  const [ig,  setIg]  = useState<RingkasInstagram | null>(null)
+  const [fb,  setFb]  = useState<RingkasFacebook | null>(null)
   const [muat, setMuat] = useState(false)
   const [galat, setGalat] = useState('')
 
@@ -288,7 +318,7 @@ export default function KanalPublikClient({
     setBMulai(setahunLalu(mulai)); setBSelesai(setahunLalu(selesai))
   }
 
-  const ambil = useCallback(async (kanal: 'ga4' | 'youtube') => {
+  const ambil = useCallback(async (kanal: Kanal) => {
     setMuat(true); setGalat('')
     try {
       const q = new URLSearchParams({ kanal, mulai, selesai })
@@ -296,17 +326,22 @@ export default function KanalPublikClient({
       const res  = await fetch(`/api/${slug}/kanal-publik?${q.toString()}`)
       const json = await res.json()
       if (!json.success) { setGalat(json.error || 'Gagal memuat data'); return }
-      if (kanal === 'ga4') setGa4(json.data); else setYt(json.data)
+      if      (kanal === 'ga4')       setGa4(json.data)
+      else if (kanal === 'youtube')   setYt(json.data)
+      else if (kanal === 'instagram') setIg(json.data)
+      else                            setFb(json.data)
     } catch {
       setGalat('Gagal menghubungi server')
     } finally { setMuat(false) }
   }, [slug, mulai, selesai, pakaiBanding, bMulai, bSelesai])
 
   useEffect(() => {
-    if (!status.tersambung) return
-    if (tab === 'website') ambil('ga4')
-    if (tab === 'youtube') ambil('youtube')
-  }, [tab, status.tersambung, ambil])
+    // Kanal Google dan kanal Meta punya syarat sambungan sendiri-sendiri.
+    if (tab === 'website'   && status.tersambung) ambil('ga4')
+    if (tab === 'youtube'   && status.tersambung) ambil('youtube')
+    if (tab === 'instagram' && status.punyaIg)    ambil('instagram')
+    if (tab === 'facebook'  && status.punyaFb)    ambil('facebook')
+  }, [tab, status.tersambung, status.punyaIg, status.punyaFb, ambil])
 
   const labelBanding = pakaiBanding ? `${bMulai} → ${bSelesai}` : null
 
@@ -321,19 +356,16 @@ export default function KanalPublikClient({
         </p>
       </div>
 
-      {!status.tersambung ? (
-        <Pesan nada="info">
-          Belum tersambung ke Google. Buka{' '}
-          <Link href={`/${slug}/pengaturan/google-bisnis`} style={{ color: 'var(--c-secondary)', fontWeight: 600 }}>
-            Pengaturan → Integrasi Google Business
-          </Link>{' '}lalu klik <strong>Hubungkan dengan Google</strong>.
-        </Pesan>
-      ) : (
-        <>
+      {/* Sengaja TIDAK ada gerbang tunggal di sini: Google dan Meta adalah dua
+          integrasi terpisah, jadi Instagram tetap bisa dibuka meski Google belum
+          tersambung — dan sebaliknya. Syaratnya diperiksa per tab. */}
+      <>
           {/* Tab */}
-          <div style={{ display: 'flex', gap: 'var(--sp-1)', borderBottom: '1px solid var(--c-border)', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-1)', borderBottom: '1px solid var(--c-border)', marginBottom: 'var(--sp-4)', flexWrap: 'wrap' }}>
             {([
               { k: 'website', label: 'Website (GA4)' },
+              { k: 'instagram', label: 'Instagram' },
+              { k: 'facebook', label: 'Facebook' },
               { k: 'youtube', label: 'YouTube' },
               { k: 'google-bisnis', label: 'Google Bisnis' },
             ] as const).map(t => (
@@ -396,7 +428,26 @@ export default function KanalPublikClient({
           )}
 
           {galat && <Pesan nada="galat">⚠ {galat}</Pesan>}
-          {muat && <div style={{ color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--sp-4)' }}>Memuat data dari Google…</div>}
+          {muat && <div style={{ color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--sp-4)' }}>Memuat data…</div>}
+
+          {/* Syarat sambungan per tab */}
+          {(tab === 'website' || tab === 'youtube') && !status.tersambung && (
+            <Pesan nada="info">
+              Belum tersambung ke Google. Buka{' '}
+              <Link href={`/${slug}/pengaturan/google-bisnis`} style={{ color: 'var(--c-secondary)', fontWeight: 600 }}>
+                Pengaturan → Integrasi Google Business
+              </Link>{' '}lalu klik <strong>Hubungkan dengan Google</strong>.
+            </Pesan>
+          )}
+          {((tab === 'instagram' && !status.punyaIg) || (tab === 'facebook' && !status.punyaFb)) && (
+            <Pesan nada="info">
+              {tab === 'instagram' ? 'Instagram Business ID' : 'Facebook Page ID'} atau Token Insights belum diisi.
+              Lengkapi di{' '}
+              <Link href={`/${slug}/pengaturan/meta`} style={{ color: 'var(--c-secondary)', fontWeight: 600 }}>
+                Pengaturan → Integrasi Meta
+              </Link>{' '}bagian <strong>Analitik Media Sosial</strong>, lalu pastikan <strong>Jalankan Probe</strong> hijau.
+            </Pesan>
+          )}
 
           {/* ── Website (GA4) ── */}
           {tab === 'website' && ga4 && (ga4.galat ? <Pesan nada="info">{ga4.galat}</Pesan> : (
@@ -473,6 +524,114 @@ export default function KanalPublikClient({
             </>
           ))}
 
+          {/* ── Instagram ── */}
+          {tab === 'instagram' && ig && (ig.galat ? <Pesan nada="galat">{ig.galat}</Pesan> : (
+            <>
+              {ig.catatanUnik && <Pesan nada="info">{ig.catatanUnik}</Pesan>}
+              <div style={kartu}>
+                {ig.akun && (
+                  <div style={{ ...judulKartu, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <span>@{ig.akun.username}</span>
+                    <span style={{ fontWeight: 400, fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>
+                      {angka(ig.akun.follower)} follower · {angka(ig.akun.media)} konten sepanjang masa
+                    </span>
+                  </div>
+                )}
+                <Statistik items={[
+                  { label: 'Jangkauan', nilai: angka(ig.periode.jangkauan), warna: 'var(--c-primary)',
+                    delta: <Delta kini={ig.periode.jangkauan} dulu={ig.banding?.jangkauan} />,
+                    catatan: 'penjumlahan jangkauan harian' },
+                  { label: 'Tayangan', nilai: angka(ig.periode.tayangan), warna: 'var(--c-secondary)', delta: <Delta kini={ig.periode.tayangan} dulu={ig.banding?.tayangan} /> },
+                  { label: 'Interaksi', nilai: angka(ig.periode.interaksi), warna: 'var(--c-success)',
+                    delta: <Delta kini={ig.periode.interaksi} dulu={ig.banding?.interaksi} />,
+                    catatan: `${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
+                  { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED', delta: <Delta kini={ig.periode.followerBaru} dulu={ig.banding?.followerBaru} /> },
+                ]} />
+                {labelBanding && (
+                  <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
+                    Dibandingkan dengan {labelBanding}
+                  </div>
+                )}
+                <TrenBatang label={`Jangkauan per hari — ${mulai} s/d ${selesai}`} data={ig.harian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan }))} />
+              </div>
+
+              <div style={kartu}>
+                <div style={judulKartu}>Pertumbuhan Follower</div>
+                <TrenBatang label="Follower baru per hari" data={ig.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))} />
+                <p style={{ padding: '0 var(--sp-5) var(--sp-5)', margin: 0, fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+                  Instagram hanya melaporkan follower yang <strong>bertambah</strong>, tidak yang berhenti mengikuti —
+                  berbeda dari YouTube yang melaporkan keduanya. Jadi ini bukan pertumbuhan bersih, dan
+                  penjumlahannya tidak akan sama dengan kenaikan total follower.
+                </p>
+              </div>
+
+              <Peringkat judul="Konten Teratas"
+                catatan="Diurutkan berdasarkan jangkauan. “Disimpan” layak diperhatikan lebih dari suka — menyimpan berarti konten dianggap berguna untuk dibuka lagi, sinyal paling dekat dengan niat."
+                baris={ig.teratas.map(k => ({
+                  kiri: k.permalink
+                    ? <a href={k.permalink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-text)', textDecoration: 'none' }}>{k.teks || '(tanpa teks)'}</a>
+                    : (k.teks || '(tanpa teks)'),
+                  sub: `${k.jenis} · ${k.tanggal} · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
+                  kanan: angka(k.jangkauan),
+                }))} />
+
+              <Peringkat judul="Jenis Konten"
+                catatan="Membandingkan jangkauan antar format membantu memutuskan format mana yang layak diperbanyak."
+                baris={ig.jenisKonten.map(j => ({ kiri: j.jenis, sub: `${j.jumlah} konten pada periode ini`, kanan: angka(j.jangkauan) }))} />
+            </>
+          ))}
+
+          {/* ── Facebook ── */}
+          {tab === 'facebook' && fb && (fb.galat ? <Pesan nada="galat">{fb.galat}</Pesan> : (
+            <>
+              <Pesan nada="info">
+                <strong>Facebook tidak lagi menyediakan angka jangkauan.</strong> Meta sudah menghapus seluruh
+                metric jangkauan Page maupun per postingan, jadi pertanyaan “berapa orang melihat konten kami”
+                tidak bisa dijawab dari Facebook — bukan karena izin kurang, melainkan API-nya memang tidak
+                menyediakannya lagi. Yang tersisa adalah metric <strong>aksi</strong>: interaksi, klik, kunjungan
+                profil, dan follower baru. Untuk mengukur jangkauan, gunakan tab Instagram.
+              </Pesan>
+
+              <div style={kartu}>
+                {fb.page && (
+                  <div style={{ ...judulKartu, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <span>{fb.page.nama}</span>
+                    <span style={{ fontWeight: 400, fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)' }}>
+                      {angka(fb.page.follower)} follower
+                    </span>
+                  </div>
+                )}
+                <Statistik items={[
+                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-primary)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.banding?.interaksi} /> },
+                  { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.banding?.kunjunganProfil} /> },
+                  { label: 'Follower Baru', nilai: angka(fb.periode.followerBaru), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.followerBaru} dulu={fb.banding?.followerBaru} /> },
+                  { label: 'Tayangan Video', nilai: angka(fb.periode.tayanganVideo), warna: '#7C3AED', delta: <Delta kini={fb.periode.tayanganVideo} dulu={fb.banding?.tayanganVideo} /> },
+                ]} />
+                {labelBanding && (
+                  <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
+                    Dibandingkan dengan {labelBanding}
+                  </div>
+                )}
+                <TrenBatang label={`Interaksi per hari — ${mulai} s/d ${selesai}`} data={fb.harian.map(h => ({ tanggal: h.tanggal, nilai: h.interaksi }))} />
+              </div>
+
+              <div style={kartu}>
+                <div style={judulKartu}>Pertumbuhan Follower</div>
+                <TrenBatang label="Follower baru per hari" data={fb.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))} />
+              </div>
+
+              <Peringkat judul="Postingan Teratas"
+                catatan="Diurutkan berdasarkan jumlah reaksi, komentar, dan bagikan. Angka-angka ini diambil dari penghitung ringkasan postingan, bukan dari Insights yang sudah dihapus Meta."
+                baris={fb.teratas.map(p => ({
+                  kiri: p.permalink
+                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-text)', textDecoration: 'none' }}>{p.teks}</a>
+                    : p.teks,
+                  sub: `${p.tanggal} · ${angka(p.reaksi)} reaksi · ${angka(p.komentar)} komentar · ${angka(p.dibagikan)} dibagikan${p.klik ? ` · ${angka(p.klik)} klik` : ''}`,
+                  kanan: angka(p.reaksi + p.komentar + p.dibagikan),
+                }))} />
+            </>
+          ))}
+
           {/* ── Google Bisnis ── */}
           {tab === 'google-bisnis' && (
             <Pesan nada="info">
@@ -484,8 +643,7 @@ export default function KanalPublikClient({
               </Link>. Begitu disetujui, tab ini diisi performa lokasi, status listing, dan ulasan pasien.
             </Pesan>
           )}
-        </>
-      )}
+      </>
     </div>
   )
 }

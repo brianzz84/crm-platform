@@ -1,0 +1,371 @@
+/**
+ * Penarik data Kanal Publik — Instagram & Facebook Page.
+ *
+ * Mengikuti pola google-kanal.ts: MEMBACA LANGSUNG dari Meta tiap halaman dibuka,
+ * tanpa tabel penyimpan sendiri, dan tiap potongan laporan ditarik lewat panggilan
+ * terpisah yang kegagalannya ditangani sendiri-sendiri — satu bagian yang ditolak
+ * Graph hanya membuat bagian itu kosong, bukan menggugurkan seluruh halaman.
+ *
+ * Daftar metric di sini BUKAN tebakan: seluruhnya hasil probe penemuan metric
+ * 3 Agu 2026 terhadap akun RKZ (lihat meta-social-diagnostik.ts). Yang terbukti
+ * mati sengaja tidak dipakai, dan konsekuensinya dicatat di komentar masing-masing.
+ */
+import { graphGet, pesanErrorGraph } from './meta-social-client'
+
+export interface KonfigMeta {
+  page_id?:        string | null
+  ig_business_id?: string | null
+  insights_token?: string | null
+  access_token?:   string | null
+}
+
+export interface Rentang { mulai: string; selesai: string }
+
+const HARI = 86_400_000
+const iso  = (t: number) => new Date(t).toISOString().slice(0, 10)
+const unix = (tgl: string) => Math.floor(Date.parse(tgl + 'T00:00:00Z') / 1000)
+
+/**
+ * Insights Meta menolak rentang panjang dalam satu permintaan, jadi rentang
+ * dipecah menjadi jendela ≤30 hari lalu hasilnya disambung. Batas 30 dipilih
+ * karena aman untuk Instagram maupun Facebook Page.
+ */
+const MAKS_JENDELA = 30
+
+function pecahJendela(r: Rentang): Rentang[] {
+  const out: Rentang[] = []
+  let mulai = Date.parse(r.mulai)
+  const akhir = Date.parse(r.selesai)
+  while (mulai <= akhir) {
+    const selesai = Math.min(mulai + (MAKS_JENDELA - 1) * HARI, akhir)
+    out.push({ mulai: iso(mulai), selesai: iso(selesai) })
+    mulai = selesai + HARI
+  }
+  return out
+}
+
+/**
+ * Graph menandai nilai harian dengan `end_time`, yaitu saat jendela hari itu
+ * DITUTUP — praktisnya menunjuk hari berikutnya. Tanpa koreksi ini seluruh seri
+ * harian bergeser satu hari, kesalahan yang tidak kelihatan pada grafik tapi
+ * membuat angka tidak cocok saat diadu dengan dashboard resmi Meta.
+ */
+const tanggalDariEndTime = (endTime: string) => iso(Date.parse(endTime) - HARI)
+
+/** `until` dimajukan sehari supaya nilai hari terakhir ikut terbawa. */
+function kueriRentang(r: Rentang) {
+  return `since=${unix(r.mulai)}&until=${unix(r.selesai) + 86_400}`
+}
+
+type SeriHarian = Record<string, Record<string, number>>
+
+/**
+ * Tarik metric bergaya deret waktu (period=day) lalu susun jadi peta
+ * tanggal → { metric: nilai }. Nilai di luar rentang yang diminta dibuang,
+ * karena Graph kerap mengembalikan sehari lebih banyak di kedua ujungnya.
+ */
+async function tarikSeri(
+  objId: string, metrics: string[], token: string, periode: Rentang, extra = '',
+): Promise<{ seri: SeriHarian; galat?: string }> {
+  const seri: SeriHarian = {}
+  let galat: string | undefined
+
+  for (const jendela of pecahJendela(periode)) {
+    const r = await graphGet(
+      `${objId}/insights?metric=${metrics.join(',')}&period=day&${kueriRentang(jendela)}${extra}`,
+      token,
+    )
+    if (!r.ok) { galat ??= pesanErrorGraph(r); continue }
+
+    for (const d of r.json?.data ?? []) {
+      const nama = String(d.name ?? '')
+      for (const v of d.values ?? []) {
+        if (!v?.end_time) continue
+        const tgl = tanggalDariEndTime(v.end_time)
+        if (tgl < periode.mulai || tgl > periode.selesai) continue
+        ;(seri[tgl] ??= {})[nama] = Number(v.value ?? 0)
+      }
+    }
+  }
+  return { seri, galat }
+}
+
+/** Jumlahkan satu metric sepanjang seri. */
+const jumlah = (seri: SeriHarian, metric: string) =>
+  Object.values(seri).reduce((s, hari) => s + (hari[metric] ?? 0), 0)
+
+// ──────────────────────────────────────────────
+// Instagram
+// ──────────────────────────────────────────────
+
+/**
+ * Metric akun yang TERBUKTI hidup. `impressions`, `profile_views`, dan
+ * `website_clicks` sudah dihapus Meta — jangan ditambahkan kembali tanpa
+ * membuktikannya lewat probe lebih dulu.
+ */
+const IG_SERI   = ['reach', 'follower_count']
+const IG_TOTAL  = ['views', 'accounts_engaged', 'total_interactions', 'likes', 'saves']
+const IG_KONTEN = 'reach,saved,likes,comments,shares,total_interactions,views'
+
+export interface TotalIg {
+  jangkauan: number; tayangan: number; interaksi: number
+  akunTerlibat: number; suka: number; disimpan: number; followerBaru: number
+}
+export interface RingkasInstagram {
+  akun: { id: string; username: string; follower: number; media: number; nama: string } | null
+  periode: TotalIg
+  banding: TotalIg | null
+  harian: { tanggal: string; jangkauan: number }[]
+  followerHarian: { tanggal: string; naik: number }[]
+  teratas: {
+    id: string; jenis: string; tanggal: string; permalink: string; teks: string
+    jangkauan: number; suka: number; komentar: number; dibagikan: number; disimpan: number; interaksi: number
+  }[]
+  jenisKonten: { jenis: string; jumlah: number; jangkauan: number }[]
+  /** Peringatan kejujuran angka saat rentang melewati satu jendela. */
+  catatanUnik: string | null
+  galat?: string
+}
+
+const IG_KOSONG: TotalIg = {
+  jangkauan: 0, tayangan: 0, interaksi: 0, akunTerlibat: 0, suka: 0, disimpan: 0, followerBaru: 0,
+}
+
+/** Metric total_value dikembalikan sebagai satu angka per jendela, bukan deret. */
+async function totalIg(igId: string, token: string, periode: Rentang): Promise<TotalIg> {
+  const hasil = { ...IG_KOSONG }
+
+  const { seri } = await tarikSeri(igId, IG_SERI, token, periode)
+  hasil.jangkauan    = jumlah(seri, 'reach')
+  hasil.followerBaru = jumlah(seri, 'follower_count')
+
+  for (const jendela of pecahJendela(periode)) {
+    const r = await graphGet(
+      `${igId}/insights?metric=${IG_TOTAL.join(',')}&metric_type=total_value&period=day&${kueriRentang(jendela)}`,
+      token,
+    )
+    if (!r.ok) continue
+    for (const d of r.json?.data ?? []) {
+      const n = Number(d?.total_value?.value ?? 0)
+      switch (d.name) {
+        case 'views':              hasil.tayangan     += n; break
+        case 'accounts_engaged':   hasil.akunTerlibat += n; break
+        case 'total_interactions': hasil.interaksi    += n; break
+        case 'likes':              hasil.suka         += n; break
+        case 'saves':              hasil.disimpan     += n; break
+      }
+    }
+  }
+  return hasil
+}
+
+export async function ringkasInstagram(
+  cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
+): Promise<RingkasInstagram> {
+  const kosong: RingkasInstagram = {
+    akun: null, periode: IG_KOSONG, banding: null,
+    harian: [], followerHarian: [], teratas: [], jenisKonten: [], catatanUnik: null,
+  }
+
+  const token = cfg.insights_token || cfg.access_token || ''
+  const igId  = cfg.ig_business_id?.trim() || ''
+  if (!token) return { ...kosong, galat: 'Token Insights belum diisi di Pengaturan → Integrasi Meta.' }
+  if (!igId)  return { ...kosong, galat: 'Instagram Business ID belum diisi di Pengaturan → Integrasi Meta.' }
+
+  const rAkun = await graphGet(`${igId}?fields=username,name,followers_count,media_count`, token)
+  if (!rAkun.ok) return { ...kosong, galat: pesanErrorGraph(rAkun) }
+
+  const [{ seri, galat }, total, totalBanding, rMedia] = await Promise.all([
+    tarikSeri(igId, IG_SERI, token, periode),
+    totalIg(igId, token, periode),
+    banding ? totalIg(igId, token, banding) : Promise.resolve(null),
+    ambilMediaIg(igId, token, periode),
+  ])
+
+  const tanggal = Object.keys(seri).sort()
+  const banyakJendela = pecahJendela(periode).length > 1
+
+  return {
+    akun: {
+      id: igId,
+      username: rAkun.json?.username ?? '-',
+      nama:     rAkun.json?.name ?? '',
+      follower: Number(rAkun.json?.followers_count ?? 0),
+      media:    Number(rAkun.json?.media_count ?? 0),
+    },
+    periode: total,
+    banding: totalBanding,
+    harian:         tanggal.map(t => ({ tanggal: t, jangkauan: seri[t].reach ?? 0 })),
+    followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
+    teratas:     rMedia.teratas,
+    jenisKonten: rMedia.jenisKonten,
+    catatanUnik: banyakJendela
+      ? 'Rentang ini melebihi 30 hari sehingga ditarik per potongan. Jangkauan dan akun terlibat adalah PENJUMLAHAN potongan — orang yang sama pada periode berbeda ikut terhitung lebih dari sekali. Untuk angka unik yang tepat, pakai rentang maksimal 30 hari.'
+      : null,
+    galat,
+  }
+}
+
+const LABEL_JENIS_IG: Record<string, string> = {
+  IMAGE: 'Foto', VIDEO: 'Video', CAROUSEL_ALBUM: 'Carousel', REELS: 'Reels',
+}
+
+/**
+ * Daftar konten + metric per konten dalam SATU permintaan lewat field bersarang.
+ * Kalau Graph menolak bagian insights-nya (metric yang sah berbeda antar jenis
+ * konten), diulang tanpa insights supaya daftar kontennya tetap tampil.
+ */
+async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
+  const dasar = `id,caption,media_type,timestamp,permalink`
+  const rentang = kueriRentang(periode)
+
+  let r = await graphGet(`${igId}/media?fields=${dasar},insights.metric(${IG_KONTEN})&limit=30&${rentang}`, token)
+  if (!r.ok) r = await graphGet(`${igId}/media?fields=${dasar}&limit=30&${rentang}`, token)
+  if (!r.ok) return { teratas: [], jenisKonten: [] }
+
+  const nilai = (m: any, nama: string) =>
+    Number((m?.insights?.data ?? []).find((i: any) => i.name === nama)?.values?.[0]?.value ?? 0)
+
+  const items = (r.json?.data ?? []).map((m: any) => ({
+    id: String(m.id),
+    jenis: LABEL_JENIS_IG[m.media_type] ?? String(m.media_type ?? '-'),
+    tanggal: String(m.timestamp ?? '').slice(0, 10),
+    permalink: String(m.permalink ?? ''),
+    teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 140),
+    jangkauan: nilai(m, 'reach'),
+    suka:      nilai(m, 'likes'),
+    komentar:  nilai(m, 'comments'),
+    dibagikan: nilai(m, 'shares'),
+    disimpan:  nilai(m, 'saved'),
+    interaksi: nilai(m, 'total_interactions'),
+  }))
+
+  const per = new Map<string, { jenis: string; jumlah: number; jangkauan: number }>()
+  for (const it of items) {
+    const p = per.get(it.jenis) ?? { jenis: it.jenis, jumlah: 0, jangkauan: 0 }
+    p.jumlah += 1; p.jangkauan += it.jangkauan
+    per.set(it.jenis, p)
+  }
+
+  return {
+    teratas: [...items].sort((a, b) => b.jangkauan - a.jangkauan || b.interaksi - a.interaksi).slice(0, 15),
+    jenisKonten: [...per.values()].sort((a, b) => b.jangkauan - a.jangkauan),
+  }
+}
+
+// ──────────────────────────────────────────────
+// Facebook Page
+// ──────────────────────────────────────────────
+
+/**
+ * Metric Page yang TERBUKTI hidup. Perlu diketahui saat membaca dashboard ini:
+ * seluruh metric jangkauan tingkat Page (`page_impressions`,
+ * `page_impressions_unique`) sudah DIHAPUS Meta, dan tingkat postingan pun
+ * (`post_impressions*`, `post_engaged_users`) ikut hilang. Karena itu Facebook
+ * hanya bisa dilaporkan lewat metric AKSI — bukan berapa orang melihat.
+ */
+const FB_SERI = [
+  'page_post_engagements', 'page_daily_follows_unique', 'page_views_total',
+  'page_follows', 'page_video_views', 'page_total_actions',
+]
+
+export interface TotalFb {
+  interaksi: number; followerBaru: number; kunjunganProfil: number
+  tayanganVideo: number; totalAksi: number
+}
+export interface RingkasFacebook {
+  page: { id: string; nama: string; follower: number } | null
+  periode: TotalFb
+  banding: TotalFb | null
+  harian: { tanggal: string; interaksi: number }[]
+  followerHarian: { tanggal: string; naik: number }[]
+  teratas: {
+    id: string; tanggal: string; permalink: string; teks: string
+    reaksi: number; komentar: number; dibagikan: number; klik: number
+  }[]
+  galat?: string
+}
+
+const FB_KOSONG: TotalFb = {
+  interaksi: 0, followerBaru: 0, kunjunganProfil: 0, tayanganVideo: 0, totalAksi: 0,
+}
+
+const totalDariSeri = (seri: SeriHarian): TotalFb => ({
+  interaksi:       jumlah(seri, 'page_post_engagements'),
+  followerBaru:    jumlah(seri, 'page_daily_follows_unique'),
+  kunjunganProfil: jumlah(seri, 'page_views_total'),
+  tayanganVideo:   jumlah(seri, 'page_video_views'),
+  totalAksi:       jumlah(seri, 'page_total_actions'),
+})
+
+export async function ringkasFacebook(
+  cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
+): Promise<RingkasFacebook> {
+  const kosong: RingkasFacebook = {
+    page: null, periode: FB_KOSONG, banding: null, harian: [], followerHarian: [], teratas: [],
+  }
+
+  const token  = cfg.insights_token || cfg.access_token || ''
+  const pageId = cfg.page_id?.trim() || ''
+  if (!token)  return { ...kosong, galat: 'Token Insights belum diisi di Pengaturan → Integrasi Meta.' }
+  if (!pageId) return { ...kosong, galat: 'Facebook Page ID belum diisi di Pengaturan → Integrasi Meta.' }
+
+  const rPage = await graphGet(`${pageId}?fields=name,followers_count,fan_count`, token)
+  if (!rPage.ok) return { ...kosong, galat: pesanErrorGraph(rPage) }
+
+  const [utama, seriBanding, teratas] = await Promise.all([
+    tarikSeri(pageId, FB_SERI, token, periode),
+    banding ? tarikSeri(pageId, FB_SERI, token, banding) : Promise.resolve(null),
+    ambilPostFb(pageId, token, periode),
+  ])
+
+  const tanggal = Object.keys(utama.seri).sort()
+
+  return {
+    page: {
+      id: pageId,
+      nama: rPage.json?.name ?? '-',
+      follower: Number(rPage.json?.followers_count ?? rPage.json?.fan_count ?? 0),
+    },
+    periode: totalDariSeri(utama.seri),
+    banding: seriBanding ? totalDariSeri(seriBanding.seri) : null,
+    harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
+    followerHarian: tanggal.map(t => ({ tanggal: t, naik: utama.seri[t].page_daily_follows_unique ?? 0 })),
+    teratas,
+    galat: utama.galat,
+  }
+}
+
+/**
+ * Jumlah reaksi/komentar/bagikan diambil lewat `summary(true)`, BUKAN lewat
+ * Insights — metric engagement per postingan sudah dihapus Meta, sedangkan
+ * penghitung ringkasan ini masih tersedia.
+ */
+async function ambilPostFb(pageId: string, token: string, periode: Rentang) {
+  const fields = [
+    'id', 'message', 'created_time', 'permalink_url',
+    'shares', 'comments.summary(true).limit(0)', 'reactions.summary(true).limit(0)',
+    'insights.metric(post_clicks)',
+  ].join(',')
+
+  let r = await graphGet(`${pageId}/posts?fields=${fields}&limit=25&${kueriRentang(periode)}`, token)
+  if (!r.ok) {
+    r = await graphGet(`${pageId}/posts?fields=id,message,created_time,permalink_url&limit=25&${kueriRentang(periode)}`, token)
+    if (!r.ok) return []
+  }
+
+  const items = (r.json?.data ?? []).map((p: any) => ({
+    id: String(p.id),
+    tanggal: String(p.created_time ?? '').slice(0, 10),
+    permalink: String(p.permalink_url ?? ''),
+    teks: String(p.message ?? '(tanpa teks)').replace(/\s+/g, ' ').slice(0, 140),
+    reaksi:    Number(p?.reactions?.summary?.total_count ?? 0),
+    komentar:  Number(p?.comments?.summary?.total_count ?? 0),
+    dibagikan: Number(p?.shares?.count ?? 0),
+    klik:      Number((p?.insights?.data ?? []).find((i: any) => i.name === 'post_clicks')?.values?.[0]?.value ?? 0),
+  }))
+
+  return items
+    .sort((a: any, b: any) => (b.reaksi + b.komentar + b.dibagikan) - (a.reaksi + a.komentar + a.dibagikan))
+    .slice(0, 15)
+}
