@@ -6,7 +6,7 @@
  * kemampuan apa yang memang tersedia.
  */
 import { getTenantDb } from '@/lib/tenant'
-import { runSegmenSearch } from '@/app/api/[slug]/segmen/search/route'
+import { runSegmenSearch } from '@/lib/segmen-search'
 import type { AiTool, AiToolCall } from '@/lib/ai-provider'
 
 export const AI_PARTNER_TOOLS: AiTool[] = [

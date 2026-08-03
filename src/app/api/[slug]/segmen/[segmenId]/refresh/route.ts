@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/tenant'
 import { requireTenantPermission } from '@/lib/auth'
-import { runSegmenSearch } from '../../search/route'
+import { runSegmenSearch } from '@/lib/segmen-search'
 
 type Ctx = { params: { slug: string; segmenId: string } }
 
