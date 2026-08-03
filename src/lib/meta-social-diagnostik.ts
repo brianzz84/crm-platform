@@ -105,6 +105,37 @@ const KANDIDAT_IG_MEDIA: KandidatMetrik[] = [
 ]
 
 /**
+ * Gelombang lanjutan per-konten. Sasaran utamanya `follows` dan `profile_visits`:
+ * kalau keduanya hidup, pertanyaan "follower baru datang dari konten apa" bisa
+ * dijawab sebagai ATRIBUSI sungguhan, bukan sekadar keterkaitan tanggal seperti
+ * yang sekarang ditampilkan dashboard.
+ */
+const KANDIDAT_IG_MEDIA_LANJUT: KandidatMetrik[] = [
+  { metric: 'follows', query: 'metric=follows' },
+  { metric: 'profile_visits', query: 'metric=profile_visits' },
+  { metric: 'profile_activity', query: 'metric=profile_activity' },
+  { metric: 'replies', query: 'metric=replies' },
+  { metric: 'plays', query: 'metric=plays' },
+  { metric: 'clips_replays_count', query: 'metric=clips_replays_count' },
+  { metric: 'ig_reels_avg_watch_time', query: 'metric=ig_reels_avg_watch_time' },
+  { metric: 'ig_reels_video_view_total_time', query: 'metric=ig_reels_video_view_total_time' },
+]
+
+/**
+ * Demografi audiens. Semuanya menuntut `breakdown`, jadi nilainya disertakan di
+ * kueri — tanpa itu Graph menolak dengan galat yang menyesatkan (bukan code 100),
+ * sehingga metric yang sebenarnya hidup akan tercatat sebagai gagal.
+ */
+const KANDIDAT_IG_DEMOGRAFI: KandidatMetrik[] = [
+  { metric: 'follower_demographics (age)',      query: 'metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=age' },
+  { metric: 'follower_demographics (city)',     query: 'metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=city' },
+  { metric: 'follower_demographics (gender)',   query: 'metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=gender' },
+  { metric: 'engaged_audience_demographics',    query: 'metric=engaged_audience_demographics&period=lifetime&metric_type=total_value&breakdown=city' },
+  { metric: 'reached_audience_demographics',    query: 'metric=reached_audience_demographics&period=lifetime&metric_type=total_value&breakdown=city' },
+  { metric: 'profile_links_taps',               query: 'metric=profile_links_taps&period=day&metric_type=total_value' },
+]
+
+/**
  * Metric per-postingan Facebook. Penting justru KARENA page_impressions mati:
  * kalau reach tingkat Page tidak ada lagi, tingkat postingan adalah satu-satunya
  * jalan tersisa untuk mengukur jangkauan Facebook.
@@ -202,16 +233,27 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
   //    untuk konten yang belum terlalu lama.
   let contohMediaId: string | null = null
   let contohMediaTipe = ''
+  // Contoh kedua khusus video/Reels: metric keluarga Reels tidak pernah sah pada
+  // foto atau carousel, jadi mengujinya di contoh yang salah tipe hanya akan
+  // melaporkan "mati" untuk metric yang sebenarnya tersedia.
+  let contohVideoId: string | null = null
+  let contohVideoTipe = ''
+
   if (!cfg.ig_business_id) {
     hasil.push({ kunci: 'ig_media', label: 'Instagram Media', status: 'lewati', pesan: 'IG Business ID belum diisi di form.' })
   } else {
-    const r = await graphGet(`${cfg.ig_business_id}/media?fields=id,media_type,timestamp&limit=1`, token)
+    const r = await graphGet(`${cfg.ig_business_id}/media?fields=id,media_type,timestamp&limit=25`, token)
     if (r.ok) {
-      const m = r.json?.data?.[0]
+      const daftar: any[] = r.json?.data ?? []
+      const m = daftar[0]
       contohMediaId   = m?.id ?? null
       contohMediaTipe = m?.media_type ?? ''
+
+      const v = daftar.find(x => x.media_type === 'VIDEO' || x.media_type === 'REELS')
+      if (v && v.id !== contohMediaId) { contohVideoId = v.id; contohVideoTipe = v.media_type }
+
       hasil.push({ kunci: 'ig_media', label: 'Instagram Media', status: 'ok', detail: potong(r.json),
-        pesan: `Daftar media IG bisa ditarik (contoh: ${contohMediaTipe || 'konten'}).` })
+        pesan: `${daftar.length} konten terbaru bisa ditarik (contoh: ${contohMediaTipe || 'konten'}${contohVideoTipe ? `, plus contoh ${contohVideoTipe}` : ''}).` })
     } else {
       hasil.push({ kunci: 'ig_media', label: 'Instagram Media', status: 'gagal', pesan: pesanErrorGraph(r) })
     }
@@ -219,8 +261,20 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
 
   // 6b) Metric per-konten IG. Metric yang sah berbeda antar tipe konten
   //     (REELS/VIDEO vs IMAGE), jadi tipe contohnya ikut dilaporkan.
-  await temukanMetrik('ig_media_insights', `Instagram Insights (per konten${contohMediaTipe ? ` — ${contohMediaTipe}` : ''})`,
+  await temukanMetrik('ig_media_insights', `Instagram Insights (per konten — ${contohMediaTipe || 'konten'})`,
     contohMediaId, KANDIDAT_IG_MEDIA)
+
+  // 6b-2) Gelombang lanjutan: sasaran utamanya `follows` & `profile_visits`.
+  await temukanMetrik('ig_media_lanjut', `Instagram Atribusi (per konten — ${contohMediaTipe || 'konten'})`,
+    contohMediaId, KANDIDAT_IG_MEDIA_LANJUT)
+
+  if (contohVideoId) {
+    await temukanMetrik('ig_media_video', `Instagram Atribusi (per konten — ${contohVideoTipe})`,
+      contohVideoId, KANDIDAT_IG_MEDIA_LANJUT)
+  }
+
+  // 6b-3) Demografi audiens — dasar untuk mengetahui SIAPA yang dijangkau.
+  await temukanMetrik('ig_demografi', 'Instagram Demografi Audiens', cfg.ig_business_id, KANDIDAT_IG_DEMOGRAFI)
 
   // 6c) Metric per-postingan Facebook — satu-satunya sisa jalan mengukur jangkauan
   //     FB setelah page_impressions dihapus Meta.
