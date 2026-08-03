@@ -60,6 +60,26 @@ function tanggalMundur(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 }
 
+/**
+ * Petunjuk tindakan untuk kegagalan API Business Profile.
+ *
+ * Dipisahkan karena dua kode status di sini punya arti yang sangat berbeda dan
+ * SANGAT mudah disalahartikan:
+ *  - 403 → API-nya belum di-enable di project (masalah konfigurasi, cepat beres).
+ *  - 429 → BUKAN "terlalu sering memanggil". Kuota project masih 0 permintaan per
+ *    menit, sehingga permintaan PERTAMA pun langsung ditolak. Itulah wujud nyata
+ *    pengajuan allowlist yang belum disetujui Google. Tanpa penjelasan ini, admin
+ *    akan menyangka sistemnya membanjiri Google dan mencoba "menunggu sebentar",
+ *    padahal yang ditunggu adalah persetujuan yang bisa makan waktu berminggu.
+ */
+function petunjukGbp(status: number): string {
+  if (status === 403) return ' — API belum diaktifkan di project Google Cloud.'
+  if (status === 429) return ' — kuota project masih 0 permintaan/menit, jadi permintaan pertama pun ditolak.' +
+    ' Ini yang terjadi selama pengajuan akses Google Business Profile belum disetujui — bukan karena terlalu sering memanggil.' +
+    ' Pantau di APIs & Services → Quotas: 0 = belum disetujui, 300 = sudah.'
+  return ''
+}
+
 export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGbp): Promise<HasilCek[]> {
   cekBatasLaju(slug)
   const hasil: HasilCek[] = []
@@ -93,9 +113,7 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
   if (!rAkun.ok) {
     hasil.push({
       kunci: 'akun', label: 'Account Management API', status: 'gagal',
-      pesan: pesanErrorGoogle(rAkun) + (rAkun.status === 403
-        ? ' — API belum diaktifkan di project Google Cloud, atau project belum disetujui Google.'
-        : ''),
+      pesan: pesanErrorGoogle(rAkun) + petunjukGbp(rAkun.status),
       detail: potong(rAkun.json),
     })
   } else {
@@ -126,9 +144,7 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
     if (!rLok.ok) {
       hasil.push({
         kunci: 'lokasi', label: 'Business Information API', status: 'gagal',
-        pesan: pesanErrorGoogle(rLok) + (rLok.status === 403
-          ? ' — API belum diaktifkan di Google Cloud Console.'
-          : ''),
+        pesan: pesanErrorGoogle(rLok) + petunjukGbp(rLok.status),
         detail: potong(rLok.json),
       })
     } else {
@@ -168,9 +184,7 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
     if (!rPerf.ok) {
       hasil.push({
         kunci: 'performa', label: 'Business Performance API', status: 'gagal',
-        pesan: pesanErrorGoogle(rPerf) + (rPerf.status === 403
-          ? ' — API belum diaktifkan di Google Cloud Console.'
-          : ''),
+        pesan: pesanErrorGoogle(rPerf) + petunjukGbp(rPerf.status),
         detail: potong(rPerf.json),
       })
     } else {
@@ -200,7 +214,7 @@ export async function jalankanProbeGoogleBisnis(slug: string, cfg: ConfigProbeGb
         // project yang sudah lolos peninjauan Google, terpisah dari API v1.
         pesan: pesanErrorGoogle(rUlas) + (rUlas.status === 403 || rUlas.status === 404
           ? ' — API lama (v4) khusus ulasan biasanya baru terbuka setelah project Anda disetujui Google. Ajukan akses lewat formulir Google Business Profile API.'
-          : ''),
+          : petunjukGbp(rUlas.status)),
         detail: potong(rUlas.json),
       })
     } else {
