@@ -111,17 +111,29 @@ export interface TotalIg {
   jangkauan: number; tayangan: number; interaksi: number
   akunTerlibat: number; suka: number; disimpan: number; followerBaru: number
 }
+export interface KontenIg {
+  id: string; jenis: string; tanggal: string; permalink: string; teks: string
+  jangkauan: number; suka: number; komentar: number; dibagikan: number
+  disimpan: number; interaksi: number
+  /** Interaksi per 100 jangkauan — membandingkan konten besar dan kecil secara adil. */
+  rasioInteraksi: number
+}
 export interface RingkasInstagram {
   akun: { id: string; username: string; follower: number; media: number; nama: string } | null
   periode: TotalIg
   banding: TotalIg | null
   harian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
-  teratas: {
-    id: string; jenis: string; tanggal: string; permalink: string; teks: string
-    jangkauan: number; suka: number; komentar: number; dibagikan: number; disimpan: number; interaksi: number
-  }[]
-  jenisKonten: { jenis: string; jumlah: number; jangkauan: number }[]
+  teratas: KontenIg[]
+  /** Urutan berdasarkan MUTU tanggapan, bukan besarnya jangkauan. */
+  engagementTeratas: KontenIg[]
+  jenisKonten: { jenis: string; jumlah: number; jangkauan: number; rasioInteraksi: number }[]
+  /**
+   * Hari dengan follower baru terbanyak beserta konten yang terbit hari itu.
+   * Ini KETERKAITAN waktu, bukan atribusi — Instagram tidak memberi tahu konten
+   * mana yang membuat seseorang menekan Ikuti.
+   */
+  hariFollower: { tanggal: string; naik: number; konten: string[] }[]
   /** Peringatan kejujuran angka saat rentang melewati satu jendela. */
   catatanUnik: string | null
   galat?: string
@@ -130,6 +142,13 @@ export interface RingkasInstagram {
 const IG_KOSONG: TotalIg = {
   jangkauan: 0, tayangan: 0, interaksi: 0, akunTerlibat: 0, suka: 0, disimpan: 0, followerBaru: 0,
 }
+
+/**
+ * Ambang jangkauan untuk peringkat engagement. Tanpa ini daftar dikuasai konten
+ * bernasib sial — 20 jangkauan dengan 4 interaksi menjadi 20%, mengalahkan konten
+ * yang benar-benar berhasil. Rasio hanya bermakna bila penyebutnya cukup besar.
+ */
+const AMBANG_JANGKAUAN_RASIO = 300
 
 /** Metric total_value dikembalikan sebagai satu angka per jendela, bukan deret. */
 async function totalIg(igId: string, token: string, periode: Rentang): Promise<TotalIg> {
@@ -164,7 +183,8 @@ export async function ringkasInstagram(
 ): Promise<RingkasInstagram> {
   const kosong: RingkasInstagram = {
     akun: null, periode: IG_KOSONG, banding: null,
-    harian: [], followerHarian: [], teratas: [], jenisKonten: [], catatanUnik: null,
+    harian: [], followerHarian: [], teratas: [], engagementTeratas: [],
+    jenisKonten: [], hariFollower: [], catatanUnik: null,
   }
 
   const token = cfg.insights_token || cfg.access_token || ''
@@ -197,8 +217,20 @@ export async function ringkasInstagram(
     banding: totalBanding,
     harian:         tanggal.map(t => ({ tanggal: t, jangkauan: seri[t].reach ?? 0 })),
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
-    teratas:     rMedia.teratas,
-    jenisKonten: rMedia.jenisKonten,
+    teratas:           rMedia.teratas,
+    engagementTeratas: rMedia.engagementTeratas,
+    jenisKonten:       rMedia.jenisKonten,
+    hariFollower: tanggal
+      .map(t => ({
+        tanggal: t,
+        naik: seri[t].follower_count ?? 0,
+        konten: rMedia.semua
+          .filter(k => k.tanggal === t)
+          .map(k => `${k.jenis}: ${k.teks || 'tanpa teks'}`),
+      }))
+      .filter(h => h.naik > 0)
+      .sort((a, b) => b.naik - a.naik)
+      .slice(0, 10),
     catatanUnik: banyakJendela
       ? 'Rentang ini melebihi 30 hari sehingga ditarik per potongan. Jangkauan dan akun terlibat adalah PENJUMLAHAN potongan — orang yang sama pada periode berbeda ikut terhitung lebih dari sekali. Untuk angka unik yang tepat, pakai rentang maksimal 30 hari.'
       : null,
@@ -221,35 +253,50 @@ async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
 
   let r = await graphGet(`${igId}/media?fields=${dasar},insights.metric(${IG_KONTEN})&limit=30&${rentang}`, token)
   if (!r.ok) r = await graphGet(`${igId}/media?fields=${dasar}&limit=30&${rentang}`, token)
-  if (!r.ok) return { teratas: [], jenisKonten: [] }
+  if (!r.ok) return { semua: [], teratas: [], engagementTeratas: [], jenisKonten: [] }
 
   const nilai = (m: any, nama: string) =>
     Number((m?.insights?.data ?? []).find((i: any) => i.name === nama)?.values?.[0]?.value ?? 0)
 
-  const items = (r.json?.data ?? []).map((m: any) => ({
-    id: String(m.id),
-    jenis: LABEL_JENIS_IG[m.media_type] ?? String(m.media_type ?? '-'),
-    tanggal: String(m.timestamp ?? '').slice(0, 10),
-    permalink: String(m.permalink ?? ''),
-    teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 140),
-    jangkauan: nilai(m, 'reach'),
-    suka:      nilai(m, 'likes'),
-    komentar:  nilai(m, 'comments'),
-    dibagikan: nilai(m, 'shares'),
-    disimpan:  nilai(m, 'saved'),
-    interaksi: nilai(m, 'total_interactions'),
-  }))
+  const items: KontenIg[] = (r.json?.data ?? []).map((m: any) => {
+    const jangkauan = nilai(m, 'reach')
+    const interaksi = nilai(m, 'total_interactions')
+    return {
+      id: String(m.id),
+      jenis: LABEL_JENIS_IG[m.media_type] ?? String(m.media_type ?? '-'),
+      tanggal: String(m.timestamp ?? '').slice(0, 10),
+      permalink: String(m.permalink ?? ''),
+      teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 140),
+      jangkauan,
+      suka:      nilai(m, 'likes'),
+      komentar:  nilai(m, 'comments'),
+      dibagikan: nilai(m, 'shares'),
+      disimpan:  nilai(m, 'saved'),
+      interaksi,
+      rasioInteraksi: jangkauan > 0 ? (interaksi / jangkauan) * 100 : 0,
+    }
+  })
 
-  const per = new Map<string, { jenis: string; jumlah: number; jangkauan: number }>()
+  const per = new Map<string, { jenis: string; jumlah: number; jangkauan: number; interaksi: number }>()
   for (const it of items) {
-    const p = per.get(it.jenis) ?? { jenis: it.jenis, jumlah: 0, jangkauan: 0 }
-    p.jumlah += 1; p.jangkauan += it.jangkauan
+    const p = per.get(it.jenis) ?? { jenis: it.jenis, jumlah: 0, jangkauan: 0, interaksi: 0 }
+    p.jumlah += 1; p.jangkauan += it.jangkauan; p.interaksi += it.interaksi
     per.set(it.jenis, p)
   }
 
   return {
+    semua: items,
     teratas: [...items].sort((a, b) => b.jangkauan - a.jangkauan || b.interaksi - a.interaksi).slice(0, 15),
-    jenisKonten: [...per.values()].sort((a, b) => b.jangkauan - a.jangkauan),
+    engagementTeratas: items
+      .filter(i => i.jangkauan >= AMBANG_JANGKAUAN_RASIO)
+      .sort((a, b) => b.rasioInteraksi - a.rasioInteraksi)
+      .slice(0, 10),
+    jenisKonten: [...per.values()]
+      .map(p => ({
+        jenis: p.jenis, jumlah: p.jumlah, jangkauan: p.jangkauan,
+        rasioInteraksi: p.jangkauan > 0 ? (p.interaksi / p.jangkauan) * 100 : 0,
+      }))
+      .sort((a, b) => b.jangkauan - a.jangkauan),
   }
 }
 
@@ -281,8 +328,10 @@ export interface RingkasFacebook {
   followerHarian: { tanggal: string; naik: number }[]
   teratas: {
     id: string; tanggal: string; permalink: string; teks: string
-    reaksi: number; komentar: number; dibagikan: number; klik: number
+    reaksi: number; komentar: number; dibagikan: number
   }[]
+  /** Alasan penghitung per postingan tidak terisi — dibedakan dari galat halaman. */
+  galatPostingan?: string
   galat?: string
 }
 
@@ -313,7 +362,7 @@ export async function ringkasFacebook(
   const rPage = await graphGet(`${pageId}?fields=name,followers_count,fan_count`, token)
   if (!rPage.ok) return { ...kosong, galat: pesanErrorGraph(rPage) }
 
-  const [utama, seriBanding, teratas] = await Promise.all([
+  const [utama, seriBanding, post] = await Promise.all([
     tarikSeri(pageId, FB_SERI, token, periode),
     banding ? tarikSeri(pageId, FB_SERI, token, banding) : Promise.resolve(null),
     ambilPostFb(pageId, token, periode),
@@ -331,7 +380,8 @@ export async function ringkasFacebook(
     banding: seriBanding ? totalDariSeri(seriBanding.seri) : null,
     harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: utama.seri[t].page_daily_follows_unique ?? 0 })),
-    teratas,
+    teratas: post.items,
+    galatPostingan: post.galat,
     galat: utama.galat,
   }
 }
@@ -340,32 +390,41 @@ export async function ringkasFacebook(
  * Jumlah reaksi/komentar/bagikan diambil lewat `summary(true)`, BUKAN lewat
  * Insights — metric engagement per postingan sudah dihapus Meta, sedangkan
  * penghitung ringkasan ini masih tersedia.
+ *
+ * Percobaan bertingkat, dan ALASAN kegagalannya dibawa keluar. Versi pertama
+ * menggabungkan penghitung ringkasan dengan `insights.metric(post_clicks)`;
+ * ketika Graph menolak gabungan itu, seluruh permintaan gugur dan kode jatuh ke
+ * daftar tanpa angka — hasilnya semua postingan tampil dengan 0 reaksi tanpa
+ * satu pun petunjuk kenapa. Kegagalan yang menyamar sebagai "datanya memang nol"
+ * adalah yang paling mahal, jadi sekarang sebabnya ikut dilaporkan ke UI.
  */
 async function ambilPostFb(pageId: string, token: string, periode: Rentang) {
-  const fields = [
-    'id', 'message', 'created_time', 'permalink_url',
-    'shares', 'comments.summary(true).limit(0)', 'reactions.summary(true).limit(0)',
-    'insights.metric(post_clicks)',
-  ].join(',')
+  const inti    = 'id,message,created_time,permalink_url'
+  const ringkas = 'shares,comments.summary(true),reactions.summary(true)'
+  const rentang = kueriRentang(periode)
 
-  let r = await graphGet(`${pageId}/posts?fields=${fields}&limit=25&${kueriRentang(periode)}`, token)
+  let galat: string | undefined
+  let r = await graphGet(`${pageId}/posts?fields=${inti},${ringkas}&limit=25&${rentang}`, token)
   if (!r.ok) {
-    r = await graphGet(`${pageId}/posts?fields=id,message,created_time,permalink_url&limit=25&${kueriRentang(periode)}`, token)
-    if (!r.ok) return []
+    galat = pesanErrorGraph(r)
+    r = await graphGet(`${pageId}/posts?fields=${inti}&limit=25&${rentang}`, token)
+    if (!r.ok) return { items: [], galat: galat || pesanErrorGraph(r) }
   }
 
   const items = (r.json?.data ?? []).map((p: any) => ({
     id: String(p.id),
     tanggal: String(p.created_time ?? '').slice(0, 10),
     permalink: String(p.permalink_url ?? ''),
-    teks: String(p.message ?? '(tanpa teks)').replace(/\s+/g, ' ').slice(0, 140),
+    teks: String(p.message ?? '').replace(/\s+/g, ' ').slice(0, 140),
     reaksi:    Number(p?.reactions?.summary?.total_count ?? 0),
     komentar:  Number(p?.comments?.summary?.total_count ?? 0),
     dibagikan: Number(p?.shares?.count ?? 0),
-    klik:      Number((p?.insights?.data ?? []).find((i: any) => i.name === 'post_clicks')?.values?.[0]?.value ?? 0),
   }))
 
-  return items
-    .sort((a: any, b: any) => (b.reaksi + b.komentar + b.dibagikan) - (a.reaksi + a.komentar + a.dibagikan))
-    .slice(0, 15)
+  return {
+    items: items
+      .sort((a: any, b: any) => (b.reaksi + b.komentar + b.dibagikan) - (a.reaksi + a.komentar + a.dibagikan))
+      .slice(0, 15),
+    galat,
+  }
 }

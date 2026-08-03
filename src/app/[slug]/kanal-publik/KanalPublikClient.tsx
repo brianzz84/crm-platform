@@ -34,14 +34,21 @@ interface RingkasGa4 {
 
 /* ─── Tipe Meta (cerminan bentuk dari src/lib/meta-kanal.ts) ─── */
 interface TotalIg { jangkauan: number; tayangan: number; interaksi: number; akunTerlibat: number; suka: number; disimpan: number; followerBaru: number }
+interface KontenIg {
+  id: string; jenis: string; tanggal: string; permalink: string; teks: string
+  jangkauan: number; suka: number; komentar: number; dibagikan: number
+  disimpan: number; interaksi: number; rasioInteraksi: number
+}
 interface RingkasInstagram {
   akun: { id: string; username: string; follower: number; media: number; nama: string } | null
   periode: TotalIg
   banding: TotalIg | null
   harian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
-  teratas: { id: string; jenis: string; tanggal: string; permalink: string; teks: string; jangkauan: number; suka: number; komentar: number; dibagikan: number; disimpan: number; interaksi: number }[]
-  jenisKonten: { jenis: string; jumlah: number; jangkauan: number }[]
+  teratas: KontenIg[]
+  engagementTeratas: KontenIg[]
+  jenisKonten: { jenis: string; jumlah: number; jangkauan: number; rasioInteraksi: number }[]
+  hariFollower: { tanggal: string; naik: number; konten: string[] }[]
   catatanUnik: string | null
   galat?: string
 }
@@ -52,7 +59,8 @@ interface RingkasFacebook {
   banding: TotalFb | null
   harian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
-  teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number; klik: number }[]
+  teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number }[]
+  galatPostingan?: string
   galat?: string
 }
 
@@ -263,6 +271,25 @@ function Peringkat({ judul, baris, catatan }: {
         ))}
       </div>
     </div>
+  )
+}
+
+const persen = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)}%`
+
+/**
+ * Judul konten yang tetap berguna saat keterangannya kosong. Sebagian konten
+ * Instagram memang tidak berketerangan, dan menampilkan "(tanpa teks)" berjajar
+ * membuat daftar tidak bisa dibaca — jenis dan tanggalnya jauh lebih menolong,
+ * apalagi karena barisnya bisa diklik ke postingan aslinya.
+ */
+function labelKonten(k: { teks: string; jenis?: string; tanggal: string; permalink: string }) {
+  const teks = k.teks || `${k.jenis ?? 'Postingan'} tanpa keterangan · ${k.tanggal}`
+  if (!k.permalink) return teks
+  return (
+    <a href={k.permalink} target="_blank" rel="noopener noreferrer"
+      style={{ color: k.teks ? 'var(--c-text)' : 'var(--c-text-muted)', textDecoration: 'none', fontStyle: k.teks ? 'normal' : 'italic' }}>
+      {teks} ↗
+    </a>
   )
 }
 
@@ -544,7 +571,7 @@ export default function KanalPublikClient({
                   { label: 'Tayangan', nilai: angka(ig.periode.tayangan), warna: 'var(--c-secondary)', delta: <Delta kini={ig.periode.tayangan} dulu={ig.banding?.tayangan} /> },
                   { label: 'Interaksi', nilai: angka(ig.periode.interaksi), warna: 'var(--c-success)',
                     delta: <Delta kini={ig.periode.interaksi} dulu={ig.banding?.interaksi} />,
-                    catatan: `${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
+                    catatan: `${persen(ig.periode.jangkauan ? (ig.periode.interaksi / ig.periode.jangkauan) * 100 : 0)} dari jangkauan · ${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
                   { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED', delta: <Delta kini={ig.periode.followerBaru} dulu={ig.banding?.followerBaru} /> },
                 ]} />
                 {labelBanding && (
@@ -565,19 +592,37 @@ export default function KanalPublikClient({
                 </p>
               </div>
 
-              <Peringkat judul="Konten Teratas"
-                catatan="Diurutkan berdasarkan jangkauan. “Disimpan” layak diperhatikan lebih dari suka — menyimpan berarti konten dianggap berguna untuk dibuka lagi, sinyal paling dekat dengan niat."
+              <Peringkat judul="Konten dengan Jangkauan Terbesar"
+                catatan="Seberapa jauh konten tersebar. Berguna untuk melihat apa yang menembus keluar dari lingkaran follower — tapi jangkauan besar belum tentu berarti tanggapannya bagus."
                 baris={ig.teratas.map(k => ({
-                  kiri: k.permalink
-                    ? <a href={k.permalink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-text)', textDecoration: 'none' }}>{k.teks || '(tanpa teks)'}</a>
-                    : (k.teks || '(tanpa teks)'),
-                  sub: `${k.jenis} · ${k.tanggal} · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
+                  kiri: labelKonten(k),
+                  sub: `${k.jenis} · ${k.tanggal} · ${persen(k.rasioInteraksi)} interaksi · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
                   kanan: angka(k.jangkauan),
                 }))} />
 
+              <Peringkat judul="Konten dengan Tanggapan Terbaik"
+                catatan="Interaksi per 100 orang yang melihat — mengukur MUTU tanggapan, bukan besarnya sebaran. Inilah yang menunjukkan konten mana yang benar-benar mengena, karena konten kecil yang direspons hangat bisa mengalahkan konten viral yang dilewati begitu saja. Hanya konten berjangkauan ≥300 yang diikutkan, sebab rasio tidak bermakna bila penyebutnya terlalu kecil."
+                baris={ig.engagementTeratas.map(k => ({
+                  kiri: labelKonten(k),
+                  sub: `${k.jenis} · ${k.tanggal} · ${angka(k.jangkauan)} jangkauan · ${angka(k.interaksi)} interaksi`,
+                  kanan: persen(k.rasioInteraksi),
+                }))} />
+
+              <Peringkat judul="Hari dengan Follower Baru Terbanyak"
+                catatan="Konten yang terbit pada hari yang sama ikut ditampilkan. Ini KETERKAITAN waktu, bukan sebab-akibat — Instagram tidak memberi tahu konten mana yang membuat seseorang menekan Ikuti, dan pertambahan follower pada satu hari bisa juga datang dari konten lama atau dari luar Instagram. Perlakukan sebagai petunjuk untuk ditelusuri, bukan kesimpulan."
+                baris={ig.hariFollower.map(h => ({
+                  kiri: h.tanggal,
+                  sub: h.konten.length ? h.konten.join(' • ') : 'tidak ada konten terbit hari itu',
+                  kanan: `+${angka(h.naik)}`,
+                }))} />
+
               <Peringkat judul="Jenis Konten"
-                catatan="Membandingkan jangkauan antar format membantu memutuskan format mana yang layak diperbanyak."
-                baris={ig.jenisKonten.map(j => ({ kiri: j.jenis, sub: `${j.jumlah} konten pada periode ini`, kanan: angka(j.jangkauan) }))} />
+                catatan="Membandingkan format bukan hanya dari sebarannya tapi juga dari mutu tanggapannya — format yang jangkauannya kecil tapi rasionya tinggi sering lebih layak diperbanyak daripada sebaliknya."
+                baris={ig.jenisKonten.map(j => ({
+                  kiri: j.jenis,
+                  sub: `${j.jumlah} konten · ${persen(j.rasioInteraksi)} interaksi per jangkauan`,
+                  kanan: angka(j.jangkauan),
+                }))} />
             </>
           ))}
 
@@ -620,13 +665,18 @@ export default function KanalPublikClient({
                 <TrenBatang label="Follower baru per hari" data={fb.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))} />
               </div>
 
+              {fb.galatPostingan && (
+                <Pesan nada="galat">
+                  Penghitung reaksi/komentar/bagikan per postingan tidak bisa ditarik, jadi angkanya tampil nol.
+                  Pesan dari Graph: <code>{fb.galatPostingan}</code>
+                </Pesan>
+              )}
+
               <Peringkat judul="Postingan Teratas"
                 catatan="Diurutkan berdasarkan jumlah reaksi, komentar, dan bagikan. Angka-angka ini diambil dari penghitung ringkasan postingan, bukan dari Insights yang sudah dihapus Meta."
                 baris={fb.teratas.map(p => ({
-                  kiri: p.permalink
-                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-text)', textDecoration: 'none' }}>{p.teks}</a>
-                    : p.teks,
-                  sub: `${p.tanggal} · ${angka(p.reaksi)} reaksi · ${angka(p.komentar)} komentar · ${angka(p.dibagikan)} dibagikan${p.klik ? ` · ${angka(p.klik)} klik` : ''}`,
+                  kiri: labelKonten(p),
+                  sub: `${p.tanggal} · ${angka(p.reaksi)} reaksi · ${angka(p.komentar)} komentar · ${angka(p.dibagikan)} dibagikan`,
                   kanan: angka(p.reaksi + p.komentar + p.dibagikan),
                 }))} />
             </>
