@@ -125,6 +125,28 @@ const KANDIDAT_IG_MEDIA_LANJUT: KandidatMetrik[] = [
 ]
 
 /**
+ * Metric Story. Story hidup 24 jam dan endpoint `/stories` hanya mengembalikan yang
+ * SEDANG aktif — tidak ada endpoint arsip. Karena itu daftar ini hanya bisa diuji
+ * saat ada story tayang; hasil kosong bukan berarti gagal.
+ *
+ * `navigation` menuntut breakdown, sama seperti metric demografi.
+ */
+const KANDIDAT_IG_STORY: KandidatMetrik[] = [
+  { metric: 'views', query: 'metric=views' },
+  { metric: 'reach', query: 'metric=reach' },
+  { metric: 'replies', query: 'metric=replies' },
+  { metric: 'shares', query: 'metric=shares' },
+  { metric: 'total_interactions', query: 'metric=total_interactions' },
+  { metric: 'follows', query: 'metric=follows' },
+  { metric: 'profile_visits', query: 'metric=profile_visits' },
+  { metric: 'profile_activity', query: 'metric=profile_activity' },
+  { metric: 'navigation', query: 'metric=navigation&breakdown=story_navigation_action_type' },
+  { metric: 'exits', query: 'metric=exits' },
+  { metric: 'taps_forward', query: 'metric=taps_forward' },
+  { metric: 'impressions', query: 'metric=impressions' },
+]
+
+/**
  * Demografi audiens. Semuanya menuntut `breakdown`, jadi nilainya disertakan di
  * kueri — tanpa itu Graph menolak dengan galat yang menyesatkan (bukan code 100),
  * sehingga metric yang sebenarnya hidup akan tercatat sebagai gagal.
@@ -278,6 +300,42 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
 
   // 6b-3) Demografi audiens — dasar untuk mengetahui SIAPA yang dijangkau.
   await temukanMetrik('ig_demografi', 'Instagram Demografi Audiens', cfg.ig_business_id, KANDIDAT_IG_DEMOGRAFI)
+
+  // 6b-4) Story. Dua keadaan yang WAJIB dibedakan dan mudah tertukar:
+  //   - endpoint bekerja tapi tidak ada story tayang  → bukan kegagalan
+  //   - endpoint menolak                              → kegagalan sungguhan
+  // Menyamakan keduanya akan membuat kita menyimpulkan "story tidak bisa ditarik"
+  // hanya karena kebetulan probe dijalankan saat tidak ada story.
+  let contohStoryId: string | null = null
+  let adaStoryAktif = false
+
+  if (!cfg.ig_business_id) {
+    hasil.push({ kunci: 'ig_story', label: 'Instagram Story (aktif)', status: 'lewati', pesan: 'IG Business ID belum diisi di form.' })
+  } else {
+    const r = await graphGet(`${cfg.ig_business_id}/stories?fields=id,media_type,timestamp`, token)
+    if (!r.ok) {
+      hasil.push({ kunci: 'ig_story', label: 'Instagram Story (aktif)', status: 'gagal', pesan: pesanErrorGraph(r) })
+    } else {
+      const daftar: any[] = r.json?.data ?? []
+      adaStoryAktif = daftar.length > 0
+      contohStoryId = daftar[0]?.id ?? null
+      hasil.push({
+        kunci: 'ig_story', label: 'Instagram Story (aktif)', status: 'ok', detail: potong(r.json),
+        pesan: adaStoryAktif
+          ? `${daftar.length} story sedang tayang — metric-nya diuji di baris berikutnya.`
+          : 'Endpoint bisa diakses, tapi TIDAK ADA story yang sedang tayang. Ini bukan kegagalan. Jalankan ulang probe saat ada story aktif agar daftar metric-nya bisa dipetakan.',
+      })
+    }
+  }
+
+  if (contohStoryId) {
+    await temukanMetrik('ig_story_insights', 'Instagram Story Insights (per story)', contohStoryId, KANDIDAT_IG_STORY)
+  } else if (adaStoryAktif === false && cfg.ig_business_id) {
+    hasil.push({
+      kunci: 'ig_story_insights', label: 'Instagram Story Insights (per story)', status: 'lewati',
+      pesan: 'Menunggu ada story aktif untuk diuji.',
+    })
+  }
 
   // 6c) Metric per-postingan Facebook — satu-satunya sisa jalan mengukur jangkauan
   //     FB setelah page_impressions dihapus Meta.
