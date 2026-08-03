@@ -37,6 +37,9 @@ export interface ConfigProbe {
 // Scope yang dibutuhkan untuk analitik + iklan (untuk pengingat kalau kurang).
 const SCOPE_WAJIB = [
   'pages_show_list', 'pages_read_engagement', 'read_insights',
+  // Wajib untuk membaca komentar & reaksi per postingan Page — tanpanya penghitung
+  // itu pulang nol. Hanya membaca, seperti sisanya.
+  'pages_read_user_content',
   'instagram_basic', 'instagram_manage_insights', 'ads_read', 'business_management',
 ]
 

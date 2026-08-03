@@ -370,8 +370,14 @@ export interface RingkasFacebook {
   followerHarian: { tanggal: string; naik: number }[]
   teratas: {
     id: string; tanggal: string; permalink: string; teks: string
-    reaksi: number; komentar: number; dibagikan: number
+    reaksi: number; komentar: number; dibagikan: number; klik: number
   }[]
+  /**
+   * Jumlah komentar tidak bisa ditarik karena izin `pages_read_user_content`
+   * belum ada. Reaksi & klik TETAP terisi lewat Insights per postingan, jadi ini
+   * kekurangan sebagian — bukan kegagalan yang membuat semuanya nol.
+   */
+  komentarTersedia: boolean
   /** Alasan penghitung per postingan tidak terisi — dibedakan dari galat halaman. */
   galatPostingan?: string
   galat?: string
@@ -394,7 +400,7 @@ export async function ringkasFacebook(
 ): Promise<RingkasFacebook> {
   const kosong: RingkasFacebook = {
     page: null, periode: FB_KOSONG, banding: null, bandingSeriKosong: false,
-    harian: [], followerHarian: [], teratas: [],
+    harian: [], followerHarian: [], teratas: [], komentarTersedia: false,
   }
 
   const token  = cfg.insights_token || cfg.access_token || ''
@@ -425,6 +431,7 @@ export async function ringkasFacebook(
     harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: utama.seri[t].page_daily_follows_unique ?? 0 })),
     teratas: post.items,
+    komentarTersedia: post.adaKomentar,
     galatPostingan: post.galat,
     galat: utama.galat,
   }
@@ -443,32 +450,59 @@ export async function ringkasFacebook(
  * adalah yang paling mahal, jadi sekarang sebabnya ikut dilaporkan ke UI.
  */
 async function ambilPostFb(pageId: string, token: string, periode: Rentang) {
-  const inti    = 'id,message,created_time,permalink_url'
-  const ringkas = 'shares,comments.summary(true),reactions.summary(true)'
+  const inti    = 'id,message,created_time,permalink_url,shares'
+  // Insights per postingan hanya butuh izin yang SUDAH dipunyai. Terbukti dari
+  // probe: post_clicks & post_reactions_by_type_total hidup.
+  const wawasan = 'insights.metric(post_clicks,post_reactions_by_type_total)'
+  // Komentar & reaksi lewat summary menuntut `pages_read_user_content` yang belum
+  // ditambahkan. Diminta di lapis terluar supaya ketiadaannya hanya menghilangkan
+  // jumlah komentar, bukan menggugurkan seluruh angka seperti sebelumnya.
+  const ringkas = 'comments.summary(true),reactions.summary(true)'
   const rentang = kueriRentang(periode)
 
+  const minta = (fields: string) => graphGet(`${pageId}/posts?fields=${fields}&limit=25&${rentang}`, token)
+
   let galat: string | undefined
-  let r = await graphGet(`${pageId}/posts?fields=${inti},${ringkas}&limit=25&${rentang}`, token)
+  let adaKomentar = true
+
+  let r = await minta(`${inti},${wawasan},${ringkas}`)
   if (!r.ok) {
     galat = pesanErrorGraph(r)
-    r = await graphGet(`${pageId}/posts?fields=${inti}&limit=25&${rentang}`, token)
-    if (!r.ok) return { items: [], galat: galat || pesanErrorGraph(r) }
+    adaKomentar = false
+    r = await minta(`${inti},${wawasan}`)
   }
+  if (!r.ok) r = await minta(inti)
+  if (!r.ok) return { items: [], galat: galat || pesanErrorGraph(r), adaKomentar: false }
 
-  const items = (r.json?.data ?? []).map((p: any) => ({
-    id: String(p.id),
-    tanggal: String(p.created_time ?? '').slice(0, 10),
-    permalink: String(p.permalink_url ?? ''),
-    teks: String(p.message ?? '').replace(/\s+/g, ' ').slice(0, 140),
-    reaksi:    Number(p?.reactions?.summary?.total_count ?? 0),
-    komentar:  Number(p?.comments?.summary?.total_count ?? 0),
-    dibagikan: Number(p?.shares?.count ?? 0),
-  }))
+  const wawasanNilai = (p: any, nama: string) =>
+    (p?.insights?.data ?? []).find((i: any) => i.name === nama)?.values?.[0]?.value
+
+  const items = (r.json?.data ?? []).map((p: any) => {
+    // post_reactions_by_type_total mengembalikan peta {like: n, love: n, …};
+    // jumlah seluruh jenisnya = total reaksi.
+    const perJenis = wawasanNilai(p, 'post_reactions_by_type_total')
+    const reaksiWawasan = perJenis && typeof perJenis === 'object'
+      ? Object.values(perJenis).reduce((s: number, n: any) => s + Number(n ?? 0), 0)
+      : 0
+
+    return {
+      id: String(p.id),
+      tanggal: String(p.created_time ?? '').slice(0, 10),
+      permalink: String(p.permalink_url ?? ''),
+      teks: String(p.message ?? '').replace(/\s+/g, ' ').slice(0, 140),
+      reaksi:    Number(p?.reactions?.summary?.total_count ?? reaksiWawasan),
+      komentar:  Number(p?.comments?.summary?.total_count ?? 0),
+      dibagikan: Number(p?.shares?.count ?? 0),
+      klik:      Number(wawasanNilai(p, 'post_clicks') ?? 0),
+    }
+  })
 
   return {
     items: items
-      .sort((a: any, b: any) => (b.reaksi + b.komentar + b.dibagikan) - (a.reaksi + a.komentar + a.dibagikan))
+      .sort((a: any, b: any) =>
+        (b.reaksi + b.komentar + b.dibagikan + b.klik) - (a.reaksi + a.komentar + a.dibagikan + a.klik))
       .slice(0, 15),
     galat,
+    adaKomentar,
   }
 }

@@ -61,7 +61,8 @@ interface RingkasFacebook {
   bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
-  teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number }[]
+  teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number; klik: number }[]
+  komentarTersedia: boolean
   galatPostingan?: string
   galat?: string
 }
@@ -705,19 +706,24 @@ export default function KanalPublikClient({
                 <TrenBatang label="Follower baru per hari" data={fb.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))} />
               </div>
 
-              {fb.galatPostingan && (
-                <Pesan nada="galat">
-                  Penghitung reaksi/komentar/bagikan per postingan tidak bisa ditarik, jadi angkanya tampil nol.
-                  Pesan dari Graph: <code>{fb.galatPostingan}</code>
+              {!fb.komentarTersedia && (
+                <Pesan nada="info">
+                  <strong>Jumlah komentar belum bisa ditampilkan.</strong> Reaksi, klik, dan bagikan tetap terisi —
+                  ketiganya ditarik lewat Insights per postingan. Yang belum hanya komentar, karena membaca komentar
+                  menuntut izin <code>pages_read_user_content</code> yang belum ditambahkan ke aplikasi.
+                  Izin itu <strong>hanya membaca</strong>, sama seperti lima izin yang sudah ada.
+                  {' '}Menambahkannya: Dasbor App Meta → Kasus penggunaan → <em>Sesuaikan</em> pada &ldquo;Kelola segala
+                  sesuatu di Halaman Anda&rdquo; → <strong>+ Tambahkan</strong> pada <code>pages_read_user_content</code>,
+                  lalu <strong>buat token Page baru</strong> — izin tidak berlaku surut pada token lama.
                 </Pesan>
               )}
 
               <Peringkat judul="Postingan Teratas"
-                catatan="Diurutkan berdasarkan jumlah reaksi, komentar, dan bagikan. Angka-angka ini diambil dari penghitung ringkasan postingan, bukan dari Insights yang sudah dihapus Meta."
+                catatan="Diurutkan berdasarkan total tanggapan. Reaksi dan klik berasal dari Insights per postingan; jumlah bagikan dari penghitung postingan itu sendiri."
                 baris={fb.teratas.map(p => ({
                   kiri: labelKonten(p),
-                  sub: `${p.tanggal} · ${angka(p.reaksi)} reaksi · ${angka(p.komentar)} komentar · ${angka(p.dibagikan)} dibagikan`,
-                  kanan: angka(p.reaksi + p.komentar + p.dibagikan),
+                  sub: `${p.tanggal} · ${angka(p.reaksi)} reaksi${fb.komentarTersedia ? ` · ${angka(p.komentar)} komentar` : ''} · ${angka(p.dibagikan)} dibagikan · ${angka(p.klik)} klik`,
+                  kanan: angka(p.reaksi + p.komentar + p.dibagikan + p.klik),
                 }))} />
             </>
           ))}
