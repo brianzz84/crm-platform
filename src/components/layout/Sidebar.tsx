@@ -49,6 +49,11 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         { href: `${base}/ai-partner`, label: 'AI Partner', icon: '🤖', feature: 'manageSegments' },
         { href: `${base}/broadcast`, label: 'Broadcast',   icon: '📢', feature: 'manageBroadcast' },
         { href: `${base}/inbox`,     label: 'Inbox',       icon: '💬', feature: 'replyChat', badge: inboxUnread || undefined },
+        // Audiens ANONIM (website, YouTube, profil Google) — berbeda sifat dari
+        // menu lain yang seluruhnya tentang orang teridentifikasi. Sementara
+        // memakai izin manageBroadcast karena audiensnya sama-sama tim marketing;
+        // hak akses tersendiri akan ditata belakangan.
+        { href: `${base}/kanal-publik`, label: 'Kanal Publik', icon: '📣', feature: 'manageBroadcast' },
       ],
     },
     {
