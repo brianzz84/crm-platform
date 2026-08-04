@@ -20,6 +20,24 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   try {
     const db = await getTenantDb(params.slug)
 
+    if (tab === 'sifat') {
+      // Semai bawaan hanya bila tenant belum punya satu pun — lihat semaiSifat().
+      const { semaiSifat } = await import('@/lib/social-sifat')
+      await semaiSifat(db, params.slug)
+
+      const where: any = { tenant_slug: params.slug }
+      if (q) where.OR = [
+        { nama: { contains: q, mode: 'insensitive' } },
+        { kode: { contains: q, mode: 'insensitive' } },
+      ]
+      // Termasuk yang nonaktif: kategori lama tetap harus terlihat agar bisa
+      // diaktifkan kembali dan agar admin paham riwayat mana yang memakainya.
+      const rows = await db.socialSifatLibrary.findMany({
+        where, orderBy: [{ urutan: 'asc' }, { nama: 'asc' }],
+      })
+      return NextResponse.json({ data: rows, total: rows.length, page: 1, totalPages: 1 })
+    }
+
     if (tab === 'unit') {
       // Master unit per tenant — tampilkan semua (termasuk nonaktif) supaya
       // admin bisa mengaktifkan kembali lewat UI.
@@ -115,8 +133,42 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (error) return error
 
   const tab = new URL(req.url).searchParams.get('tab')
+
+  if (tab === 'sifat') {
+    const { kode, nama, deskripsi, warna, urutan } = await req.json()
+    if (!kode?.trim()) return NextResponse.json({ error: 'Kode wajib diisi' }, { status: 400 })
+    if (!nama?.trim()) return NextResponse.json({ error: 'Nama wajib diisi' }, { status: 400 })
+
+    // Kode dinormalkan sekali di sini dan sesudahnya KEKAL. Ia dipakai sebagai
+    // rujukan oleh SocialContent.sifat; mengubahnya membuat konten yang menunjuk
+    // padanya menjadi yatim, jadi PATCH sengaja tidak menerima kolom ini.
+    const kodeRapi = String(kode).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+    if (!kodeRapi) return NextResponse.json({ error: 'Kode harus memuat huruf atau angka' }, { status: 400 })
+
+    try {
+      const db = await getTenantDb(params.slug)
+      const row = await db.socialSifatLibrary.create({
+        data: {
+          tenant_slug: params.slug,
+          kode:        kodeRapi,
+          nama:        String(nama).trim(),
+          deskripsi:   deskripsi?.trim() || null,
+          warna:       warna?.trim() || '#0089A8',
+          urutan:      Number.isInteger(urutan) ? urutan : 99,
+        },
+      })
+      return NextResponse.json({ success: true, data: row })
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        return NextResponse.json({ error: `Kode "${kodeRapi}" sudah dipakai` }, { status: 409 })
+      }
+      console.error('[POST /api/library?tab=sifat]', e)
+      return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    }
+  }
+
   if (tab !== 'unit') {
-    return NextResponse.json({ error: 'Hanya tab=unit yang bisa ditambah manual' }, { status: 400 })
+    return NextResponse.json({ error: 'Hanya tab=unit atau tab=sifat yang bisa ditambah manual' }, { status: 400 })
   }
 
   const { nama, kelompok, warna } = await req.json()
@@ -155,6 +207,30 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
   try {
     const db = await getTenantDb(params.slug)
+
+    if (tab === 'sifat') {
+      const existing = await db.socialSifatLibrary.findUnique({ where: { id: body.id } })
+      if (!existing || existing.tenant_slug !== params.slug) {
+        return NextResponse.json({ error: 'Sifat tidak ditemukan' }, { status: 404 })
+      }
+
+      // `kode` sengaja TIDAK ada di sini meski klien mengirimkannya. Menyunting
+      // nama berlaku surut ke seluruh riwayat — itu memang yang diinginkan saat
+      // memperbaiki maksud yang sama. Untuk maksud yang berbeda, buat kode baru
+      // dan nonaktifkan yang lama; riwayatnya tetap terbaca apa adanya.
+      const data: any = {}
+      if (body.nama      !== undefined) data.nama      = String(body.nama).trim()
+      if (body.deskripsi !== undefined) data.deskripsi = String(body.deskripsi).trim() || null
+      if (body.warna     !== undefined) data.warna     = String(body.warna).trim()
+      if (body.urutan    !== undefined) data.urutan    = Number(body.urutan) || 0
+      if (body.aktif     !== undefined) data.aktif     = !!body.aktif   // TIDAK PERNAH DELETE
+      if (!Object.keys(data).length) {
+        return NextResponse.json({ error: 'Tidak ada perubahan' }, { status: 400 })
+      }
+
+      const row = await db.socialSifatLibrary.update({ where: { id: body.id }, data })
+      return NextResponse.json({ success: true, data: row })
+    }
 
     if (tab === 'unit') {
       // Pastikan unit milik tenant ini — jangan percaya id dari klien

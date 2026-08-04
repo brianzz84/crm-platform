@@ -59,6 +59,16 @@ export async function copyGlobalToTenant(tenantId: string): Promise<void> {
     data: icdEntries.map(({ id: _id, ...rest }) => rest),
     skipDuplicates: true,
   })
+
+  // Sifat konten tidak punya tabel global — daftarnya hanya enam baris dan berfungsi
+  // sebagai titik awal yang boleh disunting tiap tenant, bukan master bersama.
+  const tenant = await masterDb.tenant.findUnique({
+    where: { id: tenantId }, select: { slug: true },
+  })
+  if (tenant) {
+    const { semaiSifat } = await import('./social-sifat')
+    await semaiSifat(tenantDb, tenant.slug)
+  }
 }
 
 async function getTenantDbById(tenantId: string): Promise<PrismaClient> {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useTransition } from 'react'
 import UnitLibraryTab from './UnitLibraryTab'
+import SifatLibraryTab from './SifatLibraryTab'
 
 interface Stats {
   icdTotal: number
@@ -41,7 +42,7 @@ const JENIS_OPTIONS: Record<string, string[]> = {
 }
 
 export default function LibraryClient({ slug, stats }: { slug: string; stats: Stats }) {
-  const [tab, setTab] = useState<'icd' | 'layanan' | 'unit'>('icd')
+  const [tab, setTab] = useState<'icd' | 'layanan' | 'unit' | 'sifat'>('icd')
 
   // ICD state
   const [icdQ,    setIcdQ]    = useState('')
@@ -161,7 +162,7 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--c-border)', marginBottom: 'var(--sp-4)' }}>
-        {(['icd', 'layanan', 'unit'] as const).map(t => (
+        {(['icd', 'layanan', 'unit', 'sifat'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '10px 20px',
             fontWeight: tab === t ? 700 : 500,
@@ -171,12 +172,14 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
             background: 'none', border: 'none', cursor: 'pointer',
             fontSize: 'var(--font-size-sm)',
           }}>
-            {t === 'icd' ? '📋 Diagnosa ICD' : t === 'layanan' ? '🏥 Layanan / Tindakan' : '🏬 Unit / Poli'}
+            {t === 'icd' ? '📋 Diagnosa ICD' : t === 'layanan' ? '🏥 Layanan / Tindakan' : t === 'unit' ? '🏬 Unit / Poli' : '🏷️ Sifat Konten'}
           </button>
         ))}
       </div>
 
-      {tab === 'unit' ? (
+      {tab === 'sifat' ? (
+        <SifatLibraryTab slug={slug} />
+      ) : tab === 'unit' ? (
         <UnitLibraryTab slug={slug} />
       ) : tab === 'icd' ? (
         <>

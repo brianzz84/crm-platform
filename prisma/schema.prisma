@@ -1355,3 +1355,33 @@ model SocialContentSnapshot {
   @@unique([content_id, umur_hari])
   @@map("crm_social_content_snapshots")
 }
+
+/// Master sifat konten per tenant — Edukasi, Info Layanan, Momen & Event, dst.
+///
+/// Sengaja TABEL, bukan enum. `SimrsVisit.unit` dulunya enum dan mengubahnya jadi
+/// tabel menyentuh 16 berkas; mengulang kesalahan yang sama untuk taksonomi yang
+/// jelas berbeda tiap rumah sakit berarti melakukan dengan sadar apa yang sudah
+/// pernah kita bongkar.
+///
+/// `SocialContent.sifat` menyimpan KODE, bukan nama. Akibatnya disengaja:
+///  - Memperbaiki maksud yang sama → sunting nama di sini, seluruh riwayat ikut.
+///  - Maksud yang berbeda → buat kode baru, nonaktifkan yang lama. Yang lama tetap
+///    terdokumentasi dan laporan lampau tidak berubah artinya.
+/// Karena itu `kode` KEKAL setelah dibuat — menyuntingnya membuat seluruh konten
+/// yang menunjuk padanya menjadi yatim. UI mengunci kolom ini setelah tersimpan.
+model SocialSifatLibrary {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  kode        String // kekal — dipakai SocialContent.sifat
+  nama        String // boleh diubah; perubahan berlaku surut ke seluruh riwayat
+  deskripsi   String?
+  warna       String   @default("#0089A8") // badge di tabel silang laporan
+  urutan      Int      @default(0)
+  aktif       Boolean  @default(true) // TIDAK PERNAH DELETE — nonaktifkan saja
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, kode])
+  @@index([tenant_slug, aktif])
+  @@map("crm_social_sifat_library")
+}
