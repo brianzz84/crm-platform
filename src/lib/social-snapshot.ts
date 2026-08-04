@@ -120,7 +120,7 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
 
       const konten = fb.teratas.map(p => ({
         id: p.id, jenis: 'Postingan', tanggal: p.tanggal, teks: p.teks,
-        permalink: p.permalink, gambar: '',
+        permalink: p.permalink, gambar: p.gambar || '',
         jangkauan: 0, suka: p.reaksi, komentar: p.komentar, dibagikan: p.dibagikan,
         disimpan: 0, interaksi: p.reaksi + p.komentar + p.dibagikan, tayangan: p.klik,
       }))
@@ -301,7 +301,7 @@ export async function backfillKonten(slug: string, hari = 90): Promise<HasilSnap
       const r = await ambilPostFb(meta.page_id, token, periode, MAKS_HALAMAN)
       const konten = r.items.map((p: any) => ({
         id: p.id, jenis: 'Postingan', tanggal: p.tanggal, teks: p.teks,
-        permalink: p.permalink, gambar: '',
+        permalink: p.permalink, gambar: p.gambar || '',
         jangkauan: 0, suka: p.reaksi, komentar: p.komentar, dibagikan: p.dibagikan,
         disimpan: 0, interaksi: p.reaksi + p.komentar + p.dibagikan, tayangan: p.klik,
       }))

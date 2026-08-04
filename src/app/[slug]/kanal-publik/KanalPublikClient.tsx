@@ -63,7 +63,7 @@ interface RingkasFacebook {
   bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
-  teratas: { id: string; tanggal: string; permalink: string; teks: string; reaksi: number; komentar: number; dibagikan: number; klik: number }[]
+  teratas: { id: string; tanggal: string; permalink: string; teks: string; gambar: string; reaksi: number; komentar: number; dibagikan: number; klik: number }[]
   komentarTersedia: boolean
   galatPostingan?: string
   galat?: string
@@ -139,22 +139,107 @@ function Statistik({ items }: {
   )
 }
 
+/** GA4 memakai YYYYMMDD pada dimensi `date`; kanal lain YYYY-MM-DD. */
+function bacaTanggal(t: string): Date | null {
+  const rapi = t.length === 8 && !t.includes('-')
+    ? `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}`
+    : t
+  const d = new Date(rapi + 'T00:00:00Z')
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+const HARI_SINGKAT = ['Mg', 'Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb']
+
+/**
+ * Grafik batang harian.
+ *
+ * Empat hal yang ditambahkan bukan demi keindahan, melainkan karena tanpanya
+ * grafik ini menyembunyikan pola yang justru paling berguna:
+ *
+ *  - AKHIR PEKAN DIARSIR. Ritme mingguan adalah pola terkuat di media sosial, dan
+ *    tanpa penanda ini deretan batang tampak acak. Dengan arsiran, "turun tiap
+ *    Sabtu-Minggu" langsung terlihat tanpa perlu menghitung.
+ *  - GARIS RATA-RATA. Tinggi batang hanya bermakna relatif terhadap sesuatu.
+ *    Garis ini menjadikan "di atas/di bawah kebiasaan" bisa dibaca sekilas.
+ *  - PUNCAK DITEGASKAN. Hari terbaik biasanya yang ingin ditelusuri lebih dulu.
+ *  - LABEL TANGGAL BERADAPTASI. Ditampilkan tiap hari bila muat, makin jarang
+ *    bila rentangnya panjang — label yang tumpang tindih sama tidak terbacanya
+ *    dengan tidak ada label sama sekali.
+ */
 function TrenBatang({ data, label }: { data: { tanggal: string; nilai: number }[]; label: string }) {
   if (!data.length) return null
-  const maks = Math.max(...data.map(d => d.nilai), 1)
+
+  const maks    = Math.max(...data.map(d => d.nilai), 1)
+  const total   = data.reduce((s, d) => s + d.nilai, 0)
+  const rata    = total / data.length
+  const iPuncak = data.findIndex(d => d.nilai === maks)
+
+  // Satu label perlu ±26px agar tidak bertabrakan.
+  const setiap = data.length <= 16 ? 1 : data.length <= 34 ? 2 : data.length <= 70 ? 7 : 14
+
   return (
     <div style={{ padding: 'var(--sp-5)' }}>
-      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', fontWeight: 600, marginBottom: 'var(--sp-3)' }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 120 }}>
-        {data.map(d => (
-          <div key={d.tanggal} title={`${d.tanggal}: ${angka(d.nilai)}`} style={{
-            flex: 1, minWidth: 2, height: `${Math.max(2, (d.nilai / maks) * 100)}%`,
-            background: 'var(--c-secondary)', borderRadius: '2px 2px 0 0', opacity: 0.85,
-          }} />
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 'var(--sp-3)' }}>
+        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>
+          rata-rata {angka(rata)}/hari · puncak {angka(maks)}
+        </span>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--c-text-faint)', marginTop: 6 }}>
-        <span>{data[0]?.tanggal}</span><span>puncak {angka(maks)}</span><span>{data[data.length - 1]?.tanggal}</span>
+
+      <div style={{ position: 'relative', height: 130 }}>
+        {/* Garis rata-rata */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0, bottom: `${(rata / maks) * 100}%`,
+          borderTop: '1px dashed var(--c-text-faint)', opacity: 0.5, pointerEvents: 'none',
+        }} />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: '100%' }}>
+          {data.map((d, i) => {
+            const tgl    = bacaTanggal(d.tanggal)
+            const hari   = tgl ? tgl.getUTCDay() : -1
+            const pekan  = hari === 0 || hari === 6
+            const puncak = i === iPuncak
+            return (
+              <div key={d.tanggal} title={`${tgl ? HARI_SINGKAT[hari] + ', ' : ''}${d.tanggal}: ${angka(d.nilai)}`}
+                style={{
+                  flex: 1, minWidth: 2, height: '100%', display: 'flex', alignItems: 'flex-end',
+                  background: pekan ? 'var(--c-bg)' : 'transparent', borderRadius: 2,
+                }}>
+                <div style={{
+                  width: '100%', height: `${Math.max(2, (d.nilai / maks) * 100)}%`,
+                  background: puncak ? 'var(--c-primary)' : 'var(--c-secondary)',
+                  borderRadius: '2px 2px 0 0', opacity: puncak ? 1 : 0.85,
+                }} />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Label tanggal, sejajar dengan batangnya */}
+      <div style={{ display: 'flex', gap: 2, marginTop: 4 }}>
+        {data.map((d, i) => {
+          const tgl  = bacaTanggal(d.tanggal)
+          const muat = i % setiap === 0 || i === data.length - 1
+          const pekan = tgl ? (tgl.getUTCDay() === 0 || tgl.getUTCDay() === 6) : false
+          return (
+            <div key={d.tanggal} style={{
+              flex: 1, minWidth: 2, textAlign: 'center', fontSize: 9, lineHeight: 1.3,
+              color: pekan ? 'var(--c-text-muted)' : 'var(--c-text-faint)',
+              fontWeight: pekan ? 700 : 400, overflow: 'hidden', whiteSpace: 'nowrap',
+            }}>
+              {muat && tgl ? (
+                <>
+                  {tgl.getUTCDate()}
+                  {setiap === 1 && <div style={{ fontSize: 8 }}>{HARI_SINGKAT[tgl.getUTCDay()]}</div>}
+                </>
+              ) : ''}
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ fontSize: 10, color: 'var(--c-text-faint)', marginTop: 6, textAlign: 'center' }}>
+        Kolom berlatar abu = akhir pekan · garis putus-putus = rata-rata
       </div>
     </div>
   )
@@ -416,7 +501,7 @@ export default function KanalPublikClient({
               { k: 'facebook', label: 'Facebook' },
               { k: 'youtube', label: 'YouTube' },
               { k: 'google-bisnis', label: 'Google Bisnis' },
-              { k: 'konten', label: '🏷️ Penandaan Konten' },
+              { k: 'konten', label: '🏷️ Sifat Konten' },
             ] as const).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)} style={{
                 padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -725,6 +810,7 @@ export default function KanalPublikClient({
                 catatan="Diurutkan berdasarkan total tanggapan. Reaksi dan klik berasal dari Insights per postingan; jumlah bagikan dari penghitung postingan itu sendiri."
                 baris={fb.teratas.map(p => ({
                   kiri: labelKonten(p),
+                  gambar: p.gambar,
                   sub: `${p.tanggal} · ${angka(p.reaksi)} reaksi${fb.komentarTersedia ? ` · ${angka(p.komentar)} komentar` : ''} · ${angka(p.dibagikan)} dibagikan · ${angka(p.klik)} klik`,
                   kanan: angka(p.reaksi + p.komentar + p.dibagikan + p.klik),
                 }))} />

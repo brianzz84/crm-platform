@@ -395,7 +395,7 @@ export interface RingkasFacebook {
   harian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   teratas: {
-    id: string; tanggal: string; permalink: string; teks: string
+    id: string; tanggal: string; permalink: string; teks: string; gambar: string
     reaksi: number; komentar: number; dibagikan: number; klik: number
   }[]
   /**
@@ -478,7 +478,7 @@ export async function ringkasFacebook(
 export async function ambilPostFb(
   pageId: string, token: string, periode: Rentang, maksHalaman = 1,
 ) {
-  const inti    = 'id,message,created_time,permalink_url,shares'
+  const inti    = 'id,message,created_time,permalink_url,shares,full_picture'
   // Insights per postingan hanya butuh izin yang SUDAH dipunyai. Terbukti dari
   // probe: post_clicks & post_reactions_by_type_total hidup.
   const wawasan = 'insights.metric(post_clicks,post_reactions_by_type_total)'
@@ -535,6 +535,7 @@ export async function ambilPostFb(
       id: String(p.id),
       tanggal: String(p.created_time ?? '').slice(0, 10),
       permalink: String(p.permalink_url ?? ''),
+      gambar: String(p.full_picture ?? ''),
       teks: String(p.message ?? '').replace(/\s+/g, ' ').slice(0, 500),
       reaksi:    Number(p?.reactions?.summary?.total_count ?? reaksiWawasan),
       komentar:  Number(p?.comments?.summary?.total_count ?? 0),
