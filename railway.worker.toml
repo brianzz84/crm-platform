@@ -1,8 +1,18 @@
+# Konfigurasi Railway untuk service WORKER (BullMQ) — dipilih lewat
+# Settings → Config-as-code → Railway Config File: railway.worker.toml
+#
+# Terpisah dari railway.toml milik web, yang membangun Next.js dan menjalankan
+# `node server.js`. Worker tidak membutuhkan Next.js sama sekali.
+#
+# Sengaja TANPA healthcheckPath: worker bukan layanan HTTP. Ia memang membuka
+# port kesehatan bila variabel PORT tersedia, tapi itu untuk pemeriksaan manual
+# — bukan syarat agar deploy dianggap berhasil.
+
 [build]
-builder = "nixpacks"
-buildCommand = "npm install && npx prisma generate"
+builder        = "DOCKERFILE"
+dockerfilePath = "Dockerfile.worker"
 
 [deploy]
-startCommand = "npm run worker"
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 5
+startCommand            = "npm run worker"
+restartPolicyType       = "ON_FAILURE"
+restartPolicyMaxRetries = 10
