@@ -136,7 +136,11 @@ export interface RingkasInstagram {
    */
   bandingSeriKosong: boolean
   harian: { tanggal: string; jangkauan: number }[]
+  /** Deret pembanding, dicocokkan berdasarkan URUTAN hari — bukan tanggal. */
+  bandingHarian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
+  /** SELURUH konten periode — dipakai hover grafik untuk menjawab "kenapa naik". */
+  semuaKonten: KontenIg[]
   teratas: KontenIg[]
   /** Urutan berdasarkan MUTU tanggapan, bukan besarnya jangkauan. */
   engagementTeratas: KontenIg[]
@@ -208,7 +212,7 @@ export async function ringkasInstagram(
 ): Promise<RingkasInstagram> {
   const kosong: RingkasInstagram = {
     akun: null, periode: IG_KOSONG, banding: null, bandingSeriKosong: false,
-    harian: [], followerHarian: [], teratas: [], engagementTeratas: [],
+    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], engagementTeratas: [],
     jenisKonten: [], hariFollower: [], catatanUnik: null,
   }
 
@@ -244,7 +248,11 @@ export async function ringkasInstagram(
     banding: bandingHasil?.total ?? null,
     bandingSeriKosong: !!bandingHasil?.seriKosong,
     harian:         tanggal.map(t => ({ tanggal: t, jangkauan: seri[t].reach ?? 0 })),
+    bandingHarian:  bandingHasil
+      ? Object.keys(bandingHasil.seri).sort().map(t => ({ tanggal: t, jangkauan: bandingHasil.seri[t].reach ?? 0 }))
+      : [],
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
+    semuaKonten:       rMedia.semua,
     teratas:           rMedia.teratas,
     engagementTeratas: rMedia.engagementTeratas,
     jenisKonten:       rMedia.jenisKonten,
@@ -393,7 +401,12 @@ export interface RingkasFacebook {
   /** Sama seperti Instagram: kosong bukan nol, jadi selisihnya tak boleh dihitung. */
   bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
+  bandingHarian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
+  semuaKonten: {
+    id: string; jenis: string; tanggal: string; permalink: string; teks: string; gambar: string
+    jangkauan: number; interaksi: number
+  }[]
   teratas: {
     id: string; tanggal: string; permalink: string; teks: string; gambar: string
     reaksi: number; komentar: number; dibagikan: number; klik: number
@@ -426,7 +439,7 @@ export async function ringkasFacebook(
 ): Promise<RingkasFacebook> {
   const kosong: RingkasFacebook = {
     page: null, periode: FB_KOSONG, banding: null, bandingSeriKosong: false,
-    harian: [], followerHarian: [], teratas: [], komentarTersedia: false,
+    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], komentarTersedia: false,
   }
 
   const token  = cfg.insights_token || cfg.access_token || ''
@@ -455,7 +468,15 @@ export async function ringkasFacebook(
     banding: seriBanding ? totalDariSeri(seriBanding.seri) : null,
     bandingSeriKosong: !!seriBanding && seriBanding.titik === 0,
     harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
+    bandingHarian:  seriBanding
+      ? Object.keys(seriBanding.seri).sort().map(t => ({ tanggal: t, interaksi: seriBanding.seri[t].page_post_engagements ?? 0 }))
+      : [],
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: utama.seri[t].page_daily_follows_unique ?? 0 })),
+    semuaKonten: post.semua.map((p: any) => ({
+      id: p.id, jenis: 'Postingan', tanggal: p.tanggal, permalink: p.permalink,
+      teks: p.teks, gambar: p.gambar, jangkauan: 0,
+      interaksi: p.reaksi + p.komentar + p.dibagikan,
+    })),
     teratas: post.items,
     komentarTersedia: post.adaKomentar,
     galatPostingan: post.galat,
@@ -505,7 +526,7 @@ export async function ambilPostFb(
     r = await minta(fields)
   }
   if (!r.ok) { fields = inti; r = await minta(fields) }
-  if (!r.ok) return { items: [], galat: galat || pesanErrorGraph(r), adaKomentar: false }
+  if (!r.ok) return { items: [], semua: [], galat: galat || pesanErrorGraph(r), adaKomentar: false }
 
   const mentah: any[] = [...(r.json?.data ?? [])]
   let after: string | undefined = r.json?.paging?.cursors?.after
@@ -544,12 +565,8 @@ export async function ambilPostFb(
     }
   })
 
-  return {
-    items: items
-      .sort((a: any, b: any) =>
-        (b.reaksi + b.komentar + b.dibagikan + b.klik) - (a.reaksi + a.komentar + a.dibagikan + a.klik))
-      .slice(0, 15),
-    galat,
-    adaKomentar,
-  }
+  const urut = [...items].sort((a: any, b: any) =>
+    (b.reaksi + b.komentar + b.dibagikan + b.klik) - (a.reaksi + a.komentar + a.dibagikan + a.klik))
+
+  return { items: urut.slice(0, 15), semua: items, galat, adaKomentar }
 }

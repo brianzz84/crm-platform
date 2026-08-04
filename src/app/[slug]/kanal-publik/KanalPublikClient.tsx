@@ -47,7 +47,9 @@ interface RingkasInstagram {
   banding: TotalIg | null
   bandingSeriKosong: boolean
   harian: { tanggal: string; jangkauan: number }[]
+  bandingHarian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
+  semuaKonten: KontenIg[]
   teratas: KontenIg[]
   engagementTeratas: KontenIg[]
   jenisKonten: { jenis: string; jumlah: number; jangkauan: number; rasioInteraksi: number }[]
@@ -62,7 +64,9 @@ interface RingkasFacebook {
   banding: TotalFb | null
   bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
+  bandingHarian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
+  semuaKonten: { id: string; jenis: string; tanggal: string; permalink: string; teks: string; gambar: string; jangkauan: number; interaksi: number }[]
   teratas: { id: string; tanggal: string; permalink: string; teks: string; gambar: string; reaksi: number; komentar: number; dibagikan: number; klik: number }[]
   komentarTersedia: boolean
   galatPostingan?: string
@@ -148,66 +152,94 @@ function bacaTanggal(t: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-const HARI_SINGKAT = ['Mg', 'Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb']
+const HARI_NAMA = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
+const akhirPekan = (d: Date | null) => !!d && (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+
+export interface KontenHarian {
+  id: string; jenis: string; tanggal: string; teks: string
+  gambar: string; permalink: string; jangkauan: number; interaksi: number
+}
 
 /**
  * Grafik batang harian.
  *
- * Empat hal yang ditambahkan bukan demi keindahan, melainkan karena tanpanya
- * grafik ini menyembunyikan pola yang justru paling berguna:
+ * Yang membedakannya dari grafik biasa: MENJAWAB KENAPA. Menyorot satu batang
+ * memunculkan konten yang terbit hari itu — lonjakan tidak lagi perlu ditelusuri
+ * manual ke Instagram. Grafik yang hanya melaporkan angka memaksa pembacanya
+ * mencari sebab di tempat lain; ini membawa sebabnya ke tempat angkanya.
  *
- *  - AKHIR PEKAN DIARSIR. Ritme mingguan adalah pola terkuat di media sosial, dan
- *    tanpa penanda ini deretan batang tampak acak. Dengan arsiran, "turun tiap
- *    Sabtu-Minggu" langsung terlihat tanpa perlu menghitung.
- *  - GARIS RATA-RATA. Tinggi batang hanya bermakna relatif terhadap sesuatu.
- *    Garis ini menjadikan "di atas/di bawah kebiasaan" bisa dibaca sekilas.
- *  - PUNCAK DITEGASKAN. Hari terbaik biasanya yang ingin ditelusuri lebih dulu.
- *  - LABEL TANGGAL BERADAPTASI. Ditampilkan tiap hari bila muat, makin jarang
- *    bila rentangnya panjang — label yang tumpang tindih sama tidak terbacanya
- *    dengan tidak ada label sama sekali.
+ * Akhir pekan diberi WARNA berbeda, bukan latar abu — arsiran mudah terbaca
+ * sebagai "tidak ada data" alih-alih "hari yang berbeda".
+ *
+ * Nilai di ujung batang hanya ditampilkan penuh bila batangnya cukup lebar.
+ * Tiga puluh angka yang saling menimpa sama tidak terbacanya dengan tidak ada
+ * angka sama sekali, jadi selebihnya cukup puncak dan batang yang disorot.
  */
-function TrenBatang({ data, label }: { data: { tanggal: string; nilai: number }[]; label: string }) {
+function TrenBatang({ data, label, satuan = '', banding, konten }: {
+  data: { tanggal: string; nilai: number }[]
+  label: string
+  satuan?: string
+  banding?: { tanggal: string; nilai: number }[] | null
+  konten?: KontenHarian[]
+}) {
+  const [sorot, setSorot] = useState<number | null>(null)
   if (!data.length) return null
 
-  const maks    = Math.max(...data.map(d => d.nilai), 1)
-  const total   = data.reduce((s, d) => s + d.nilai, 0)
-  const rata    = total / data.length
+  const maks  = Math.max(...data.map(d => d.nilai), 1)
+  const rata  = data.reduce((s, d) => s + d.nilai, 0) / data.length
   const iPuncak = data.findIndex(d => d.nilai === maks)
 
-  // Satu label perlu ±26px agar tidak bertabrakan.
-  const setiap = data.length <= 16 ? 1 : data.length <= 34 ? 2 : data.length <= 70 ? 7 : 14
+  const nLabel  = data.length <= 31
+  const nNilai  = data.length <= 14          // angka penuh hanya bila batang lebar
+  const setiap  = nLabel ? 1 : data.length <= 70 ? 7 : 14
+
+  const kontenPerTgl = new Map<string, KontenHarian[]>()
+  for (const k of konten ?? []) {
+    const t = String(k.tanggal).slice(0, 10)
+    if (!kontenPerTgl.has(t)) kontenPerTgl.set(t, [])
+    kontenPerTgl.get(t)!.push(k)
+  }
+
+  const aktif   = sorot === null ? null : data[sorot]
+  const tglAktif = aktif ? String(aktif.tanggal).slice(0, 10) : ''
+  const dAktif  = aktif ? bacaTanggal(aktif.tanggal) : null
+  // Pembanding dicocokkan by URUTAN hari, bukan tanggal — periode pembanding
+  // adalah rentang lain, jadi tanggal yang sama tidak berarti apa-apa.
+  const bandingAktif = sorot !== null && banding && banding[sorot] ? banding[sorot] : null
+  const kontenAktif  = aktif ? (kontenPerTgl.get(tglAktif) ?? []) : []
 
   return (
     <div style={{ padding: 'var(--sp-5)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 'var(--sp-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 'var(--sp-4)' }}>
         <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', fontWeight: 600 }}>{label}</span>
         <span style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>
           rata-rata {angka(rata)}/hari · puncak {angka(maks)}
         </span>
       </div>
 
-      <div style={{ position: 'relative', height: 130 }}>
-        {/* Garis rata-rata */}
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: `${(rata / maks) * 100}%`,
-          borderTop: '1px dashed var(--c-text-faint)', opacity: 0.5, pointerEvents: 'none',
-        }} />
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: '100%' }}>
+      <div style={{ position: 'relative', height: 150 }} onMouseLeave={() => setSorot(null)}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: `${(rata / maks) * 100}%`, borderTop: '1px dashed var(--c-text-faint)', opacity: 0.45, pointerEvents: 'none' }} />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: '100%' }}>
           {data.map((d, i) => {
             const tgl    = bacaTanggal(d.tanggal)
-            const hari   = tgl ? tgl.getUTCDay() : -1
-            const pekan  = hari === 0 || hari === 6
+            const pekan  = akhirPekan(tgl)
             const puncak = i === iPuncak
+            const disorot = sorot === i
+            const tampilNilai = nNilai || puncak || disorot
+            const warna = pekan ? '#F59E0B' : puncak ? 'var(--c-primary)' : 'var(--c-secondary)'
             return (
-              <div key={d.tanggal} title={`${tgl ? HARI_SINGKAT[hari] + ', ' : ''}${d.tanggal}: ${angka(d.nilai)}`}
-                style={{
-                  flex: 1, minWidth: 2, height: '100%', display: 'flex', alignItems: 'flex-end',
-                  background: pekan ? 'var(--c-bg)' : 'transparent', borderRadius: 2,
-                }}>
+              <div key={d.tanggal} onMouseEnter={() => setSorot(i)}
+                style={{ flex: 1, minWidth: 3, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', cursor: 'pointer' }}>
+                {tampilNilai && (
+                  <div style={{ fontSize: 9, fontWeight: 700, textAlign: 'center', color: disorot ? 'var(--c-text)' : 'var(--c-text-faint)', marginBottom: 2, whiteSpace: 'nowrap' }}>
+                    {angka(d.nilai)}
+                  </div>
+                )}
                 <div style={{
-                  width: '100%', height: `${Math.max(2, (d.nilai / maks) * 100)}%`,
-                  background: puncak ? 'var(--c-primary)' : 'var(--c-secondary)',
-                  borderRadius: '2px 2px 0 0', opacity: puncak ? 1 : 0.85,
+                  width: '100%', height: `${Math.max(2, (d.nilai / maks) * 92)}%`,
+                  background: warna, borderRadius: '3px 3px 0 0',
+                  opacity: disorot ? 1 : 0.85,
+                  outline: disorot ? '2px solid var(--c-text)' : 'none', outlineOffset: 1,
                 }} />
               </div>
             )
@@ -215,31 +247,75 @@ function TrenBatang({ data, label }: { data: { tanggal: string; nilai: number }[
         </div>
       </div>
 
-      {/* Label tanggal, sejajar dengan batangnya */}
-      <div style={{ display: 'flex', gap: 2, marginTop: 4 }}>
+      <div style={{ display: 'flex', gap: 3, marginTop: 5 }}>
         {data.map((d, i) => {
-          const tgl  = bacaTanggal(d.tanggal)
-          const muat = i % setiap === 0 || i === data.length - 1
-          const pekan = tgl ? (tgl.getUTCDay() === 0 || tgl.getUTCDay() === 6) : false
+          const tgl   = bacaTanggal(d.tanggal)
+          const pekan = akhirPekan(tgl)
+          const muat  = i % setiap === 0 || i === data.length - 1
           return (
             <div key={d.tanggal} style={{
-              flex: 1, minWidth: 2, textAlign: 'center', fontSize: 9, lineHeight: 1.3,
-              color: pekan ? 'var(--c-text-muted)' : 'var(--c-text-faint)',
-              fontWeight: pekan ? 700 : 400, overflow: 'hidden', whiteSpace: 'nowrap',
+              flex: 1, minWidth: 3, textAlign: 'center', fontSize: 9, lineHeight: 1.35,
+              color: pekan ? '#B45309' : 'var(--c-text-faint)', fontWeight: pekan ? 700 : 400,
+              overflow: 'hidden', whiteSpace: 'nowrap',
             }}>
-              {muat && tgl ? (
-                <>
-                  {tgl.getUTCDate()}
-                  {setiap === 1 && <div style={{ fontSize: 8 }}>{HARI_SINGKAT[tgl.getUTCDay()]}</div>}
-                </>
-              ) : ''}
+              {muat && tgl ? (nLabel ? <>{HARI_NAMA[tgl.getUTCDay()]}<div style={{ fontSize: 8, opacity: 0.75 }}>{tgl.getUTCDate()}</div></> : tgl.getUTCDate()) : ''}
             </div>
           )
         })}
       </div>
 
-      <div style={{ fontSize: 10, color: 'var(--c-text-faint)', marginTop: 6, textAlign: 'center' }}>
-        Kolom berlatar abu = akhir pekan · garis putus-putus = rata-rata
+      {/* Panel rincian. Sengaja DI BAWAH grafik, bukan mengambang di atas batang:
+          isinya lebar (sampul + teks konten) dan popup mengambang akan terpotong
+          tepi kartu justru saat batangnya di pinggir. */}
+      <div style={{ marginTop: 'var(--sp-4)', borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-4)', minHeight: 74 }}>
+        {!aktif ? (
+          <div style={{ fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+            Arahkan kursor ke sebuah batang untuk melihat konten yang terbit hari itu.
+            Batang <span style={{ color: '#B45309', fontWeight: 700 }}>oranye</span> = akhir pekan ·
+            garis putus-putus = rata-rata.
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontWeight: 800, color: 'var(--c-primary)', fontSize: 'var(--font-size-sm)' }}>
+                {dAktif ? `${HARI_NAMA[dAktif.getUTCDay()]}, ` : ''}{tglAktif}
+              </span>
+              <span style={{ fontWeight: 800, fontSize: 'var(--font-size-sm)' }}>{angka(aktif.nilai)} {satuan}</span>
+              {bandingAktif && (
+                <span style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>
+                  pembanding {String(bandingAktif.tanggal).slice(0, 10)}: <strong>{angka(bandingAktif.nilai)}</strong>{' '}
+                  <Delta kini={aktif.nilai} dulu={bandingAktif.nilai} />
+                </span>
+              )}
+            </div>
+
+            {kontenAktif.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {kontenAktif.map(k => (
+                  <div key={k.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    {k.gambar
+                      ? <img src={k.gambar} alt="" loading="lazy" referrerPolicy="no-referrer"
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+                          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 5, flexShrink: 0, background: 'var(--c-bg)' }} />
+                      : <div style={{ width: 40, height: 40, borderRadius: 5, background: 'var(--c-bg)', flexShrink: 0 }} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {k.teks || <em style={{ color: 'var(--c-text-muted)' }}>{k.jenis} tanpa keterangan</em>}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--c-text-faint)', marginTop: 2 }}>
+                        {k.jenis}{k.jangkauan ? ` · ${angka(k.jangkauan)} jangkauan` : ''}{k.interaksi ? ` · ${angka(k.interaksi)} interaksi` : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>
+                Tidak ada konten yang terbit hari itu — angkanya berasal dari konten lama yang masih beredar.
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -605,7 +681,7 @@ export default function KanalPublikClient({
                     Dibandingkan dengan {labelBanding}
                   </div>
                 )}
-                <TrenBatang label={`Sesi per hari — ${mulai} s/d ${selesai}`} data={ga4.harian.map(h => ({ tanggal: h.tanggal, nilai: h.sesi }))} />
+                <TrenBatang label={`Sesi per hari — ${mulai} s/d ${selesai}`} satuan="sesi" data={ga4.harian.map(h => ({ tanggal: h.tanggal, nilai: h.sesi }))} />
               </div>
               <Peringkat judul="Sumber Trafik" baris={ga4.sumber.map(s => ({ kiri: s.nama, kanan: angka(s.sesi) + ' sesi' }))} />
               <Peringkat judul="Halaman Pendarat" catatan="Halaman pertama yang dibuka pengunjung — berbeda dari halaman terpopuler, dan inilah yang menentukan kesan pertama."
@@ -643,7 +719,7 @@ export default function KanalPublikClient({
                     Dibandingkan dengan {labelBanding}
                   </div>
                 )}
-                <TrenBatang label={`Tayangan per hari — ${mulai} s/d ${selesai}`} data={yt.harian.map(h => ({ tanggal: h.tanggal, nilai: h.tayangan }))} />
+                <TrenBatang label={`Tayangan per hari — ${mulai} s/d ${selesai}`} satuan="tayangan" data={yt.harian.map(h => ({ tanggal: h.tanggal, nilai: h.tayangan }))} />
               </div>
 
               <PerjalananSubscriber data={yt.subscriberHarian} totalSekarang={yt.channel?.subscriber ?? 0} />
@@ -698,12 +774,18 @@ export default function KanalPublikClient({
                     )}
                   </div>
                 )}
-                <TrenBatang label={`Jangkauan per hari — ${mulai} s/d ${selesai}`} data={ig.harian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan }))} />
+                <TrenBatang label={`Jangkauan per hari — ${mulai} s/d ${selesai}`}
+                  satuan="jangkauan"
+                  data={ig.harian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan }))}
+                  banding={pakaiBanding && !ig.bandingSeriKosong ? ig.bandingHarian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan })) : null}
+                  konten={ig.semuaKonten} />
               </div>
 
               <div style={kartu}>
                 <div style={judulKartu}>Pertumbuhan Follower</div>
-                <TrenBatang label="Follower baru per hari" data={ig.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))} />
+                <TrenBatang label="Follower baru per hari" satuan="follower baru"
+                  data={ig.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))}
+                  konten={ig.semuaKonten} />
                 <p style={{ padding: '0 var(--sp-5) var(--sp-5)', margin: 0, fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
                   Instagram hanya melaporkan follower yang <strong>bertambah</strong>, tidak yang berhenti mengikuti —
                   berbeda dari YouTube yang melaporkan keduanya. Jadi ini bukan pertumbuhan bersih, dan
@@ -786,12 +868,18 @@ export default function KanalPublikClient({
                     )}
                   </div>
                 )}
-                <TrenBatang label={`Interaksi per hari — ${mulai} s/d ${selesai}`} data={fb.harian.map(h => ({ tanggal: h.tanggal, nilai: h.interaksi }))} />
+                <TrenBatang label={`Interaksi per hari — ${mulai} s/d ${selesai}`}
+                  satuan="interaksi"
+                  data={fb.harian.map(h => ({ tanggal: h.tanggal, nilai: h.interaksi }))}
+                  banding={pakaiBanding && !fb.bandingSeriKosong ? fb.bandingHarian.map(h => ({ tanggal: h.tanggal, nilai: h.interaksi })) : null}
+                  konten={fb.semuaKonten} />
               </div>
 
               <div style={kartu}>
                 <div style={judulKartu}>Pertumbuhan Follower</div>
-                <TrenBatang label="Follower baru per hari" data={fb.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))} />
+                <TrenBatang label="Follower baru per hari" satuan="follower baru"
+                  data={fb.followerHarian.map(f => ({ tanggal: f.tanggal, nilai: f.naik }))}
+                  konten={fb.semuaKonten} />
               </div>
 
               {!fb.komentarTersedia && (
