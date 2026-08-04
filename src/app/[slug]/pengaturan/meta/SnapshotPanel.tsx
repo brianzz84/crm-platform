@@ -47,6 +47,19 @@ export default function SnapshotPanel({ slug }: { slug: string }) {
     finally { setSibuk(false) }
   }
 
+  async function tarikKontenLama() {
+    setSibuk(true); setGalat('')
+    try {
+      const res  = await fetch(`/api/${slug}/pengaturan/snapshot`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'backfill', hari: 90 }),
+      })
+      const json = await res.json()
+      if (json.success) setCfg(json.data); else setGalat(json.error || 'Gagal menarik konten lama')
+    } catch { setGalat('Gagal menghubungi server') }
+    finally { setSibuk(false) }
+  }
+
   async function jalankanSekarang() {
     setSibuk(true); setGalat('')
     try {
@@ -99,13 +112,24 @@ export default function SnapshotPanel({ slug }: { slug: string }) {
                 <option key={i} value={i}>{String(i).padStart(2, '0')}:00 WIB</option>
               ))}
             </select>
-            <button onClick={jalankanSekarang} disabled={sibuk} style={{
-              padding: '8px 16px', borderRadius: 'var(--r-md)', border: 'none', marginLeft: 'auto',
-              background: sibuk ? '#94A3B8' : 'var(--c-secondary)', color: 'white',
-              fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: sibuk ? 'wait' : 'pointer',
-            }}>
-              {sibuk ? '⏳ Memproses…' : '▶ Jalankan sekarang'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+              {/* Hanya DAFTAR KONTEN yang bisa ditarik mundur; metrik harian sudah
+                  hilang dari API dan tidak akan pernah kembali. */}
+              <button onClick={tarikKontenLama} disabled={sibuk} style={{
+                padding: '8px 16px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--c-border)',
+                background: 'white', color: 'var(--c-text-muted)',
+                fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: sibuk ? 'wait' : 'pointer',
+              }}>
+                ⟲ Tarik konten lama (90 hari)
+              </button>
+              <button onClick={jalankanSekarang} disabled={sibuk} style={{
+                padding: '8px 16px', borderRadius: 'var(--r-md)', border: 'none',
+                background: sibuk ? '#94A3B8' : 'var(--c-secondary)', color: 'white',
+                fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: sibuk ? 'wait' : 'pointer',
+              }}>
+                {sibuk ? '⏳ Memproses…' : '▶ Jalankan sekarang'}
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1, background: 'var(--c-border)', border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', marginTop: 14 }}>

@@ -278,7 +278,9 @@ const LABEL_JENIS_IG: Record<string, string> = {
  * gambar — bukan angka insights yang jauh lebih berharga. Pelajaran dari postingan
  * Facebook: satu field bersarang yang ditolak menggugurkan seluruh permintaan.
  */
-async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
+export async function ambilMediaIg(
+  igId: string, token: string, periode: Rentang, maksHalaman = 1,
+) {
   const dasar   = 'id,caption,media_type,timestamp,permalink'
   const wawasan = `insights.metric(${IG_KONTEN})`
   // Video menyimpan gambar sampulnya di thumbnail_url, foto di media_url; carousel
@@ -286,17 +288,38 @@ async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
   const gambar  = 'media_url,thumbnail_url,children{media_url,thumbnail_url}'
   const rentang = kueriRentang(periode)
 
-  const minta = (fields: string) => graphGet(`${igId}/media?fields=${fields}&limit=30&${rentang}`, token)
+  const minta = (fields: string, after = '') =>
+    graphGet(`${igId}/media?fields=${fields}&limit=50&${rentang}${after ? `&after=${after}` : ''}`, token)
 
-  let r = await minta(`${dasar},${wawasan},${gambar}`)
-  if (!r.ok) r = await minta(`${dasar},${wawasan}`)
-  if (!r.ok) r = await minta(dasar)
+  // Tentukan sekali di halaman pertama seberapa kaya field yang diterima Graph,
+  // lalu pakai bentuk itu untuk seluruh halaman. Menegosiasikan ulang tiap
+  // halaman hanya menghabiskan panggilan tanpa menambah informasi.
+  let fields = `${dasar},${wawasan},${gambar}`
+  let r = await minta(fields)
+  if (!r.ok) { fields = `${dasar},${wawasan}`; r = await minta(fields) }
+  if (!r.ok) { fields = dasar;                 r = await minta(fields) }
   if (!r.ok) return { semua: [], teratas: [], engagementTeratas: [], jenisKonten: [] }
+
+  const mentah: any[] = [...(r.json?.data ?? [])]
+  let after: string | undefined = r.json?.paging?.cursors?.after
+  let halaman = 1
+
+  // Paginasi memakai cursor `after`, bukan URL `paging.next` — URL itu sudah
+  // memuat token di dalamnya dan tidak layak dioper-oper.
+  while (after && halaman < maksHalaman) {
+    const rr = await minta(fields, after)
+    if (!rr.ok) break
+    const batch: any[] = rr.json?.data ?? []
+    if (!batch.length) break
+    mentah.push(...batch)
+    after = rr.json?.paging?.cursors?.after
+    halaman++
+  }
 
   const nilai = (m: any, nama: string) =>
     Number((m?.insights?.data ?? []).find((i: any) => i.name === nama)?.values?.[0]?.value ?? 0)
 
-  const items: KontenIg[] = (r.json?.data ?? []).map((m: any) => {
+  const items: KontenIg[] = mentah.map((m: any) => {
     const jangkauan = nilai(m, 'reach')
     const interaksi = nilai(m, 'total_interactions')
     const anak = m?.children?.data?.[0]
@@ -305,7 +328,7 @@ async function ambilMediaIg(igId: string, token: string, periode: Rentang) {
       jenis: LABEL_JENIS_IG[m.media_type] ?? String(m.media_type ?? '-'),
       tanggal: String(m.timestamp ?? '').slice(0, 10),
       permalink: String(m.permalink ?? ''),
-      teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 140),
+      teks: String(m.caption ?? '').replace(/\s+/g, ' ').slice(0, 500),
       tayangan: nilai(m, 'views'),
       // Sampul video didahulukan atas berkas videonya sendiri, supaya yang dimuat
       // di daftar selalu gambar — bukan video berukuran besar.
@@ -452,7 +475,9 @@ export async function ringkasFacebook(
  * satu pun petunjuk kenapa. Kegagalan yang menyamar sebagai "datanya memang nol"
  * adalah yang paling mahal, jadi sekarang sebabnya ikut dilaporkan ke UI.
  */
-async function ambilPostFb(pageId: string, token: string, periode: Rentang) {
+export async function ambilPostFb(
+  pageId: string, token: string, periode: Rentang, maksHalaman = 1,
+) {
   const inti    = 'id,message,created_time,permalink_url,shares'
   // Insights per postingan hanya butuh izin yang SUDAH dipunyai. Terbukti dari
   // probe: post_clicks & post_reactions_by_type_total hidup.
@@ -463,24 +488,42 @@ async function ambilPostFb(pageId: string, token: string, periode: Rentang) {
   const ringkas = 'comments.summary(true),reactions.summary(true)'
   const rentang = kueriRentang(periode)
 
-  const minta = (fields: string) => graphGet(`${pageId}/posts?fields=${fields}&limit=25&${rentang}`, token)
+  const minta = (fields: string, after = '') =>
+    graphGet(`${pageId}/posts?fields=${fields}&limit=50&${rentang}${after ? `&after=${after}` : ''}`, token)
 
   let galat: string | undefined
   let adaKomentar = true
 
-  let r = await minta(`${inti},${wawasan},${ringkas}`)
+  // Bentuk field ditentukan sekali di halaman pertama, lalu dipakai untuk seluruh
+  // halaman — sama seperti pada media Instagram.
+  let fields = `${inti},${wawasan},${ringkas}`
+  let r = await minta(fields)
   if (!r.ok) {
     galat = pesanErrorGraph(r)
     adaKomentar = false
-    r = await minta(`${inti},${wawasan}`)
+    fields = `${inti},${wawasan}`
+    r = await minta(fields)
   }
-  if (!r.ok) r = await minta(inti)
+  if (!r.ok) { fields = inti; r = await minta(fields) }
   if (!r.ok) return { items: [], galat: galat || pesanErrorGraph(r), adaKomentar: false }
+
+  const mentah: any[] = [...(r.json?.data ?? [])]
+  let after: string | undefined = r.json?.paging?.cursors?.after
+  let halaman = 1
+  while (after && halaman < maksHalaman) {
+    const rr = await minta(fields, after)
+    if (!rr.ok) break
+    const batch: any[] = rr.json?.data ?? []
+    if (!batch.length) break
+    mentah.push(...batch)
+    after = rr.json?.paging?.cursors?.after
+    halaman++
+  }
 
   const wawasanNilai = (p: any, nama: string) =>
     (p?.insights?.data ?? []).find((i: any) => i.name === nama)?.values?.[0]?.value
 
-  const items = (r.json?.data ?? []).map((p: any) => {
+  const items = mentah.map((p: any) => {
     // post_reactions_by_type_total mengembalikan peta {like: n, love: n, …};
     // jumlah seluruh jenisnya = total reaksi.
     const perJenis = wawasanNilai(p, 'post_reactions_by_type_total')
@@ -492,7 +535,7 @@ async function ambilPostFb(pageId: string, token: string, periode: Rentang) {
       id: String(p.id),
       tanggal: String(p.created_time ?? '').slice(0, 10),
       permalink: String(p.permalink_url ?? ''),
-      teks: String(p.message ?? '').replace(/\s+/g, ' ').slice(0, 140),
+      teks: String(p.message ?? '').replace(/\s+/g, ' ').slice(0, 500),
       reaksi:    Number(p?.reactions?.summary?.total_count ?? reaksiWawasan),
       komentar:  Number(p?.comments?.summary?.total_count ?? 0),
       dibagikan: Number(p?.shares?.count ?? 0),

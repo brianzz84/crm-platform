@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
-import { jalankanSnapshot } from '@/lib/social-snapshot'
+import { backfillKonten, jalankanSnapshot } from '@/lib/social-snapshot'
 
 type Ctx = { params: { slug: string } }
 
@@ -97,6 +97,17 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     await db.socialSnapshotConfig.upsert({
       where: { tenant_slug: params.slug }, create: { tenant_slug: params.slug }, update: {},
     })
+
+    // `mode: 'backfill'` menarik DAFTAR KONTEN jauh ke belakang. Dipisah dari
+    // jalan harian karena sifatnya sekali-jalan dan jauh lebih berat.
+    const body = await req.json().catch(() => ({}))
+    if (body?.mode === 'backfill') {
+      const hari = Math.min(400, Math.max(7, Number(body.hari) || 90))
+      const hasilBackfill = await backfillKonten(params.slug, hari)
+      return NextResponse.json({
+        success: true, status: 'ok', hasil: hasilBackfill, data: await ambilConfig(params.slug),
+      })
+    }
 
     const hasil = await jalankanSnapshot(params.slug)
     const gagal = hasil.filter(h => h.status === 'gagal')

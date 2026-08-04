@@ -19,7 +19,9 @@
  *    kanal lain; kegagalannya dilaporkan, bukan ditelan.
  */
 import { getTenantDb } from './tenant'
-import { ringkasFacebook, ringkasInstagram, type Rentang } from './meta-kanal'
+import {
+  ambilMediaIg, ambilPostFb, ringkasFacebook, ringkasInstagram, type Rentang,
+} from './meta-kanal'
 import { ringkasGa4, ringkasYouTube } from './google-kanal'
 
 /** Hari ke belakang yang ditarik ulang tiap malam. */
@@ -244,4 +246,71 @@ async function simpanKonten(
   }
 
   return jumlah
+}
+
+/**
+ * Backfill DAFTAR KONTEN ke belakang.
+ *
+ * Berbeda tegas dari metrik harian, yang sudah hilang dari API dan tidak bisa
+ * dipulihkan. Konten justru bisa: postingan Instagram dan Facebook bersifat
+ * permanen, dan insight per konten selalu berupa TOTAL SEPANJANG MASA — bukan
+ * nilai per rentang. Artinya menarik konten tiga bulan lalu tetap memberi angka
+ * yang benar dan terkini.
+ *
+ * Karena itu backfill ini layak dijalankan sekali di awal: ia mengisi seluruh
+ * bahan konten satu triwulan sekaligus, sehingga penandaan sifat dan tabel
+ * silang laporan langsung punya isi.
+ *
+ * Yang TETAP tidak bisa dipulihkan: snapshot berumur tetap (H+1, H+7, H+30)
+ * untuk konten lama. Umur itu hanya bisa diukur pada harinya, dan hari itu sudah
+ * lewat — jadi konten hasil backfill hanya punya baris berjalan.
+ */
+export async function backfillKonten(slug: string, hari = 90): Promise<HasilSnapshot[]> {
+  const db    = await getTenantDb(slug)
+  const hasil: HasilSnapshot[] = []
+
+  const sekarang = new Date()
+  const periode: Rentang = {
+    mulai:   iso(sekarang.getTime() - hari * HARI_MS),
+    selesai: iso(sekarang.getTime()),
+  }
+
+  const meta  = await db.metaConfig.findUnique({ where: { tenant_slug: slug } })
+  const token = meta?.insights_token || meta?.access_token || ''
+
+  if (!token) {
+    return [{ kanal: 'Meta', status: 'lewati', pesan: 'Token belum dikonfigurasi.' }]
+  }
+
+  // 10 halaman × 50 = maksimal 500 konten per kanal. Cukup jauh melampaui satu
+  // triwulan, dan tetap berbatas supaya akun besar tidak menarik tanpa henti.
+  const MAKS_HALAMAN = 10
+
+  if (meta?.ig_business_id) {
+    try {
+      const r = await ambilMediaIg(meta.ig_business_id, token, periode, MAKS_HALAMAN)
+      const n = await simpanKonten(db, slug, 'IG', r.semua, sekarang)
+      hasil.push({ kanal: 'Instagram', status: 'ok', pesan: `${n} konten sejak ${periode.mulai}.` })
+    } catch (e: any) {
+      hasil.push({ kanal: 'Instagram', status: 'gagal', pesan: String(e?.message ?? e) })
+    }
+  }
+
+  if (meta?.page_id) {
+    try {
+      const r = await ambilPostFb(meta.page_id, token, periode, MAKS_HALAMAN)
+      const konten = r.items.map((p: any) => ({
+        id: p.id, jenis: 'Postingan', tanggal: p.tanggal, teks: p.teks,
+        permalink: p.permalink, gambar: '',
+        jangkauan: 0, suka: p.reaksi, komentar: p.komentar, dibagikan: p.dibagikan,
+        disimpan: 0, interaksi: p.reaksi + p.komentar + p.dibagikan, tayangan: p.klik,
+      }))
+      const n = await simpanKonten(db, slug, 'FB', konten, sekarang)
+      hasil.push({ kanal: 'Facebook', status: 'ok', pesan: `${n} postingan sejak ${periode.mulai}.` })
+    } catch (e: any) {
+      hasil.push({ kanal: 'Facebook', status: 'gagal', pesan: String(e?.message ?? e) })
+    }
+  }
+
+  return hasil
 }
