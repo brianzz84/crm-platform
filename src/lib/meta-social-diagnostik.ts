@@ -125,6 +125,26 @@ const KANDIDAT_IG_MEDIA_LANJUT: KandidatMetrik[] = [
 ]
 
 /**
+ * Rincian sumber jangkauan.
+ *
+ * Menjawab pertanyaan yang paling sering membingungkan: jangkauan melonjak padahal
+ * tidak ada postingan baru — datangnya dari mana?
+ *
+ * Dua kemungkinan diuji berpasangan karena belum diketahui mana yang dilayani:
+ * bergaya DERET HARIAN (`period=day`) atau hanya AGREGAT (`metric_type=total_value`).
+ * Bedanya menentukan apakah rincian bisa ditempelkan ke tiap batang grafik, atau
+ * hanya bisa disajikan sebagai ringkasan satu periode.
+ */
+const KANDIDAT_IG_RINCIAN: KandidatMetrik[] = [
+  { metric: 'reach / media_product_type (harian)', query: 'metric=reach&period=day&breakdown=media_product_type' },
+  { metric: 'reach / follow_type (harian)',        query: 'metric=reach&period=day&breakdown=follow_type' },
+  { metric: 'reach / media_product_type (agregat)', query: 'metric=reach&period=day&metric_type=total_value&breakdown=media_product_type' },
+  { metric: 'reach / follow_type (agregat)',        query: 'metric=reach&period=day&metric_type=total_value&breakdown=follow_type' },
+  { metric: 'views / media_product_type (agregat)', query: 'metric=views&period=day&metric_type=total_value&breakdown=media_product_type' },
+  { metric: 'total_interactions / media_product_type', query: 'metric=total_interactions&period=day&metric_type=total_value&breakdown=media_product_type' },
+]
+
+/**
  * Metric Story. Story hidup 24 jam dan endpoint `/stories` hanya mengembalikan yang
  * SEDANG aktif — tidak ada endpoint arsip. Karena itu daftar ini hanya bisa diuji
  * saat ada story tayang; hasil kosong bukan berarti gagal.
@@ -300,6 +320,9 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
 
   // 6b-3) Demografi audiens — dasar untuk mengetahui SIAPA yang dijangkau.
   await temukanMetrik('ig_demografi', 'Instagram Demografi Audiens', cfg.ig_business_id, KANDIDAT_IG_DEMOGRAFI)
+
+  // 6b-3b) Rincian sumber jangkauan — menutup celah "melonjak tanpa postingan baru".
+  await temukanMetrik('ig_rincian', 'Instagram Rincian Jangkauan', cfg.ig_business_id, KANDIDAT_IG_RINCIAN)
 
   // 6b-4) Story. Dua keadaan yang WAJIB dibedakan dan mudah tertukar:
   //   - endpoint bekerja tapi tidak ada story tayang  → bukan kegagalan

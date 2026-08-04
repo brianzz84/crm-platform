@@ -27,10 +27,20 @@ import { ringkasGa4, ringkasYouTube } from './google-kanal'
 /** Hari ke belakang yang ditarik ulang tiap malam. */
 const HARI_TARIK_ULANG = 7
 
-/** Umur (hari) tempat performa konten dibekukan untuk perbandingan yang adil. */
-const UMUR_SNAPSHOT = [1, 7, 30]
-
-/** Baris berjalan yang ditimpa tiap malam — bukan umur tetap. */
+/**
+ * Baris berjalan yang ditimpa tiap malam — bukan umur tetap.
+ *
+ * Selain baris ini, tiap konten juga ditulis pada UMUR SEBENARNYA setiap malam.
+ * Umur 1, 7, dan 30 karena itu terbentuk sendiri dan tidak perlu diistimewakan:
+ * pada hari ketujuh yang tertulis adalah baris umur 7, dan esoknya umur 8 —
+ * jadi baris umur 7 tidak pernah tersentuh lagi, beku dengan sendirinya.
+ *
+ * Menyimpan SELURUH umur, bukan hanya tiga, membuka kemampuan yang tidak bisa
+ * didapat dari Meta: selisih angka sebuah konten antara kemarin dan hari ini
+ * adalah sumbangan konten itu terhadap jangkauan hari ini. Dijumlahkan, ia
+ * menjelaskan lonjakan harian tanpa perlu API yang merinci sumbernya.
+ * Biayanya sepele — 60 konten x 90 hari masih di bawah 6.000 baris.
+ */
 const UMUR_TERAKHIR = -1
 
 const HARI_MS = 86_400_000
@@ -231,15 +241,15 @@ async function simpanKonten(
     }
 
     const umur  = umurHari(new Date(k.tanggal), sekarang)
-    const umurTulis = [UMUR_TERAKHIR, ...(UMUR_SNAPSHOT.includes(umur) ? [umur] : [])]
+    // Baris berjalan + baris umur hari ini. Umur masa lalu tidak pernah ikut
+    // tersentuh karena umur hari ini selalu berbeda dari umur kemarin.
+    const umurTulis = umur >= 0 ? [UMUR_TERAKHIR, umur] : [UMUR_TERAKHIR]
 
     for (const u of umurTulis) {
       await db.socialContentSnapshot.upsert({
         where:  { content_id_umur_hari: { content_id: induk.id, umur_hari: u } },
         create: { content_id: induk.id, umur_hari: u, ...metrik },
-        // Snapshot berumur tetap tidak ditimpa setelah terisi — itulah gunanya
-        // dibekukan. Hanya baris berjalan yang disegarkan.
-        update: u === UMUR_TERAKHIR ? { ...metrik, diambil_pada: new Date() } : {},
+        update: { ...metrik, diambil_pada: new Date() },
       })
     }
     jumlah++
