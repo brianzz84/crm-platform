@@ -14,6 +14,26 @@ import type { SapaanJobData } from './sapaan.worker'
 import { setupScheduler }                    from './scheduler'
 
 /**
+ * Alamat Redis TANPA kredensial, untuk dicetak ke log.
+ *
+ * Versi sebelumnya mencetak REDIS_URL apa adanya — lengkap dengan sandinya.
+ * Log Railway bisa dibaca siapa pun yang punya akses project, dan gampang
+ * tersalin ke tiket, tangkapan layar, atau percakapan dukungan. Yang berguna
+ * dari baris log itu cuma satu: worker menyambung ke host mana. Sandinya tidak
+ * pernah menambah informasi apa pun di sana.
+ */
+function alamatRedisAman(): string {
+  const mentah = process.env.REDIS_URL || 'redis://localhost:6379'
+  try {
+    const u = new URL(mentah)
+    return `${u.protocol}//${u.hostname}:${u.port || '6379'}`
+  } catch {
+    // URL tak terbaca — jangan pernah jatuh kembali ke mencetak nilai aslinya.
+    return '(REDIS_URL tidak valid)'
+  }
+}
+
+/**
  * Server kesehatan mini.
  *
  * Ada dua alasan, dan yang kedua yang sebenarnya penting:
@@ -45,7 +65,7 @@ async function main() {
   const mulaiPada = new Date()
   console.log('[worker] Starting CRM worker process...')
   mulaiServerKesehatan(mulaiPada)
-  console.log(`[worker] Redis: ${process.env.REDIS_URL || 'redis://localhost:6379'}`)
+  console.log(`[worker] Redis: ${alamatRedisAman()}`)
 
   // Test Redis connection
   const redis = getRedis()
