@@ -1,5 +1,5 @@
 /**
- * GET /api/[slug]/kanal-publik/laporan?kanal=IG|FB&mulai=YYYY-MM-DD&selesai=YYYY-MM-DD
+ * GET /api/[slug]/kanal-publik/laporan?kanal=IG|FB|YOUTUBE|GA4&mulai=YYYY-MM-DD&selesai=YYYY-MM-DD
  *
  * Tabel Laporan Triwulanan. Membaca TABEL SNAPSHOT, bukan API Meta — periode
  * triwulan sudah jauh melewati jendela riwayat yang disediakan Instagram, jadi
@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { periksaRentang } from '@/lib/google-kanal'
-import { rakitLaporan } from '@/lib/laporan-medsos'
+import { rakitLaporan, type KanalLaporan } from '@/lib/laporan-medsos'
 
 type Ctx = { params: { slug: string } }
 
@@ -17,7 +17,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   if (error) return error
 
   const q     = req.nextUrl.searchParams
-  const kanal = q.get('kanal') === 'FB' ? 'FB' : 'IG'
+  const diminta = q.get('kanal') ?? ''
+  const kanal: KanalLaporan =
+    (['IG', 'FB', 'YOUTUBE', 'GA4'] as const).includes(diminta as any) ? diminta as KanalLaporan : 'IG'
 
   // Rentang tetap divalidasi walau sumbernya tabel lokal: nilainya datang dari URL
   // dan langsung menjadi kueri rentang tanggal.

@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 interface Sel { jumlah: number; jangkauan: number; interaksi: number; suka: number }
+interface BarisAkun {
+  bulan: string; jumlahKonten: number; jangkauan: number; tayangan: number
+  interaksi: number; followerBaru: number; followerAkhir: number
+}
 interface Laporan {
   periode: { mulai: string; selesai: string }
+  ringkasAkun: BarisAkun[]
   bulan: string[]
   format: string[]
   jumlahPerFormat: { format: string; perBulan: Record<string, number>; total: number }[]
@@ -45,7 +50,7 @@ const kiri: React.CSSProperties = { textAlign: 'left' }
 const gulir: React.CSSProperties = { overflowX: 'auto', padding: 'var(--sp-4) var(--sp-5)' }
 
 export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mulai: string; selesai: string }) {
-  const [kanal, setKanal] = useState<'IG' | 'FB'>('IG')
+  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE'>('IG')
   const [data, setData]   = useState<Laporan | null>(null)
   const [muat, setMuat]   = useState(false)
   const [galat, setGalat] = useState('')
@@ -78,6 +83,7 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
         <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kanal</span>
         <button onClick={() => setKanal('IG')} style={tombol(kanal === 'IG')}>Instagram</button>
         <button onClick={() => setKanal('FB')} style={tombol(kanal === 'FB')}>Facebook</button>
+        <button onClick={() => setKanal('YOUTUBE')} style={tombol(kanal === 'YOUTUBE')}>YouTube</button>
         <span style={{ fontSize: 11, color: 'var(--c-text-faint)', marginLeft: 'auto' }}>
           {mulai} s/d {selesai} · dihitung dari data snapshot
         </span>
@@ -90,7 +96,7 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
 
       {data && (
         <>
-          {data.belumDitandai > 0 && (
+          {data.belumDitandai > 0 && kanal !== 'YOUTUBE' && (
             <div style={{ background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: 'var(--sp-4)', borderRadius: 'var(--r-md)', fontSize: 13, lineHeight: 1.7, marginBottom: 'var(--sp-5)' }}>
               <strong>{data.belumDitandai} dari {data.totalKonten} konten belum bertanda sifat.</strong>{' '}
               Tabel sifat di bawah belum menggambarkan keadaan sebenarnya sampai penandaan selesai —
@@ -100,7 +106,61 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
             </div>
           )}
 
+          {/* ── Tabel pembuka: ringkasan akun ── */}
+          {data.ringkasAkun.length > 0 && (
+            <div style={kartu}>
+              <div style={judulKartu}>Ringkasan Akun per Bulan</div>
+              <div style={gulir}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+                  <thead><tr>
+                    <th style={{ ...th, ...kiri }}>Bulan</th>
+                    <th style={th}>Unggahan</th>
+                    <th style={th}>Jangkauan</th>
+                    <th style={th}>Tayangan</th>
+                    <th style={th}>Interaksi</th>
+                    <th style={th}>Pengikut Baru</th>
+                    <th style={th}>Pengikut Akhir</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.ringkasAkun.map(r => {
+                      const totalRow = r.bulan === 'TOTAL'
+                      const gaya: React.CSSProperties = totalRow
+                        ? { ...td, fontWeight: 800, background: 'var(--c-bg)' } : td
+                      return (
+                        <tr key={r.bulan}>
+                          <td style={{ ...gaya, ...kiri }}>{totalRow ? 'TOTAL' : labelBulan(r.bulan)}</td>
+                          <td style={gaya}>{r.jumlahKonten || '–'}</td>
+                          <td style={gaya}>{angka(r.jangkauan)}</td>
+                          <td style={gaya}>{angka(r.tayangan)}</td>
+                          <td style={gaya}>{angka(r.interaksi)}</td>
+                          <td style={gaya}>{angka(r.followerBaru)}</td>
+                          <td style={{ ...gaya, color: 'var(--c-text-muted)' }}>{angka(r.followerAkhir)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: 0, padding: '0 var(--sp-5) var(--sp-5)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+                <strong>Pengikut Akhir tidak dijumlahkan</strong> — ia keadaan pada hari terakhir tiap
+                bulan, bukan sesuatu yang bertambah tiap hari. Baris TOTAL karena itu menampilkan
+                nilai bulan terakhir, bukan hasil penjumlahan kolomnya.
+                {kanal === 'YOUTUBE' && ' Kolom kosong pada YouTube memang tidak disediakan API-nya di tingkat akun.'}
+              </p>
+            </div>
+          )}
+
+          {kanal === 'YOUTUBE' && (
+            <div style={{ background: '#EFF6FF', borderLeft: '3px solid #3B82F6', color: '#1E40AF', padding: 'var(--sp-4)', borderRadius: 'var(--r-md)', fontSize: 13, lineHeight: 1.7, marginBottom: 'var(--sp-5)' }}>
+              YouTube dilaporkan di <strong>tingkat akun saja</strong>. Performa tiap video sengaja
+              tidak disalin ke sini karena YouTube Analytics bisa ditanya per rentang tanggal kapan pun —
+              menyalinnya hanya menduplikasi tanpa menambah kemampuan. Untuk konten per video, gunakan tab YouTube.
+            </div>
+          )}
+
           {/* ── Jumlah konten per format ── */}
+          {kanal !== 'YOUTUBE' && (
+          <>
           <div style={kartu}>
             <div style={judulKartu}>Jumlah Konten Berdasarkan Format</div>
             <div style={gulir}>
@@ -232,6 +292,8 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
               </div>
             ))}
           </div>
+          </>
+          )}
         </>
       )}
     </div>

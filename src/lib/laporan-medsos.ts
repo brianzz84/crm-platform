@@ -17,6 +17,17 @@ const UMUR_TERAKHIR = -1
 
 export interface SelKonten { jumlah: number; jangkauan: number; interaksi: number; suka: number }
 
+export interface BarisAkun {
+  bulan: string            // 'YYYY-MM'; 'TOTAL' untuk baris penjumlahan
+  jumlahKonten: number
+  jangkauan: number
+  tayangan: number
+  interaksi: number
+  followerBaru: number
+  /** Nilai pada hari TERAKHIR bulan itu — bukan penjumlahan. */
+  followerAkhir: number
+}
+
 export interface LaporanMedsos {
   periode: { mulai: string; selesai: string }
   bulan: string[]                 // 'YYYY-MM' berurutan
@@ -39,6 +50,15 @@ export interface LaporanMedsos {
               jangkauan: number; tayangan: number; interaksi: number; sifat: string | null } | null
   }[]
 
+  /**
+   * Tabel pembuka laporan — ringkasan tingkat akun per bulan.
+   *
+   * `followerAkhir` sengaja TIDAK dijumlahkan: ia jumlah pengikut pada hari
+   * terakhir bulan itu, bukan sesuatu yang bertambah tiap hari. Menjumlahkannya
+   * akan menghasilkan angka raksasa yang tidak berarti apa pun.
+   */
+  ringkasAkun: BarisAkun[]
+
   /** Berapa konten belum bertanda — penentu apakah tabel sifat layak dipercaya. */
   belumDitandai: number
   totalKonten: number
@@ -52,12 +72,14 @@ const tambah = (a: SelKonten, b: Partial<SelKonten>) => {
   a.suka      += b.suka      ?? 0
 }
 
+export type KanalLaporan = 'IG' | 'FB' | 'YOUTUBE' | 'GA4'
+
 export async function rakitLaporan(
-  slug: string, mulai: string, selesai: string, kanal: 'IG' | 'FB',
+  slug: string, mulai: string, selesai: string, kanal: KanalLaporan,
 ): Promise<LaporanMedsos> {
   const db = await getTenantDb(slug)
 
-  const [isi, pustaka] = await Promise.all([
+  const [isi, pustaka, harian] = await Promise.all([
     db.socialContent.findMany({
       where: {
         tenant_slug: slug, kanal,
@@ -68,6 +90,13 @@ export async function rakitLaporan(
     }),
     db.socialSifatLibrary.findMany({
       where: { tenant_slug: slug }, orderBy: [{ urutan: 'asc' }, { nama: 'asc' }],
+    }),
+    db.socialAccountDaily.findMany({
+      where: {
+        tenant_slug: slug, kanal,
+        tanggal: { gte: new Date(mulai + 'T00:00:00Z'), lte: new Date(selesai + 'T23:59:59Z') },
+      },
+      orderBy: { tanggal: 'asc' },
     }),
   ])
 
@@ -157,8 +186,36 @@ export async function rakitLaporan(
     }
   })
 
+  // ── Tabel pembuka: ringkasan akun per bulan ──
+  const bulanAkun = [...new Set(harian.map((h: any) => h.tanggal.toISOString().slice(0, 7)))].sort()
+  const ringkasAkun: BarisAkun[] = bulanAkun.map(b => {
+    const rows = harian.filter((h: any) => h.tanggal.toISOString().slice(0, 7) === b)
+    const jml = (f: string) => rows.reduce((s: number, r: any) => s + (r[f] ?? 0), 0)
+    return {
+      bulan: b,
+      jumlahKonten:  baris.filter(r => r.bulan === b).length,
+      jangkauan:     jml('jangkauan'),
+      tayangan:      jml('tayangan'),
+      interaksi:     jml('interaksi'),
+      followerBaru:  jml('follower_baru'),
+      // Baris terakhir bulan itu — keadaan pada akhir bulan, bukan penjumlahan.
+      followerAkhir: rows.length ? (rows[rows.length - 1].follower_total ?? 0) : 0,
+    }
+  })
+
+  if (ringkasAkun.length) {
+    const t = (f: keyof BarisAkun) => ringkasAkun.reduce((s, r) => s + (r[f] as number), 0)
+    ringkasAkun.push({
+      bulan: 'TOTAL',
+      jumlahKonten: t('jumlahKonten'), jangkauan: t('jangkauan'),
+      tayangan: t('tayangan'), interaksi: t('interaksi'), followerBaru: t('followerBaru'),
+      followerAkhir: ringkasAkun[ringkasAkun.length - 1].followerAkhir,
+    })
+  }
+
   return {
     periode: { mulai, selesai },
+    ringkasAkun,
     bulan, format,
     sifat: daftarSifat,
     jumlahPerFormat, sifatFormatBulan, engagementSifat, teratasPerFormat,
