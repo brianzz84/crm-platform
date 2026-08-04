@@ -318,6 +318,30 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
       contohVideoId, KANDIDAT_IG_MEDIA_LANJUT)
   }
 
+  // 6b-2b) BENTUK MENTAH balasan breakdown.
+  //
+  // `temukanMetrik` hanya memeriksa permintaannya diterima (HTTP 200) — dan itu
+  // TIDAK sama dengan Graph benar-benar mengirim rinciannya. Meta punya kebiasaan
+  // menerima parameter lalu mengabaikannya tanpa keluhan, persis seperti yang
+  // terjadi pada izin dulu. Karena itu di sini yang ditampilkan adalah potongan
+  // JSON apa adanya: klik barisnya untuk melihat strukturnya sendiri.
+  if (cfg.ig_business_id) {
+    for (const [kunci, label, kueri] of [
+      ['bd_harian',  'Bentuk mentah — breakdown harian',  'metric=reach&period=day&breakdown=media_product_type'],
+      ['bd_agregat', 'Bentuk mentah — breakdown agregat', 'metric=reach&period=day&metric_type=total_value&breakdown=media_product_type'],
+    ] as const) {
+      const r = await graphGet(`${cfg.ig_business_id}/insights?${kueri}`, token)
+      hasil.push({
+        kunci, label,
+        status: r.ok ? 'ok' : 'gagal',
+        pesan: r.ok
+          ? 'Klik baris ini untuk melihat bentuk balasannya. Cari kata "breakdowns" atau "dimension_values" — kalau tidak ada, Graph mengabaikan permintaan rincian.'
+          : pesanErrorGraph(r),
+        detail: potong(r.json, 1200),
+      })
+    }
+  }
+
   // 6b-3) Demografi audiens — dasar untuk mengetahui SIAPA yang dijangkau.
   await temukanMetrik('ig_demografi', 'Instagram Demografi Audiens', cfg.ig_business_id, KANDIDAT_IG_DEMOGRAFI)
 
