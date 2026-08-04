@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import KontenTab from './KontenTab'
+import LaporanTab from './LaporanTab'
 
 /* ─── Tipe (cerminan bentuk dari src/lib/google-kanal.ts) ─── */
 interface TotalYouTube { tayangan: number; menitDitonton: number; retensiPersen: number; subscriberNaik: number; subscriberTurun: number }
@@ -74,7 +75,7 @@ interface RingkasFacebook {
   galat?: string
 }
 
-type Tab = 'website' | 'instagram' | 'facebook' | 'youtube' | 'google-bisnis' | 'konten'
+type Tab = 'website' | 'instagram' | 'facebook' | 'youtube' | 'google-bisnis' | 'konten' | 'laporan'
 type Kanal = 'ga4' | 'youtube' | 'instagram' | 'facebook'
 
 /* ─── Bantuan tanggal ─── */
@@ -592,6 +593,24 @@ export default function KanalPublikClient({
     // Pembanding ikut menyesuaikan supaya panjangnya tetap sama.
     setBMulai(hariLalu(hari * 2)); setBSelesai(hariLalu(hari + 1))
   }
+  /** `geserKuartal` 0 = triwulan berjalan, -1 = sebelumnya. Pembanding otomatis
+   *  diarahkan ke triwulan tepat sebelum yang dipilih. */
+  function pilihTriwulan(geserKuartal: number) {
+    const kini = new Date()
+    const kuartalKini = Math.floor(kini.getUTCMonth() / 3)
+    const totalKuartal = kini.getUTCFullYear() * 4 + kuartalKini + geserKuartal
+    const susun = (tk: number) => {
+      const th = Math.floor(tk / 4), k = tk % 4
+      const a = new Date(Date.UTC(th, k * 3, 1))
+      const b = new Date(Date.UTC(th, k * 3 + 3, 0))
+      return { mulai: iso(a), selesai: iso(b) }
+    }
+    const ini  = susun(totalKuartal)
+    const lalu = susun(totalKuartal - 1)
+    setMulai(ini.mulai);   setSelesai(ini.selesai)
+    setBMulai(lalu.mulai); setBSelesai(lalu.selesai)
+  }
+
   function bandingSebelumnya() {
     setBSelesai(geser(mulai, -1)); setBMulai(geser(mulai, -panjangUtama))
   }
@@ -650,6 +669,7 @@ export default function KanalPublikClient({
               { k: 'youtube', label: 'YouTube' },
               { k: 'google-bisnis', label: 'Google Bisnis' },
               { k: 'konten', label: '🏷️ Sifat Konten' },
+              { k: 'laporan', label: '📑 Laporan' },
             ] as const).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)} style={{
                 padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -675,6 +695,11 @@ export default function KanalPublikClient({
                       {n} hari
                     </button>
                   ))}
+                  {/* Laporan triwulanan menuntut batas kuartal yang PERSIS, bukan
+                      "90 hari terakhir" — kalau tidak, angkanya tidak akan pernah
+                      cocok saat diadu dengan laporan triwulan sebelumnya. */}
+                  <button onClick={() => pilihTriwulan(0)} style={tombolKecil(false)}>Triwulan ini</button>
+                  <button onClick={() => pilihTriwulan(-1)} style={tombolKecil(false)}>Triwulan lalu</button>
                 </div>
               </div>
 
@@ -979,7 +1004,8 @@ export default function KanalPublikClient({
             </>
           ))}
 
-          {tab === 'konten' && <KontenTab slug={slug} />}
+          {tab === 'konten'  && <KontenTab slug={slug} />}
+          {tab === 'laporan' && <LaporanTab slug={slug} mulai={mulai} selesai={selesai} />}
 
           {/* ── Google Bisnis ── */}
           {tab === 'google-bisnis' && (
