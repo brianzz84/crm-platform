@@ -1385,3 +1385,43 @@ model SocialSifatLibrary {
   @@index([tenant_slug, aktif])
   @@map("crm_social_sifat_library")
 }
+
+/// Angka triwulan lampau yang DIKETIK ULANG dari laporan manual.
+///
+/// Sifatnya berbeda secara mendasar dari tabel snapshot, dan perbedaan itu harus
+/// terlihat di layar — bukan disamarkan:
+///  - snapshot ditarik ulang tiap malam dan BISA BERUBAH bila Meta merevisi;
+///  - baris ini diketik manusia dari dokumen, TIDAK BISA diverifikasi ulang ke
+///    sumbernya, dan TIDAK AKAN PERNAH berubah.
+///
+/// Menyajikan keduanya dengan tampilan sama menyiratkan jaminan yang sama padahal
+/// tidak. Suatu hari akan ada yang menemukan angka triwulan lampau tidak cocok
+/// dengan Meta lalu menyangka sistemnya rusak — padahal memang begitulah adanya.
+model SocialLaporanManual {
+  id          String      @id @default(uuid())
+  tenant_slug String
+  kanal       KanalSosial
+  periode     String // 'TW II 2025', 'TW I 2026' — apa adanya seperti di dokumen
+  urutan      Int // penentu urutan tampil; periode tidak bisa diurutkan sebagai teks
+
+  /// 'AKUN' = ringkasan periode; 'FORMAT'/'SIFAT' = rincian per dimensi.
+  dimensi   String
+  /// Kosong untuk baris AKUN. Dipakai sebagai bagian kunci unik, jadi TIDAK boleh
+  /// nullable — Postgres menganggap tiap NULL berbeda dan duplikat akan lolos.
+  nilai_dim String @default("")
+
+  jumlah_konten Int @default(0)
+  jangkauan     Int @default(0)
+  tayangan      Int @default(0)
+  interaksi     Int @default(0)
+  suka          Int @default(0)
+  follower      Int @default(0)
+
+  /// Dari dokumen mana — supaya angka yang meragukan bisa ditelusuri ke asalnya.
+  sumber       String
+  diimpor_pada DateTime @default(now())
+
+  @@unique([tenant_slug, kanal, periode, dimensi, nilai_dim])
+  @@index([tenant_slug, kanal])
+  @@map("crm_social_laporan_manual")
+}

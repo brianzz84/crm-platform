@@ -59,6 +59,17 @@ export interface LaporanMedsos {
    */
   ringkasAkun: BarisAkun[]
 
+  /**
+   * Angka triwulan lampau dari laporan manual. DISAJIKAN TERPISAH dan ditandai
+   * berbeda di layar: sumbernya lain, tidak bisa diverifikasi ulang ke Meta, dan
+   * tidak akan pernah berubah — jaminannya berbeda dari data snapshot.
+   */
+  riwayatManual: {
+    periode: string; urutan: number; sumber: string
+    jumlahKonten: number; jangkauan: number; interaksi: number; follower: number
+    perFormat: Record<string, number>
+  }[]
+
   /** Berapa konten belum bertanda — penentu apakah tabel sifat layak dipercaya. */
   belumDitandai: number
   totalKonten: number
@@ -79,7 +90,7 @@ export async function rakitLaporan(
 ): Promise<LaporanMedsos> {
   const db = await getTenantDb(slug)
 
-  const [isi, pustaka, harian] = await Promise.all([
+  const [isi, pustaka, manual, harian] = await Promise.all([
     db.socialContent.findMany({
       where: {
         tenant_slug: slug, kanal,
@@ -90,6 +101,9 @@ export async function rakitLaporan(
     }),
     db.socialSifatLibrary.findMany({
       where: { tenant_slug: slug }, orderBy: [{ urutan: 'asc' }, { nama: 'asc' }],
+    }),
+    db.socialLaporanManual.findMany({
+      where: { tenant_slug: slug, kanal }, orderBy: { urutan: 'asc' },
     }),
     db.socialAccountDaily.findMany({
       where: {
@@ -213,9 +227,27 @@ export async function rakitLaporan(
     })
   }
 
+  // ── Riwayat manual, dikelompokkan per periode ──
+  const petaManual = new Map<string, any>()
+  for (const m of manual as any[]) {
+    const rec = petaManual.get(m.periode) ?? {
+      periode: m.periode, urutan: m.urutan, sumber: m.sumber,
+      jumlahKonten: 0, jangkauan: 0, interaksi: 0, follower: 0, perFormat: {},
+    }
+    if (m.dimensi === 'AKUN') {
+      rec.jumlahKonten = m.jumlah_konten; rec.jangkauan = m.jangkauan
+      rec.interaksi = m.interaksi;        rec.follower  = m.follower
+    } else if (m.dimensi === 'FORMAT') {
+      rec.perFormat[m.nilai_dim] = m.jumlah_konten
+    }
+    petaManual.set(m.periode, rec)
+  }
+  const riwayatManual = [...petaManual.values()].sort((a, b) => a.urutan - b.urutan)
+
   return {
     periode: { mulai, selesai },
     ringkasAkun,
+    riwayatManual,
     bulan, format,
     sifat: daftarSifat,
     jumlahPerFormat, sifatFormatBulan, engagementSifat, teratasPerFormat,

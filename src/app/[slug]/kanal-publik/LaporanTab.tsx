@@ -10,6 +10,11 @@ interface BarisAkun {
 interface Laporan {
   periode: { mulai: string; selesai: string }
   ringkasAkun: BarisAkun[]
+  riwayatManual: {
+    periode: string; urutan: number; sumber: string
+    jumlahKonten: number; jangkauan: number; interaksi: number; follower: number
+    perFormat: Record<string, number>
+  }[]
   bulan: string[]
   format: string[]
   jumlahPerFormat: { format: string; perBulan: Record<string, number>; total: number }[]
@@ -155,6 +160,57 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
               YouTube dilaporkan di <strong>tingkat akun saja</strong>. Performa tiap video sengaja
               tidak disalin ke sini karena YouTube Analytics bisa ditanya per rentang tanggal kapan pun —
               menyalinnya hanya menduplikasi tanpa menambah kemampuan. Untuk konten per video, gunakan tab YouTube.
+            </div>
+          )}
+
+          {/* ── Riwayat dari laporan manual ──
+              Sengaja kartu TERPISAH dengan warna berbeda: sumbernya lain, tidak
+              bisa diverifikasi ulang ke Meta, dan tidak akan pernah berubah.
+              Menyatukannya dengan tabel snapshot akan menyiratkan jaminan yang
+              sama padahal tidak. */}
+          {data.riwayatManual.length > 0 && (
+            <div style={{ ...kartu, borderColor: '#C4B5FD', background: '#FAF5FF' }}>
+              <div style={{ ...judulKartu, borderColor: '#DDD6FE', color: '#6D28D9', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                📄 Triwulan Lampau — dari laporan manual
+                <span style={{ fontSize: 10, fontWeight: 700, background: '#EDE9FE', color: '#6D28D9', padding: '2px 8px', borderRadius: 4 }}>
+                  BUKAN DATA SNAPSHOT
+                </span>
+              </div>
+              <div style={gulir}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
+                  <thead><tr>
+                    <th style={{ ...th, ...kiri }}>Periode</th>
+                    <th style={th}>Unggahan</th>
+                    <th style={th}>Jangkauan</th>
+                    <th style={th}>Interaksi</th>
+                    <th style={th}>Pengikut Baru</th>
+                    {Object.keys(data.riwayatManual[0]?.perFormat ?? {}).map(f => (
+                      <th key={f} style={th}>{f}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {data.riwayatManual.map(r => (
+                      <tr key={r.periode}>
+                        <td style={{ ...td, ...kiri, fontWeight: 700, color: '#6D28D9' }}>{r.periode}</td>
+                        <td style={td}>{r.jumlahKonten || '–'}</td>
+                        <td style={td}>{r.jangkauan ? angka(r.jangkauan) : '–'}</td>
+                        <td style={td}>{r.interaksi ? angka(r.interaksi) : '–'}</td>
+                        <td style={td}>{r.follower ? angka(r.follower) : '–'}</td>
+                        {Object.keys(data.riwayatManual[0]?.perFormat ?? {}).map(f => (
+                          <td key={f} style={td}>{r.perFormat[f] ?? '–'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: 0, padding: '0 var(--sp-5) var(--sp-5)', fontSize: 11, color: '#6D28D9', lineHeight: 1.6 }}>
+                Diketik ulang dari <strong>{data.riwayatManual[0]?.sumber}</strong>. Periode ini sudah
+                jauh melewati jendela riwayat yang disediakan Meta, jadi angkanya <strong>tidak bisa
+                diverifikasi ulang</strong> ke sumber aslinya dan <strong>tidak akan berubah</strong> —
+                berbeda dari tabel putih di atas yang ditarik ulang tiap malam dan ikut berubah bila
+                Meta merevisi. Tanda ✕ berarti angka itu memang tidak dicatat di laporan aslinya.
+              </p>
             </div>
           )}
 
