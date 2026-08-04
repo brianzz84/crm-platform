@@ -1,0 +1,31 @@
+# Image untuk proses WORKER (BullMQ) — terpisah dari web.
+#
+# Dockerfile utama hanya mengirim `.next/standalone` ke image akhir, sehingga
+# `src/` dan tsx TIDAK ikut. Itulah sebabnya worker mustahil dijalankan dari
+# image web meski start command-nya diubah: berkasnya memang tidak ada di sana.
+#
+# Image ini sengaja TIDAK menjalankan `next build`. Worker tidak membutuhkan
+# Next.js sama sekali, dan melewati build memangkas waktu deploy secara drastis.
+FROM node:22-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV TZ=Asia/Jakarta
+
+# tsx, bullmq, ioredis, dan prisma semuanya ada di `dependencies` (bukan dev),
+# jadi `npm ci` tanpa dev-dependencies sudah mencukupi.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Hanya yang benar-benar dipakai worker. `src/workers` mengimpor dari `src/lib`
+# lewat alias `@/…`, jadi tsconfig.json wajib ikut agar alias itu bisa dipetakan.
+COPY prisma ./prisma
+COPY tsconfig.json ./
+COPY src ./src
+
+RUN npx prisma generate
+
+# Worker menghitung jam WIB secara eksplisit dari UTC, jadi tidak bergantung pada
+# TZ container. TZ di atas hanya agar stempel waktu di log mudah dibaca.
+CMD ["npm", "run", "worker"]

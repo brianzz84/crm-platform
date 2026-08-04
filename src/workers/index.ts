@@ -13,8 +13,38 @@ import { getRedis, QUEUE_SAPAAN } from '@/lib/queue'
 import type { SapaanJobData } from './sapaan.worker'
 import { setupScheduler }                    from './scheduler'
 
+/**
+ * Server kesehatan mini.
+ *
+ * Ada dua alasan, dan yang kedua yang sebenarnya penting:
+ *  1. Railway butuh port terbuka untuk healthcheck sebuah service.
+ *  2. Selama berbulan-bulan worker ini TIDAK BERJALAN di produksi dan tidak ada
+ *     satu pun cara untuk menyadarinya — seluruh pekerjaan terjadwal diam tanpa
+ *     ada yang bertanya. Endpoint ini membuat "hidup atau mati" bisa ditanya,
+ *     bukan diasumsikan.
+ */
+function mulaiServerKesehatan(mulaiPada: Date) {
+  const port = Number(process.env.PORT || 0)
+  if (!port) return
+
+  import('node:http').then(({ createServer }) => {
+    createServer((req, res) => {
+      const naikDetik = Math.round((Date.now() - mulaiPada.getTime()) / 1000)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        ok: true,
+        peran: 'worker',
+        mulai_pada: mulaiPada.toISOString(),
+        naik_detik: naikDetik,
+      }))
+    }).listen(port, () => console.log(`[worker] Health server di :${port}`))
+  })
+}
+
 async function main() {
+  const mulaiPada = new Date()
   console.log('[worker] Starting CRM worker process...')
+  mulaiServerKesehatan(mulaiPada)
   console.log(`[worker] Redis: ${process.env.REDIS_URL || 'redis://localhost:6379'}`)
 
   // Test Redis connection
