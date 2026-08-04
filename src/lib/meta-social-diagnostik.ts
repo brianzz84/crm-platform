@@ -52,7 +52,26 @@ function cekBatasLaju(slug: string) {
   arr.push(now); jejak.set(slug, arr)
 }
 
-const potong = (v: any, n = 240) => JSON.stringify(v ?? {}).slice(0, n)
+/**
+ * Potongan respons untuk ditampilkan di panel diagnostik.
+ *
+ * WAJIB membuang `paging` lebih dulu: Graph menaruh URL halaman berikutnya
+ * LENGKAP DENGAN ACCESS TOKEN di dalamnya. Panel ini dibuat untuk ditempel ke
+ * tiket atau percakapan dukungan — persis perbuatan yang membocorkan token
+ * kalau isinya ditampilkan apa adanya. Sudah terjadi sekali; jangan lagi.
+ *
+ * Penyaringan berlapis dua dan itu disengaja: `paging` dibuang secara struktur,
+ * lalu apa pun yang menyerupai token disamarkan dari teks akhirnya — supaya
+ * bentuk balasan baru dari Meta yang menyelipkan token di tempat lain tetap
+ * tertangkap tanpa perlu ada yang menyadarinya lebih dulu.
+ */
+const potong = (v: any, n = 240) => {
+  const { paging: _paging, ...sisa } = (v ?? {}) as Record<string, unknown>
+  return JSON.stringify(sisa)
+    .replace(/access_token=[^"&\\]+/gi, 'access_token=[DISAMARKAN]')
+    .replace(/EAA[A-Za-z0-9_-]{20,}/g, '[TOKEN DISAMARKAN]')
+    .slice(0, n)
+}
 
 /**
  * Kandidat metric untuk "penemuan metric".

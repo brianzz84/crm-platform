@@ -141,8 +141,12 @@ export interface RingkasInstagram {
   followerHarian: { tanggal: string; naik: number }[]
   /** SELURUH konten periode — dipakai hover grafik untuk menjawab "kenapa naik". */
   semuaKonten: KontenIg[]
-  /** Rincian jangkauan harian: dari format apa, dan dari follower atau bukan. */
-  rincianHarian: { tanggal: string; perJenis: Record<string, number>; perFollow: Record<string, number> }[]
+  /**
+   * Rincian jangkauan SATU PERIODE — bukan per hari; Meta tidak menyediakannya
+   * per hari. Angka tiap dimensi adalah hitungan unik yang saling tumpang tindih,
+   * jadi jumlahnya melebihi total periode.
+   */
+  rincianPeriode: { perJenis: Record<string, number>; perFollow: Record<string, number> }
   teratas: KontenIg[]
   /** Urutan berdasarkan MUTU tanggapan, bukan besarnya jangkauan. */
   engagementTeratas: KontenIg[]
@@ -211,52 +215,41 @@ async function ringkasPeriodeIg(
 
 
 /**
- * Rincian jangkauan harian menurut satu dimensi (`media_product_type` atau
- * `follow_type`). Terbukti lewat probe bahwa breakdown BEKERJA pada deret harian,
- * bukan hanya agregat — jadi tiap batang grafik bisa dipecah sumbernya.
+ * Rincian jangkauan menurut satu dimensi (`media_product_type` / `follow_type`).
  *
- * Menjawab kasus yang paling membingungkan: jangkauan melonjak padahal tidak ada
- * postingan baru. Jawabannya biasanya Story, atau konten lama yang menyebar ke
- * non-follower.
+ * HANYA TERSEDIA SEBAGAI AGREGAT PERIODE, bukan per hari. Dibuktikan langsung
+ * dari bentuk balasannya: dengan `period=day&breakdown=...` Graph mengembalikan
+ * `values:[{value,end_time}]` polos tanpa jejak rincian — parameternya diterima
+ * lalu diabaikan tanpa keluhan. Rinciannya baru muncul pada
+ * `metric_type=total_value`, di dalam `total_value.breakdowns[].results[]`.
  *
- * Bentuk balasan Graph untuk breakdown tidak seragam antar versi, jadi dua bentuk
- * yang mungkin diurai keduanya. Kalau tidak satu pun cocok, hasilnya KOSONG —
- * bukan tebakan. Rincian yang salah lebih berbahaya daripada rincian yang absen,
- * karena ia tetap terlihat masuk akal.
+ * Pelajarannya: pada Graph, permintaan yang TIDAK DITOLAK belum tentu DIPENUHI.
+ * Untuk breakdown, status 200 bukan bukti apa-apa.
+ *
+ * CATATAN ANGKA: jangkauan adalah hitungan UNIK, jadi penjumlahan seluruh
+ * dimensi MELEBIHI totalnya — satu orang yang melihat Reels dan Carousel
+ * terhitung di keduanya. Karena itu nilainya tidak boleh disajikan sebagai
+ * persentase dari total; ia akan melampaui 100% dan menyesatkan.
  */
 async function tarikRincian(
   igId: string, token: string, periode: Rentang, dimensi: string,
-): Promise<Map<string, Record<string, number>>> {
-  const out = new Map<string, Record<string, number>>()
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
 
   for (const jendela of pecahJendela(periode)) {
     const r = await graphGet(
-      `${igId}/insights?metric=reach&period=day&breakdown=${dimensi}&${kueriRentang(jendela)}`,
+      `${igId}/insights?metric=reach&period=day&metric_type=total_value&breakdown=${dimensi}&${kueriRentang(jendela)}`,
       token,
     )
     if (!r.ok) continue
 
     for (const d of r.json?.data ?? []) {
-      for (const v of d.values ?? []) {
-        if (!v?.end_time) continue
-        const tgl = tanggalDariEndTime(v.end_time)
-        if (tgl < periode.mulai || tgl > periode.selesai) continue
-
-        const bucket = out.get(tgl) ?? {}
-
-        // Bentuk A: value berupa peta { POST: 123, STORY: 45 }
-        if (v.value && typeof v.value === 'object') {
-          for (const [k, n] of Object.entries(v.value)) bucket[k] = Number(n ?? 0)
+      for (const b of d?.total_value?.breakdowns ?? []) {
+        for (const hasil of b.results ?? []) {
+          const nama = (hasil.dimension_values ?? [])[0]
+          if (!nama) continue
+          out[String(nama)] = (out[String(nama)] ?? 0) + Number(hasil.value ?? 0)
         }
-        // Bentuk B: daftar breakdowns dengan dimension_values
-        for (const b of v.breakdowns ?? d.breakdowns ?? []) {
-          for (const hasil of b.results ?? []) {
-            const nama = (hasil.dimension_values ?? [])[0]
-            if (nama) bucket[String(nama)] = Number(hasil.value ?? 0)
-          }
-        }
-
-        if (Object.keys(bucket).length) out.set(tgl, bucket)
       }
     }
   }
@@ -268,7 +261,8 @@ export async function ringkasInstagram(
 ): Promise<RingkasInstagram> {
   const kosong: RingkasInstagram = {
     akun: null, periode: IG_KOSONG, banding: null, bandingSeriKosong: false,
-    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [], rincianHarian: [], teratas: [], engagementTeratas: [],
+    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [],
+    rincianPeriode: { perJenis: {}, perFollow: {} }, teratas: [], engagementTeratas: [],
     jenisKonten: [], hariFollower: [], catatanUnik: null,
   }
 
@@ -311,11 +305,7 @@ export async function ringkasInstagram(
       : [],
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
     semuaKonten:       rMedia.semua,
-    rincianHarian: tanggal.map(t => ({
-      tanggal: t,
-      perJenis:  rJenis.get(t)  ?? {},
-      perFollow: rFollow.get(t) ?? {},
-    })),
+    rincianPeriode: { perJenis: rJenis, perFollow: rFollow },
     teratas:           rMedia.teratas,
     engagementTeratas: rMedia.engagementTeratas,
     jenisKonten:       rMedia.jenisKonten,

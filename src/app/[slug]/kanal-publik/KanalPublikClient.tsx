@@ -50,7 +50,7 @@ interface RingkasInstagram {
   bandingHarian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   semuaKonten: KontenIg[]
-  rincianHarian: { tanggal: string; perJenis: Record<string, number>; perFollow: Record<string, number> }[]
+  rincianPeriode: { perJenis: Record<string, number>; perFollow: Record<string, number> }
   teratas: KontenIg[]
   engagementTeratas: KontenIg[]
   jenisKonten: { jenis: string; jumlah: number; jangkauan: number; rasioInteraksi: number }[]
@@ -184,14 +184,12 @@ export interface KontenHarian {
  * Tiga puluh angka yang saling menimpa sama tidak terbacanya dengan tidak ada
  * angka sama sekali, jadi selebihnya cukup puncak dan batang yang disorot.
  */
-function TrenBatang({ data, label, satuan = '', banding, konten, rincian }: {
+function TrenBatang({ data, label, satuan = '', banding, konten }: {
   data: { tanggal: string; nilai: number }[]
   label: string
   satuan?: string
   banding?: { tanggal: string; nilai: number }[] | null
   konten?: KontenHarian[]
-  /** Rincian sumber per tanggal — menjawab lonjakan tanpa postingan baru. */
-  rincian?: { tanggal: string; perJenis: Record<string, number>; perFollow: Record<string, number> }[]
 }) {
   const [sorot, setSorot] = useState<number | null>(null)
   if (!data.length) return null
@@ -218,7 +216,6 @@ function TrenBatang({ data, label, satuan = '', banding, konten, rincian }: {
   // adalah rentang lain, jadi tanggal yang sama tidak berarti apa-apa.
   const bandingAktif = sorot !== null && banding && banding[sorot] ? banding[sorot] : null
   const kontenAktif  = aktif ? (kontenPerTgl.get(tglAktif) ?? []) : []
-  const rincianAktif = aktif ? (rincian ?? []).find(r => String(r.tanggal).slice(0, 10) === tglAktif) : undefined
 
   return (
     <div style={{ padding: 'var(--sp-5)' }}>
@@ -300,30 +297,6 @@ function TrenBatang({ data, label, satuan = '', banding, konten, rincian }: {
                 </span>
               )}
             </div>
-
-            {rincianAktif && (Object.keys(rincianAktif.perJenis).length > 0 || Object.keys(rincianAktif.perFollow).length > 0) && (
-              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10, paddingBottom: 10, borderBottom: '1px dashed var(--c-border)' }}>
-                {([['Dari format', rincianAktif.perJenis], ['Dari audiens', rincianAktif.perFollow]] as const).map(([judul, peta]) => {
-                  const isi = Object.entries(peta).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
-                  if (!isi.length) return null
-                  const jml = isi.reduce((s, [, n]) => s + n, 0)
-                  return (
-                    <div key={judul}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>{judul}</div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {isi.map(([k, n]) => (
-                          <span key={k} style={{ fontSize: 12, color: 'var(--c-text)' }}>
-                            {LABEL_RINCIAN[k] ?? k}{' '}
-                            <strong>{angka(n)}</strong>
-                            <span style={{ color: 'var(--c-text-faint)' }}> ({Math.round((n / jml) * 100)}%)</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
 
             {kontenAktif.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -518,6 +491,69 @@ function Pesan({ nada, children }: { nada: 'info' | 'galat'; children: React.Rea
   return (
     <div style={{ background: g.bg, color: g.warna, borderLeft: `3px solid ${g.garis}`, borderRadius: 'var(--r-md)', padding: 'var(--sp-4)', marginBottom: 'var(--sp-5)', fontSize: 'var(--font-size-sm)', lineHeight: 1.7 }}>
       {children}
+    </div>
+  )
+}
+
+
+/**
+ * Rincian sumber jangkauan — tingkat PERIODE, bukan per hari.
+ *
+ * Meta hanya menyediakannya sebagai agregat: permintaan `period=day` dengan
+ * `breakdown` diterima tapi rinciannya tidak pernah dikirim. Dibuktikan langsung
+ * dari bentuk balasan Graph, bukan disimpulkan dari status 200.
+ *
+ * Angkanya SENGAJA tidak disajikan sebagai persentase. Jangkauan adalah hitungan
+ * unik per dimensi, jadi seseorang yang melihat Reels dan Carousel terhitung di
+ * keduanya — penjumlahannya melampaui total periode, dan persentase apa pun yang
+ * dihitung darinya akan melewati 100% lalu menyesatkan pembacanya.
+ */
+function RincianJangkauan({ rincian, total }: {
+  rincian: { perJenis: Record<string, number>; perFollow: Record<string, number> }
+  total: number
+}) {
+  const bagian = ([
+    ['Dari format konten', rincian.perJenis],
+    ['Dari audiens',       rincian.perFollow],
+  ] as const).map(([judul, peta]) => ({
+    judul, isi: Object.entries(peta).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]),
+  })).filter(b => b.isi.length)
+
+  if (!bagian.length) return null
+  const maks = Math.max(...bagian.flatMap(b => b.isi.map(([, n]) => n)), 1)
+
+  return (
+    <div style={kartu}>
+      <div style={judulKartu}>Sumber Jangkauan</div>
+      <div style={{ padding: '10px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)', lineHeight: 1.6 }}>
+        Menjawab lonjakan yang terjadi tanpa postingan baru — biasanya dari Story, atau konten
+        lama yang menyebar ke non-follower. Instagram hanya menyediakan rincian ini untuk
+        <strong> seluruh periode</strong>, tidak per hari.
+      </div>
+      <div style={{ padding: 'var(--sp-5)', display: 'grid', gap: 'var(--sp-5)', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+        {bagian.map(b => (
+          <div key={b.judul}>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--c-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>{b.judul}</div>
+            {b.isi.map(([k, n]) => (
+              <div key={k} style={{ marginBottom: 7 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                  <span style={{ color: 'var(--c-text)' }}>{LABEL_RINCIAN[k] ?? k}</span>
+                  <strong style={{ color: 'var(--c-primary)' }}>{angka(n)}</strong>
+                </div>
+                <div style={{ height: 6, background: 'var(--c-bg)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${(n / maks) * 100}%`, height: '100%', background: 'var(--c-secondary)', borderRadius: 3 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <p style={{ margin: 0, padding: '0 var(--sp-5) var(--sp-5)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+        Angka-angka ini <strong>tidak dijumlahkan menjadi {angka(total)}</strong> dan memang tidak
+        seharusnya. Jangkauan dihitung per orang unik di tiap dimensi, jadi satu orang yang melihat
+        Reels sekaligus Carousel terhitung di keduanya. Bacalah tiap baris sebagai
+        &ldquo;sekian orang terjangkau lewat jalur ini&rdquo;, bukan sebagai bagian dari suatu total.
+      </p>
     </div>
   )
 }
@@ -814,9 +850,10 @@ export default function KanalPublikClient({
                   satuan="jangkauan"
                   data={ig.harian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan }))}
                   banding={pakaiBanding && !ig.bandingSeriKosong ? ig.bandingHarian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan })) : null}
-                  konten={ig.semuaKonten}
-                  rincian={ig.rincianHarian} />
+                  konten={ig.semuaKonten} />
               </div>
+
+              <RincianJangkauan rincian={ig.rincianPeriode} total={ig.periode.jangkauan} />
 
               <div style={kartu}>
                 <div style={judulKartu}>Pertumbuhan Follower</div>
