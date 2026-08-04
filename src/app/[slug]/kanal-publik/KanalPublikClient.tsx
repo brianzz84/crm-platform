@@ -814,7 +814,8 @@ export default function KanalPublikClient({
                   satuan="jangkauan"
                   data={ig.harian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan }))}
                   banding={pakaiBanding && !ig.bandingSeriKosong ? ig.bandingHarian.map(h => ({ tanggal: h.tanggal, nilai: h.jangkauan })) : null}
-                  konten={ig.semuaKonten} />
+                  konten={ig.semuaKonten}
+                  rincian={ig.rincianHarian} />
               </div>
 
               <div style={kartu}>
