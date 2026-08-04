@@ -50,6 +50,7 @@ interface RingkasInstagram {
   bandingHarian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   semuaKonten: KontenIg[]
+  rincianHarian: { tanggal: string; perJenis: Record<string, number>; perFollow: Record<string, number> }[]
   teratas: KontenIg[]
   engagementTeratas: KontenIg[]
   jenisKonten: { jenis: string; jumlah: number; jangkauan: number; rasioInteraksi: number }[]
@@ -153,6 +154,14 @@ function bacaTanggal(t: string): Date | null {
 }
 
 const HARI_NAMA = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
+
+/** Kode dimensi Meta → sebutan yang dimengerti admin. */
+const LABEL_RINCIAN: Record<string, string> = {
+  POST: 'Postingan', STORY: 'Story', REEL: 'Reels', REELS: 'Reels',
+  CAROUSEL_CONTAINER: 'Carousel', IGTV: 'IGTV', AD: 'Iklan',
+  FOLLOWER: 'Follower', NON_FOLLOWER: 'Bukan follower',
+  UNKNOWN: 'Tidak diketahui',
+}
 const akhirPekan = (d: Date | null) => !!d && (d.getUTCDay() === 0 || d.getUTCDay() === 6)
 
 export interface KontenHarian {
@@ -175,12 +184,14 @@ export interface KontenHarian {
  * Tiga puluh angka yang saling menimpa sama tidak terbacanya dengan tidak ada
  * angka sama sekali, jadi selebihnya cukup puncak dan batang yang disorot.
  */
-function TrenBatang({ data, label, satuan = '', banding, konten }: {
+function TrenBatang({ data, label, satuan = '', banding, konten, rincian }: {
   data: { tanggal: string; nilai: number }[]
   label: string
   satuan?: string
   banding?: { tanggal: string; nilai: number }[] | null
   konten?: KontenHarian[]
+  /** Rincian sumber per tanggal — menjawab lonjakan tanpa postingan baru. */
+  rincian?: { tanggal: string; perJenis: Record<string, number>; perFollow: Record<string, number> }[]
 }) {
   const [sorot, setSorot] = useState<number | null>(null)
   if (!data.length) return null
@@ -207,6 +218,7 @@ function TrenBatang({ data, label, satuan = '', banding, konten }: {
   // adalah rentang lain, jadi tanggal yang sama tidak berarti apa-apa.
   const bandingAktif = sorot !== null && banding && banding[sorot] ? banding[sorot] : null
   const kontenAktif  = aktif ? (kontenPerTgl.get(tglAktif) ?? []) : []
+  const rincianAktif = aktif ? (rincian ?? []).find(r => String(r.tanggal).slice(0, 10) === tglAktif) : undefined
 
   return (
     <div style={{ padding: 'var(--sp-5)' }}>
@@ -288,6 +300,30 @@ function TrenBatang({ data, label, satuan = '', banding, konten }: {
                 </span>
               )}
             </div>
+
+            {rincianAktif && (Object.keys(rincianAktif.perJenis).length > 0 || Object.keys(rincianAktif.perFollow).length > 0) && (
+              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10, paddingBottom: 10, borderBottom: '1px dashed var(--c-border)' }}>
+                {([['Dari format', rincianAktif.perJenis], ['Dari audiens', rincianAktif.perFollow]] as const).map(([judul, peta]) => {
+                  const isi = Object.entries(peta).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+                  if (!isi.length) return null
+                  const jml = isi.reduce((s, [, n]) => s + n, 0)
+                  return (
+                    <div key={judul}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>{judul}</div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {isi.map(([k, n]) => (
+                          <span key={k} style={{ fontSize: 12, color: 'var(--c-text)' }}>
+                            {LABEL_RINCIAN[k] ?? k}{' '}
+                            <strong>{angka(n)}</strong>
+                            <span style={{ color: 'var(--c-text-faint)' }}> ({Math.round((n / jml) * 100)}%)</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {kontenAktif.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

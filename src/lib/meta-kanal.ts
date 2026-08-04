@@ -141,6 +141,8 @@ export interface RingkasInstagram {
   followerHarian: { tanggal: string; naik: number }[]
   /** SELURUH konten periode — dipakai hover grafik untuk menjawab "kenapa naik". */
   semuaKonten: KontenIg[]
+  /** Rincian jangkauan harian: dari format apa, dan dari follower atau bukan. */
+  rincianHarian: { tanggal: string; perJenis: Record<string, number>; perFollow: Record<string, number> }[]
   teratas: KontenIg[]
   /** Urutan berdasarkan MUTU tanggapan, bukan besarnya jangkauan. */
   engagementTeratas: KontenIg[]
@@ -207,12 +209,66 @@ async function ringkasPeriodeIg(
   return { total: hasil, seri, seriKosong: titik === 0, galat }
 }
 
+
+/**
+ * Rincian jangkauan harian menurut satu dimensi (`media_product_type` atau
+ * `follow_type`). Terbukti lewat probe bahwa breakdown BEKERJA pada deret harian,
+ * bukan hanya agregat — jadi tiap batang grafik bisa dipecah sumbernya.
+ *
+ * Menjawab kasus yang paling membingungkan: jangkauan melonjak padahal tidak ada
+ * postingan baru. Jawabannya biasanya Story, atau konten lama yang menyebar ke
+ * non-follower.
+ *
+ * Bentuk balasan Graph untuk breakdown tidak seragam antar versi, jadi dua bentuk
+ * yang mungkin diurai keduanya. Kalau tidak satu pun cocok, hasilnya KOSONG —
+ * bukan tebakan. Rincian yang salah lebih berbahaya daripada rincian yang absen,
+ * karena ia tetap terlihat masuk akal.
+ */
+async function tarikRincian(
+  igId: string, token: string, periode: Rentang, dimensi: string,
+): Promise<Map<string, Record<string, number>>> {
+  const out = new Map<string, Record<string, number>>()
+
+  for (const jendela of pecahJendela(periode)) {
+    const r = await graphGet(
+      `${igId}/insights?metric=reach&period=day&breakdown=${dimensi}&${kueriRentang(jendela)}`,
+      token,
+    )
+    if (!r.ok) continue
+
+    for (const d of r.json?.data ?? []) {
+      for (const v of d.values ?? []) {
+        if (!v?.end_time) continue
+        const tgl = tanggalDariEndTime(v.end_time)
+        if (tgl < periode.mulai || tgl > periode.selesai) continue
+
+        const bucket = out.get(tgl) ?? {}
+
+        // Bentuk A: value berupa peta { POST: 123, STORY: 45 }
+        if (v.value && typeof v.value === 'object') {
+          for (const [k, n] of Object.entries(v.value)) bucket[k] = Number(n ?? 0)
+        }
+        // Bentuk B: daftar breakdowns dengan dimension_values
+        for (const b of v.breakdowns ?? d.breakdowns ?? []) {
+          for (const hasil of b.results ?? []) {
+            const nama = (hasil.dimension_values ?? [])[0]
+            if (nama) bucket[String(nama)] = Number(hasil.value ?? 0)
+          }
+        }
+
+        if (Object.keys(bucket).length) out.set(tgl, bucket)
+      }
+    }
+  }
+  return out
+}
+
 export async function ringkasInstagram(
   cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
 ): Promise<RingkasInstagram> {
   const kosong: RingkasInstagram = {
     akun: null, periode: IG_KOSONG, banding: null, bandingSeriKosong: false,
-    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], engagementTeratas: [],
+    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [], rincianHarian: [], teratas: [], engagementTeratas: [],
     jenisKonten: [], hariFollower: [], catatanUnik: null,
   }
 
@@ -226,10 +282,12 @@ export async function ringkasInstagram(
 
   // Satu panggilan per periode: sebelumnya deret harian ditarik dua kali untuk
   // periode utama — sekali di sini, sekali lagi di dalam penghitung total.
-  const [utama, bandingHasil, rMedia] = await Promise.all([
+  const [utama, bandingHasil, rMedia, rJenis, rFollow] = await Promise.all([
     ringkasPeriodeIg(igId, token, periode),
     banding ? ringkasPeriodeIg(igId, token, banding) : Promise.resolve(null),
     ambilMediaIg(igId, token, periode),
+    tarikRincian(igId, token, periode, 'media_product_type'),
+    tarikRincian(igId, token, periode, 'follow_type'),
   ])
   const { seri, galat } = utama
 
@@ -253,6 +311,11 @@ export async function ringkasInstagram(
       : [],
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
     semuaKonten:       rMedia.semua,
+    rincianHarian: tanggal.map(t => ({
+      tanggal: t,
+      perJenis:  rJenis.get(t)  ?? {},
+      perFollow: rFollow.get(t) ?? {},
+    })),
     teratas:           rMedia.teratas,
     engagementTeratas: rMedia.engagementTeratas,
     jenisKonten:       rMedia.jenisKonten,
