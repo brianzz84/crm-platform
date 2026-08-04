@@ -87,10 +87,42 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (error) return error
 
   try {
-    const { id, sifat } = await req.json()
-    if (!id) return NextResponse.json({ success: false, error: 'id wajib diisi' }, { status: 400 })
-
+    const { id, sifat, mode } = await req.json()
     const db = await getTenantDb(params.slug)
+
+    // ── Setujui seluruh usulan yang masih menggantung ──
+    //
+    // Hanya menyentuh konten yang PUNYA usulan dan BELUM bersifat. Konten yang
+    // sudah ditandai manusia tidak pernah ditimpa — kalau admin sudah menilai
+    // sebuah konten, penilaian itu menang atas usulan mesin, selalu.
+    if (mode === 'setujui_semua') {
+      const menggantung = await db.socialContent.findMany({
+        where: { tenant_slug: params.slug, sifat: null, sifat_usulan: { not: null } },
+        select: { id: true, sifat_usulan: true },
+      })
+
+      const aktif = new Set(
+        (await db.socialSifatLibrary.findMany({
+          where: { tenant_slug: params.slug, aktif: true }, select: { kode: true },
+        })).map((x: any) => x.kode),
+      )
+
+      let disetujui = 0, dilewati = 0
+      for (const k of menggantung) {
+        // Usulan yang menunjuk sifat tak dikenal atau sudah dinonaktifkan
+        // dilewati, bukan dipaksakan — laporan tidak boleh memuat kategori hantu.
+        if (!k.sifat_usulan || !aktif.has(k.sifat_usulan)) { dilewati++; continue }
+        await db.socialContent.update({
+          where: { id: k.id },
+          data:  { sifat: k.sifat_usulan, sifat_usulan: null },
+        })
+        disetujui++
+      }
+
+      return NextResponse.json({ success: true, disetujui, dilewati })
+    }
+
+    if (!id) return NextResponse.json({ success: false, error: 'id wajib diisi' }, { status: 400 })
 
     const konten = await db.socialContent.findUnique({ where: { id } })
     if (!konten || konten.tenant_slug !== params.slug) {

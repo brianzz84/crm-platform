@@ -65,6 +65,34 @@ export default function KontenTab({ slug }: { slug: string }) {
     finally { setSibuk(false) }
   }
 
+  /**
+   * Setujui seluruh usulan yang masih menggantung.
+   *
+   * Alurnya sengaja: admin membaca daftarnya, membetulkan yang perlu, lalu
+   * menyetujui sisanya. Karena itu tombol ini TIDAK PERNAH menimpa konten yang
+   * sudah ditandai manusia — pembetulan yang sudah dilakukan tidak boleh
+   * terhapus oleh satu klik berikutnya.
+   */
+  async function setujuiSemua() {
+    const n = rows.filter(r => !r.sifat && r.sifat_usulan).length
+    if (!n) return
+    if (!confirm(`Setujui ${n} usulan AI yang belum ditandai?\n\nKonten yang sudah Anda tandai sendiri tidak akan tersentuh.`)) return
+
+    setSibuk(true)
+    try {
+      const res  = await fetch(`/api/${slug}/kanal-publik/konten`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'setujui_semua' }),
+      })
+      const json = await res.json()
+      if (!json.success) { alert(json.error || 'Gagal menyetujui'); return }
+      alert(`${json.disetujui} usulan disetujui` +
+            (json.dilewati ? `, ${json.dilewati} dilewati karena sifatnya sudah tidak aktif.` : '.'))
+      load()
+    } catch { alert('Gagal menghubungi server') }
+    finally { setSibuk(false) }
+  }
+
   async function usulkan() {
     setSibuk(true); setGalat(''); setKabar('')
     try {
@@ -98,6 +126,11 @@ export default function KontenTab({ slug }: { slug: string }) {
           <button onClick={usulkan} disabled={sibuk || !belum} style={{ ...tombol(true), marginLeft: 'auto', background: sibuk || !belum ? '#94A3B8' : 'var(--c-primary)' }}>
             {sibuk ? '⏳ Memproses…' : '✨ Usulkan sifat dengan AI'}
           </button>
+          {rows.some(r => !r.sifat && r.sifat_usulan) && (
+            <button onClick={setujuiSemua} disabled={sibuk} style={{ ...tombol(true), background: sibuk ? '#94A3B8' : 'var(--c-success)' }}>
+              ✓ Setujui semua usulan ({rows.filter(r => !r.sifat && r.sifat_usulan).length})
+            </button>
+          )}
         </div>
         <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 8, lineHeight: 1.6 }}>
           {angka(total)} konten terekam · <strong>{angka(belum)}</strong> belum ditandai.

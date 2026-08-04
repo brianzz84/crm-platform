@@ -20,7 +20,7 @@
  */
 import { getTenantDb } from './tenant'
 import {
-  ambilMediaIg, ambilPostFb, ringkasFacebook, ringkasInstagram, type Rentang,
+  ambilMediaIg, ambilPostFb, ringkasFacebook, ringkasInstagram, tarikTotalHarianIg, type Rentang,
 } from './meta-kanal'
 import { ringkasGa4, ringkasYouTube } from './google-kanal'
 
@@ -91,9 +91,21 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
       const followerTotal = ig.akun?.follower ?? 0
       const naikPerTgl = new Map(ig.followerHarian.map(f => [f.tanggal, f.naik]))
 
+      // Tayangan & interaksi hanya ada sebagai agregat, jadi ditarik satu hari per
+      // panggilan. Tujuh panggilan tambahan per malam — murah, dan menjadikan
+      // kolom yang selama ini kosong terisi angka yang benar-benar terjadi.
+      const totalHarian = await tarikTotalHarianIg(
+        meta.ig_business_id!, meta.insights_token || meta.access_token || '', periode,
+      )
+
       for (const h of ig.harian) {
+        const t = totalHarian.get(h.tanggal)
         await simpanHarian('IG', h.tanggal, {
           jangkauan:      h.jangkauan,
+          tayangan:       t?.tayangan  ?? 0,
+          interaksi:      t?.interaksi ?? 0,
+          suka:           t?.suka      ?? 0,
+          disimpan:       t?.disimpan  ?? 0,
           follower_baru:  naikPerTgl.get(h.tanggal) ?? 0,
           follower_total: followerTotal,
         })
@@ -120,9 +132,14 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
       if (fb.galat) throw new Error(fb.galat)
 
       const naikPerTgl = new Map(fb.followerHarian.map(f => [f.tanggal, f.naik]))
+      // `jangkauan` SENGAJA dibiarkan nol untuk Facebook: Meta menghapus seluruh
+      // metric jangkauan tingkat Page maupun postingan. Bukan data yang belum
+      // diambil — memang tidak ada lagi yang bisa diambil.
       for (const h of fb.harian) {
         await simpanHarian('FB', h.tanggal, {
           interaksi:        h.interaksi,
+          tayangan:         fb.tayanganVideoHarian?.[h.tanggal] ?? 0,
+          kunjungan_profil: fb.kunjunganHarian?.[h.tanggal] ?? 0,
           follower_baru:    naikPerTgl.get(h.tanggal) ?? 0,
           follower_total:   fb.page?.follower ?? 0,
         })

@@ -256,6 +256,53 @@ async function tarikRincian(
   return out
 }
 
+
+/**
+ * Metric total_value Instagram PER HARI.
+ *
+ * `views`, `total_interactions`, `likes`, dan `saves` hanya dikembalikan sebagai
+ * satu angka untuk seluruh rentang yang diminta. Untuk mendapat nilai harian,
+ * satu-satunya jalan adalah meminta satu hari per panggilan — dan itulah yang
+ * dilakukan di sini.
+ *
+ * Sebelumnya jalur murah yang dipakai: satu panggilan untuk seluruh jendela,
+ * sehingga kolom tayangan dan interaksi di tabel harian selalu kosong. Membagi
+ * rata angka periode ke tiap tanggal sempat terpikir dan sengaja DITOLAK — itu
+ * menciptakan angka harian yang tidak pernah terjadi, dan grafiknya akan tampak
+ * meyakinkan justru karena mulus.
+ *
+ * `accounts_engaged` sengaja tidak diambil: ia hitungan unik, dan nilai harian
+ * yang dijumlahkan menjadi periode akan menghitung orang yang sama berkali-kali.
+ */
+export async function tarikTotalHarianIg(
+  igId: string, token: string, periode: Rentang,
+): Promise<Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number }>> {
+  const out = new Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number }>()
+
+  let hari = Date.parse(periode.mulai)
+  const akhir = Date.parse(periode.selesai)
+  while (hari <= akhir) {
+    const tgl = iso(hari)
+    const r = await graphGet(
+      `${igId}/insights?metric=views,total_interactions,likes,saves&metric_type=total_value&period=day&${kueriRentang({ mulai: tgl, selesai: tgl })}`,
+      token,
+    )
+    if (r.ok) {
+      const nilai = { tayangan: 0, interaksi: 0, suka: 0, disimpan: 0 }
+      for (const d of r.json?.data ?? []) {
+        const n = Number(d?.total_value?.value ?? 0)
+        if (d.name === 'views')              nilai.tayangan  = n
+        if (d.name === 'total_interactions') nilai.interaksi = n
+        if (d.name === 'likes')              nilai.suka      = n
+        if (d.name === 'saves')              nilai.disimpan  = n
+      }
+      out.set(tgl, nilai)
+    }
+    hari += HARI
+  }
+  return out
+}
+
 export async function ringkasInstagram(
   cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
 ): Promise<RingkasInstagram> {
@@ -454,6 +501,9 @@ export interface RingkasFacebook {
   /** Sama seperti Instagram: kosong bukan nol, jadi selisihnya tak boleh dihitung. */
   bandingSeriKosong: boolean
   harian: { tanggal: string; interaksi: number }[]
+  /** Tayangan video & kunjungan profil per hari — dipakai tabel laporan. */
+  tayanganVideoHarian: Record<string, number>
+  kunjunganHarian: Record<string, number>
   bandingHarian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   semuaKonten: {
@@ -492,7 +542,8 @@ export async function ringkasFacebook(
 ): Promise<RingkasFacebook> {
   const kosong: RingkasFacebook = {
     page: null, periode: FB_KOSONG, banding: null, bandingSeriKosong: false,
-    harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], komentarTersedia: false,
+    harian: [], tayanganVideoHarian: {}, kunjunganHarian: {},
+    bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], komentarTersedia: false,
   }
 
   const token  = cfg.insights_token || cfg.access_token || ''
@@ -521,6 +572,8 @@ export async function ringkasFacebook(
     banding: seriBanding ? totalDariSeri(seriBanding.seri) : null,
     bandingSeriKosong: !!seriBanding && seriBanding.titik === 0,
     harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
+    tayanganVideoHarian: Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_video_views ?? 0])),
+    kunjunganHarian:     Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_views_total ?? 0])),
     bandingHarian:  seriBanding
       ? Object.keys(seriBanding.seri).sort().map(t => ({ tanggal: t, interaksi: seriBanding.seri[t].page_post_engagements ?? 0 }))
       : [],
