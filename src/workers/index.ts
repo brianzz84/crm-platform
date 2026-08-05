@@ -117,6 +117,13 @@ async function main() {
 
         return result
       }
+      if (job.name === 'medsos-story') {
+        const { tangkapStory } = await import('@/lib/social-snapshot')
+        const hasil = await tangkapStory(job.data.tenantSlug)
+        job.log(`[MEDSOS_STORY] ${hasil.jumlah} story aktif${hasil.galat ? ' — ' + hasil.galat : ''}`)
+        return hasil
+      }
+
       if (job.name === 'medsos-snapshot') {
         const { jalankanSnapshot } = await import('@/lib/social-snapshot')
         const { getTenantDb }      = await import('@/lib/tenant')

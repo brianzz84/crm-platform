@@ -303,6 +303,58 @@ export async function tarikTotalHarianIg(
   return out
 }
 
+
+/**
+ * Story Instagram yang SEDANG TAYANG, beserta metriknya.
+ *
+ * Story hidup 24 jam dan `/stories` hanya mengembalikan yang aktif — tidak ada
+ * endpoint arsip. Sekali terlewat, angkanya hilang untuk selamanya dan tidak bisa
+ * ditarik ulang dengan cara apa pun. Itu sebabnya penangkapannya dijalankan tiap
+ * jam, bukan sekali sehari: bukan demi kesegaran, melainkan supaya bacaan terakhir
+ * sebelum kedaluwarsa sedekat mungkin dengan total 24 jam yang sebenarnya.
+ *
+ * `navigation` sengaja TIDAK diminta di sini meski probe membuktikannya hidup: ia
+ * menuntut `breakdown` yang akan ikut terpasang pada seluruh metric lain dalam satu
+ * permintaan gabungan. Satu field yang salah menggugurkan semuanya — pelajaran dari
+ * postingan Facebook.
+ */
+const IG_STORY_METRIK = 'views,reach,replies,shares,total_interactions,follows,profile_visits'
+
+export interface StoryIg {
+  id: string; tanggal: string; permalink: string; gambar: string; jenis: string
+  tayangan: number; jangkauan: number; balasan: number; dibagikan: number
+  interaksi: number; followerBaru: number; kunjunganProfil: number
+}
+
+export async function ambilStoryIg(igId: string, token: string): Promise<StoryIg[]> {
+  const dasar = 'id,media_type,timestamp,permalink,thumbnail_url,media_url'
+
+  // Bertingkat seperti pengambil konten: kalau insights ditolak, daftar story-nya
+  // tetap terekam. Story yang tercatat tanpa angka masih jauh lebih berguna
+  // daripada story yang hilang sama sekali.
+  let r = await graphGet(`${igId}/stories?fields=${dasar},insights.metric(${IG_STORY_METRIK})`, token, 20_000)
+  if (!r.ok) r = await graphGet(`${igId}/stories?fields=${dasar}`, token, 20_000)
+  if (!r.ok) return []
+
+  const nilai = (m: any, nama: string) =>
+    Number((m?.insights?.data ?? []).find((i: any) => i.name === nama)?.values?.[0]?.value ?? 0)
+
+  return (r.json?.data ?? []).map((m: any) => ({
+    id: String(m.id),
+    jenis: 'Story',
+    tanggal: String(m.timestamp ?? '').slice(0, 10),
+    permalink: String(m.permalink ?? ''),
+    gambar: String(m.thumbnail_url || m.media_url || ''),
+    tayangan:        nilai(m, 'views'),
+    jangkauan:       nilai(m, 'reach'),
+    balasan:         nilai(m, 'replies'),
+    dibagikan:       nilai(m, 'shares'),
+    interaksi:       nilai(m, 'total_interactions'),
+    followerBaru:    nilai(m, 'follows'),
+    kunjunganProfil: nilai(m, 'profile_visits'),
+  }))
+}
+
 export async function ringkasInstagram(
   cfg: KonfigMeta, periode: Rentang, banding?: Rentang | null,
 ): Promise<RingkasInstagram> {

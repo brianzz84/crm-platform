@@ -20,7 +20,7 @@
  */
 import { getTenantDb } from './tenant'
 import {
-  ambilMediaIg, ambilPostFb, ringkasFacebook, ringkasInstagram, tarikTotalHarianIg, type Rentang,
+  ambilMediaIg, ambilPostFb, ambilStoryIg, ringkasFacebook, ringkasInstagram, tarikTotalHarianIg, type Rentang,
 } from './meta-kanal'
 import { ringkasGa4, ringkasYouTube } from './google-kanal'
 
@@ -57,6 +57,74 @@ function umurHari(terbit: Date, sekarang: Date): number {
   const a = Date.parse(iso(terbit.getTime()))
   const b = Date.parse(iso(sekarang.getTime()))
   return Math.round((b - a) / HARI_MS)
+}
+
+
+/**
+ * Tangkap story Instagram yang sedang tayang. Dijalankan TIAP JAM.
+ *
+ * Story hidup 24 jam dan tidak punya arsip. Sekali terlewat, hilang selamanya —
+ * satu-satunya bagian dari seluruh sistem ini yang benar-benar tidak bisa
+ * ditarik ulang.
+ *
+ * Kenapa tiap jam, bukan sekali sehari: satu jalan harian secara teori menangkap
+ * semua story, karena tiap story pasti melewati satu jadwal dalam masa hidup 24
+ * jamnya. Tapi UMUR SAAT DITANGKAP jadi acak antara 1 dan 24 jam. Story yang
+ * terbit menjelang jadwal akan selalu tampak paling buruk — bukan karena
+ * kontennya, melainkan karena diukur terlalu dini. Itu kesimpulan keliru yang
+ * berbahaya untuk keputusan konten.
+ *
+ * Karena angka story hanya menaik, menyimpan NILAI TERTINGGI yang pernah terlihat
+ * membuat bacaan terakhir sebelum kedaluwarsa mendekati total sebenarnya.
+ */
+export async function tangkapStory(slug: string): Promise<{ jumlah: number; galat?: string }> {
+  const db   = await getTenantDb(slug)
+  const meta = await db.metaConfig.findUnique({ where: { tenant_slug: slug } })
+  const token = meta?.insights_token || meta?.access_token
+  if (!meta?.ig_business_id || !token) return { jumlah: 0, galat: 'Instagram belum dikonfigurasi.' }
+
+  try {
+    const story = await ambilStoryIg(meta.ig_business_id, token)
+    for (const st of story) {
+      const induk = await db.socialContent.upsert({
+        where:  { tenant_slug_kanal_konten_id: { tenant_slug: slug, kanal: 'IG', konten_id: st.id } },
+        create: {
+          tenant_slug: slug, kanal: 'IG', konten_id: st.id, jenis: 'Story',
+          terbit_pada: new Date(st.tanggal), permalink: st.permalink || null,
+          sampul_url: st.gambar || null,
+        },
+        // Sampul disegarkan karena URL CDN Instagram berumur pendek; `sifat` tidak
+        // pernah disentuh kolektor — itu milik manusia.
+        update: { sampul_url: st.gambar || null, permalink: st.permalink || null },
+      })
+
+      const lama = await db.socialContentSnapshot.findUnique({
+        where: { content_id_umur_hari: { content_id: induk.id, umur_hari: UMUR_TERAKHIR } },
+      })
+
+      // Nilai TERTINGGI, bukan yang terbaru. Angka story hanya menaik, jadi bacaan
+      // yang lebih kecil pasti berarti pengukuran lebih dini — bukan penurunan.
+      const naik = (a: number, b: number | undefined) => Math.max(a, b ?? 0)
+      const metrik = {
+        tayangan:         naik(st.tayangan,        lama?.tayangan),
+        jangkauan:        naik(st.jangkauan,       lama?.jangkauan),
+        komentar:         naik(st.balasan,         lama?.komentar),
+        dibagikan:        naik(st.dibagikan,       lama?.dibagikan),
+        interaksi:        naik(st.interaksi,       lama?.interaksi),
+        follower_baru:    naik(st.followerBaru,    lama?.follower_baru),
+        kunjungan_profil: naik(st.kunjunganProfil, lama?.kunjungan_profil),
+      }
+
+      await db.socialContentSnapshot.upsert({
+        where:  { content_id_umur_hari: { content_id: induk.id, umur_hari: UMUR_TERAKHIR } },
+        create: { content_id: induk.id, umur_hari: UMUR_TERAKHIR, ...metrik },
+        update: { ...metrik, diambil_pada: new Date() },
+      })
+    }
+    return { jumlah: story.length }
+  } catch (e: any) {
+    return { jumlah: 0, galat: String(e?.message ?? e) }
+  }
 }
 
 export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {

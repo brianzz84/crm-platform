@@ -154,6 +154,25 @@ export async function runScanner(job: Job) {
       const snap = await db.socialSnapshotConfig.findUnique({
         where: { tenant_slug: tenant.slug },
       })
+      // STORY: tiap jam, TIDAK menunggu jam snapshot. Insight story hilang setelah
+      // 24 jam dan tidak punya arsip — sekali terlewat, hilang selamanya. Sekali
+      // sehari secara teori cukup, tapi umur saat ditangkap jadi acak 1–24 jam
+      // sehingga story yang terbit menjelang jadwal selalu tampak paling buruk.
+      if (snap?.aktif) {
+        await queue.add(
+          'medsos-story',
+          { type: 'MEDSOS_STORY', tenantSlug: tenant.slug },
+          {
+            jobId: `medsos-story-${tenant.slug}-${nowWib.toISOString().slice(0, 13)}`,
+            attempts: 2,
+            backoff: { type: 'fixed', delay: 30_000 },
+            removeOnComplete: 5,
+            removeOnFail: 10,
+          },
+        )
+        enqueued++
+      }
+
       if (snap?.aktif && snap.jam_snapshot === hourWib) {
         const today = nowWib.toISOString().slice(0, 10)
         await queue.add(
