@@ -475,6 +475,48 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     })
   }
 
+  // 6d) PENELUSURAN percakapan.
+  //
+  // Galat yang muncul sejauh ini menyesatkan dua kali: #190 (ternyata salah jenis
+  // token), lalu code 1 "reduce the amount of data" yang tidak berubah walau
+  // permintaannya diperkecil sampai `fields=id&limit=3` — jadi ukurannya bukan
+  // sebabnya. Alih-alih menebak lagi, di sini beberapa BENTUK endpoint diuji
+  // sendiri-sendiri supaya terlihat mana yang benar-benar dilayani.
+  if (cfg.page_id) {
+    // `tasks` memberi tahu apa yang boleh dilakukan token ini pada Halaman.
+    // Galat Facebook menyebut dua kemungkinan sekaligus — izin kurang ATAU peran
+    // tidak memadai — dan hanya baris ini yang bisa memisahkan keduanya.
+    const rt = await graphGet('me/accounts?fields=id,name,tasks', token, 20_000)
+    const entri = (rt.json?.data ?? []).find((d: any) => String(d.id) === String(cfg.page_id))
+    hasil.push({
+      kunci: 'peran_page', label: 'Kewenangan Token pada Halaman', fase: 'Fase 2',
+      status: rt.ok && entri ? 'ok' : 'gagal',
+      pesan: !rt.ok ? pesanErrorGraph(rt)
+        : !entri ? 'Page tidak muncul di me/accounts — token ini bukan milik Halaman tersebut.'
+        : `Tugas yang diizinkan: ${(entri.tasks ?? []).join(', ') || '(kosong)'}. ` +
+          (String(entri.tasks ?? '').includes('MESSAGING')
+            ? 'MESSAGING ADA — berarti penghalangnya izin app, bukan peran Anda di Halaman.'
+            : 'MESSAGING TIDAK ADA — inilah sebabnya, bukan sekadar izin app.'),
+      detail: potong(rt.json, 400),
+    })
+
+    for (const [kunci, label, jalur] of [
+      ['pct_v1', 'Bentuk 1 — page/conversations',        `${cfg.page_id}/conversations?fields=id&limit=3`],
+      ['pct_v2', 'Bentuk 2 — page + platform=instagram', `${cfg.page_id}/conversations?fields=id&limit=3&platform=instagram`],
+      ['pct_v3', 'Bentuk 3 — ig-id/conversations',       `${cfg.ig_business_id ?? '0'}/conversations?fields=id&limit=3`],
+      ['pct_v4', 'Bentuk 4 — me/conversations',          `me/conversations?fields=id&limit=3&platform=instagram`],
+      ['pct_v5', 'Bentuk 5 — bersarang di Page',         `${cfg.page_id}?fields=conversations.limit(3){id}`],
+    ] as const) {
+      const r = await graphGet(jalur, token, 30_000)
+      hasil.push({
+        kunci, label, fase: 'Fase 2',
+        status: r.ok ? 'ok' : 'gagal',
+        pesan: r.ok ? 'Dilayani — bentuk inilah yang dipakai kolektor.' : pesanErrorGraph(r),
+        detail: potong(r.json, 300),
+      })
+    }
+  }
+
   // 7) Marketing API (iklan) — butuh ads_read, DAN pemilik Ad Account memberi akses app.
   await cek('ads', 'Marketing API (Iklan)', cfg.ad_account_id, `${cfg.ad_account_id}/insights?date_preset=last_7d&fields=spend,impressions&limit=1`,
     j => `Ad Account bisa ditarik (${j.data?.length ?? 0} baris 7 hari terakhir).`, 'Fase 4')
