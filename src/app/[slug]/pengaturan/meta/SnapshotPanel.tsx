@@ -60,6 +60,31 @@ export default function SnapshotPanel({ slug }: { slug: string }) {
     finally { setSibuk(false) }
   }
 
+  /**
+   * Tarik riwayat percakapan Messenger.
+   *
+   * Ada tombolnya sendiri karena penarikan riwayat berbeda sifat dari penarikan
+   * rutin: sekali jalan, jauh ke belakang, dan hanya diperlukan saat pertama
+   * menyambungkan atau setelah perbaikan kolektor. Menyuruh admin membuka konsol
+   * peramban untuk itu bukan rancangan yang layak dipakai berulang.
+   */
+  async function tarikRiwayatDm() {
+    setSibuk(true); setGalat('')
+    try {
+      const res  = await fetch(`/api/${slug}/pengaturan/snapshot`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'dm', hari: 120 }),
+      })
+      const json = await res.json()
+      if (!json.success) { setGalat(json.error || 'Gagal menarik riwayat DM'); return }
+      const h = json.hasil ?? {}
+      alert(`${h.percakapan ?? 0} percakapan diperiksa, ${h.pesanBaru ?? 0} pesan baru tersimpan.\n\n` +
+            'Pesan yang sudah ada ikut diperbarui — termasuk arah masuk/keluarnya.')
+      muat()
+    } catch { setGalat('Gagal menghubungi server') }
+    finally { setSibuk(false) }
+  }
+
   async function jalankanSekarang() {
     setSibuk(true); setGalat('')
     try {
@@ -121,6 +146,13 @@ export default function SnapshotPanel({ slug }: { slug: string }) {
                 fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: sibuk ? 'wait' : 'pointer',
               }}>
                 ⟲ Tarik konten lama (90 hari)
+              </button>
+              <button onClick={tarikRiwayatDm} disabled={sibuk} style={{
+                padding: '8px 16px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--c-border)',
+                background: 'white', color: 'var(--c-text-muted)',
+                fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: sibuk ? 'wait' : 'pointer',
+              }}>
+                💬 Tarik riwayat DM (120 hari)
               </button>
               <button onClick={jalankanSekarang} disabled={sibuk} style={{
                 padding: '8px 16px', borderRadius: 'var(--r-md)', border: 'none',
