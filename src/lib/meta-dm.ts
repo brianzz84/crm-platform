@@ -91,23 +91,38 @@ export async function tarikDmFacebook(slug: string, sejakHari = 7): Promise<Hasi
       // hitungan waktu tunggu, dan mengabaikannya membuat response time keliru.
       const konten = isi || '(lampiran tanpa teks)'
 
-      try {
+      // PERBARUI bila sudah ada, jangan lewati.
+      //
+      // Melewati duplikat terdengar hemat, tapi berarti kekeliruan pada penarikan
+      // pertama menetap selamanya — persis yang terjadi pada arah pesan, yang
+      // sempat tersimpan terbalik dan tidak akan pernah membaik sendiri. Dengan
+      // memperbarui, koreksi mengalir pada penarikan berikutnya tanpa siapa pun
+      // perlu menghapus apa pun, dan kolom yang ditambahkan kelak ikut terisi
+      // untuk pesan lama.
+      const adaSebelumnya = await db.message.findFirst({
+        where:  { conversation_id: percakapanDb.id, external_id: String(m.id) },
+        select: { id: true },
+      })
+
+      const isiPesan = {
+        direction: (dariHalaman ? 'outgoing' : 'incoming') as 'outgoing' | 'incoming',
+        content: konten,
+        status: 'SENT' as const,
+        sent_at: m.created_time ? new Date(m.created_time) : null,
+      }
+
+      if (adaSebelumnya) {
+        await db.message.update({ where: { id: adaSebelumnya.id }, data: isiPesan })
+      } else {
         await db.message.create({
           data: {
             conversation_id: percakapanDb.id,
-            direction: dariHalaman ? 'outgoing' : 'incoming',
-            content: konten,
             external_id: String(m.id),
-            status: 'SENT',
-            sent_at: m.created_time ? new Date(m.created_time) : null,
             created_at: m.created_time ? new Date(m.created_time) : undefined,
+            ...isiPesan,
           },
         })
         pesanBaru++
-      } catch (e: any) {
-        // P2002 = sudah pernah ditarik. Itu keadaan NORMAL pada penarikan berulang,
-        // bukan kegagalan — hanya galat lain yang layak dinaikkan.
-        if (e?.code !== 'P2002') throw e
       }
     }
   }
