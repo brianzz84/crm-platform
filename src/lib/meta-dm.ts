@@ -58,7 +58,7 @@ export async function tarikDmFacebook(slug: string, sejakHari = 7): Promise<Hasi
     if (!lawan) continue
 
     const rMsg = await graphGet(
-      `${pct.id}/messages?fields=id,created_time,from,message&limit=${MAKS_PESAN}`,
+      `${pct.id}/messages?fields=id,created_time,from{id,name},message&limit=${MAKS_PESAN}`,
       token, 30_000,
     )
     if (!rMsg.ok) continue
@@ -79,7 +79,13 @@ export async function tarikDmFacebook(slug: string, sejakHari = 7): Promise<Hasi
     for (const m of [...(rMsg.json?.data ?? [])].reverse()) {
       if (!m?.id) continue
 
-      const dariHalaman = String(m.from?.id ?? '') === String(pageId)
+      // `from` WAJIB diminta dengan subfield eksplisit — tanpa `from{id,name}`,
+      // Graph tidak selalu menyertakan id-nya dan seluruh pesan jatuh ke "masuk".
+      // Akibatnya fatal dan senyap: response time akan melaporkan setiap
+      // percakapan tidak terjawab, padahal balasannya ada.
+      const fromId = m.from?.id ?? null
+      if (!fromId) continue      // arah tak terbaca — lebih baik dilewat daripada disalahartikan
+      const dariHalaman = String(fromId) === String(pageId)
       const isi = String(m.message ?? '').trim()
       // Pesan tanpa teks (stiker, lampiran) tetap dicatat: ia tetap menghentikan
       // hitungan waktu tunggu, dan mengabaikannya membuat response time keliru.
