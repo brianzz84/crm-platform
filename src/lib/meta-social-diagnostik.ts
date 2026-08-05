@@ -437,7 +437,7 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     }
     const r = await graphGet(
       `${cfg.page_id}/conversations?fields=id,updated_time,message_count&limit=25${platform}`,
-      token,
+      token, 30_000,
     )
     if (!r.ok) {
       hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r), fase: 'Fase 2' })

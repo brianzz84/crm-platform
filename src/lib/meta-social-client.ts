@@ -15,14 +15,16 @@ export interface GraphResult {
 
 /**
  * Panggil satu endpoint Graph. `pathAndQuery` TANPA token — token disisipkan di sini.
- * Timeout 12 dtk. Tidak melempar; selalu kembalikan GraphResult supaya probe bisa
+ * Timeout bawaan 12 dtk, bisa diperpanjang lewat argumen ketiga: endpoint riwayat
+ * percakapan jauh lebih lambat daripada Insights, dan batas yang terlalu pendek
+ * melaporkannya sebagai kegagalan padahal ia hanya belum selesai. Tidak melempar; selalu kembalikan GraphResult supaya probe bisa
  * melaporkan tiap kegagalan apa adanya.
  */
-export async function graphGet(pathAndQuery: string, token: string): Promise<GraphResult> {
+export async function graphGet(pathAndQuery: string, token: string, timeoutMs = 12_000): Promise<GraphResult> {
   const sep = pathAndQuery.includes('?') ? '&' : '?'
   const url = `${GRAPH_BASE}/${pathAndQuery}${sep}access_token=${encodeURIComponent(token)}`
   try {
-    const res  = await fetch(url, { signal: AbortSignal.timeout(12_000) })
+    const res  = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     const json = await res.json().catch(() => ({}))
     return { ok: res.ok, status: res.status, json }
   } catch (e: any) {
