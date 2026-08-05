@@ -413,6 +413,40 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
   }
   await temukanMetrik('fb_post_insights', 'Facebook Insights (per postingan)', contohPostId, KANDIDAT_FB_POST)
 
+  // 6c) Riwayat percakapan — menentukan apakah CRM bisa membaca DM yang dibalas
+  //     admin dari Business Suite, dan seberapa jauh ke belakang.
+  //
+  // Ini bukan sekadar kenyamanan: tanpa akses ke pesan KELUAR, response time tidak
+  // bisa dihitung dan seluruh percakapan akan tampak "tidak terjawab" padahal sudah
+  // dijawab di tempat lain. Angka yang salah arah begitu lebih berbahaya daripada
+  // tidak ada angka sama sekali.
+  for (const [kunci, label, platform] of [
+    ['pct_fb', 'Riwayat Percakapan Facebook',  ''],
+    ['pct_ig', 'Riwayat Percakapan Instagram', '&platform=instagram'],
+  ] as const) {
+    if (!cfg.page_id) {
+      hasil.push({ kunci, label, status: 'lewati', pesan: 'Page ID belum diisi di form.', fase: 'Fase 2' })
+      continue
+    }
+    const r = await graphGet(
+      `${cfg.page_id}/conversations?fields=id,updated_time,message_count&limit=25${platform}`,
+      token,
+    )
+    if (!r.ok) {
+      hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r), fase: 'Fase 2' })
+      continue
+    }
+    const daftar: any[] = r.json?.data ?? []
+    const waktu = daftar.map(d => d.updated_time).filter(Boolean).sort()
+    const pesanTotal = daftar.reduce((n, d) => n + Number(d.message_count ?? 0), 0)
+    hasil.push({
+      kunci, label, status: 'ok', fase: 'Fase 2', detail: potong(r.json, 400),
+      pesan: daftar.length
+        ? `${daftar.length} percakapan terbaca, ${pesanTotal} pesan. Terlama: ${String(waktu[0]).slice(0, 10)} — riwayat sejauh itu bisa ditarik masuk.`
+        : 'Endpoint bisa diakses, tapi belum ada percakapan. Bukan kegagalan.',
+    })
+  }
+
   // 7) Marketing API (iklan) — butuh ads_read, DAN pemilik Ad Account memberi akses app.
   await cek('ads', 'Marketing API (Iklan)', cfg.ad_account_id, `${cfg.ad_account_id}/insights?date_preset=last_7d&fields=spend,impressions&limit=1`,
     j => `Ad Account bisa ditarik (${j.data?.length ?? 0} baris 7 hari terakhir).`, 'Fase 4')
