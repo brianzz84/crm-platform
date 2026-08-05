@@ -490,8 +490,15 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     const entri = (rt.json?.data ?? []).find((d: any) => String(d.id) === String(cfg.page_id))
     hasil.push({
       kunci: 'peran_page', label: 'Kewenangan Token pada Halaman', fase: 'Fase 2',
-      status: rt.ok && entri ? 'ok' : 'gagal',
-      pesan: !rt.ok ? pesanErrorGraph(rt)
+      // `me/accounts` hanya ada pada token PENGGUNA. Dengan token Page, `me` adalah
+      // Halaman itu sendiri dan Graph menjawab #100 "nonexisting field" — kegagalan
+      // yang murni karena cara bertanya, bukan karena kewenangan. Menandainya
+      // 'gagal' akan menaruh merah palsu di panel dan mengaburkan yang sungguhan.
+      status: rt.ok && entri ? 'ok' : rt.json?.error?.code === 100 ? 'lewati' : 'gagal',
+      pesan: rt.json?.error?.code === 100
+        ? 'Tidak bisa diperiksa dengan token Page — edge `accounts` hanya ada pada token pengguna. ' +
+          'Jalankan me/accounts?fields=id,name,tasks di Graph API Explorer dengan token PENGGUNA untuk melihat daftar tugasnya.'
+        : !rt.ok ? pesanErrorGraph(rt)
         : !entri ? 'Page tidak muncul di me/accounts — token ini bukan milik Halaman tersebut.'
         : `Tugas yang diizinkan: ${(entri.tasks ?? []).join(', ') || '(kosong)'}. ` +
           (String(entri.tasks ?? '').includes('MESSAGING')
