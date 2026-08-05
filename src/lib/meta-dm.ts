@@ -108,3 +108,52 @@ export async function tarikDmFacebook(slug: string, sejakHari = 7): Promise<Hasi
 
   return { percakapan, pesanBaru }
 }
+
+/**
+ * Kirim balasan ke percakapan Messenger.
+ *
+ * Aturan jendela Meta yang wajib disadari: balasan biasa hanya boleh dikirim
+ * dalam 24 JAM sejak pesan terakhir pengguna. Lewat dari itu Meta menolak,
+ * kecuali memakai tag. Karena RKZ memakai fitur Human Agent, tag itulah yang
+ * dipakai sebagai cadangan — ia memperpanjang jendela menjadi 7 hari untuk
+ * balasan yang benar-benar ditulis manusia.
+ *
+ * Dicoba tanpa tag lebih dulu: tag HUMAN_AGENT hanya sah untuk balasan manusia,
+ * dan memakainya di luar keperluan adalah pelanggaran kebijakan Meta yang bisa
+ * berujung pencabutan izin. Jadi ia cadangan, bukan bawaan.
+ */
+export async function kirimPesanMessenger(
+  pageId: string, token: string, psid: string, teks: string,
+): Promise<{ ok: boolean; messageId?: string; galat?: string }> {
+  const kirim = async (tag?: string) => {
+    const badan: Record<string, unknown> = {
+      recipient: { id: psid },
+      message:   { text: teks },
+      messaging_type: tag ? 'MESSAGE_TAG' : 'RESPONSE',
+      ...(tag ? { tag } : {}),
+    }
+    const res = await fetch(
+      `https://graph.facebook.com/v22.0/${pageId}/messages?access_token=${encodeURIComponent(token)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(badan),
+        signal: AbortSignal.timeout(20_000),
+      },
+    )
+    const json = await res.json().catch(() => ({}))
+    return { ok: res.ok, json }
+  }
+
+  let r = await kirim()
+  // Kode 10 / subkode 2018278 = di luar jendela 24 jam. Hanya itu yang layak
+  // dicoba ulang dengan tag; galat lain tidak akan berubah karenanya.
+  const diLuarJendela = r.json?.error?.code === 10 || r.json?.error?.error_subcode === 2018278
+  if (!r.ok && diLuarJendela) r = await kirim('HUMAN_AGENT')
+
+  if (!r.ok) {
+    const e = r.json?.error
+    return { ok: false, galat: [e?.message, e?.code ? `(code ${e.code})` : ''].filter(Boolean).join(' ') }
+  }
+  return { ok: true, messageId: String(r.json?.message_id ?? '') }
+}

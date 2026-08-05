@@ -60,6 +60,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const conv = await db.conversation.findFirst({
       where:   { id: params.id, tenant_slug: params.slug },
       include: { person: { select: { no_hp: true } } },
+      // `channel` menentukan jalur kirim — WhatsApp lewat nomor HP, Messenger
+      // lewat PSID yang tersimpan di channel_user_id.
     })
     if (!conv) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
 
@@ -96,7 +98,32 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     })
 
     // ── Kirim ke channel (best-effort, tidak gagalkan response) ──
-    if (!is_internal_note) {
+    if (!is_internal_note && conv.channel === 'FB') {
+      // Messenger: tujuannya PSID, bukan nomor HP. Percakapan FB kerap belum
+      // tertaut ke Person sama sekali — Instagram/Facebook hanya memberi ID acak,
+      // jadi menuntut nomor HP di sini akan memblokir balasan tanpa alasan.
+      const { kirimPesanMessenger } = await import('@/lib/meta-dm')
+      const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
+      const token   = metaCfg?.insights_token || metaCfg?.access_token
+
+      if (metaCfg?.page_id && token) {
+        kirimPesanMessenger(metaCfg.page_id, token, conv.channel_user_id, content)
+          .then(async hasil => {
+            await db.message.update({
+              where: { id: msg.id },
+              data: hasil.ok
+                ? { status: 'SENT', sent_at: new Date(), external_id: hasil.messageId || null }
+                : { status: 'FAILED', error_detail: hasil.galat?.slice(0, 300) ?? 'Gagal mengirim' },
+            }).catch(() => null)
+          })
+      } else {
+        await db.message.update({
+          where: { id: msg.id },
+          data:  { status: 'FAILED', error_detail: 'Facebook Page belum dikonfigurasi di Pengaturan → Integrasi Meta.' },
+        })
+        msg.status = 'FAILED'
+      }
+    } else if (!is_internal_note) {
       const noHp = conv.person?.no_hp ?? null
       if (noHp) {
         sendToChannel(db, params.slug, noHp, msg.id, content, media_url, media_type, media_filename).catch(async e => {
