@@ -795,6 +795,10 @@ model Conversation {
   person_id       String?
   channel         Channel
   channel_user_id String // WA number / IG user ID / FB user ID
+  /// Nama tampilan dari platform (Messenger/Instagram). WhatsApp tidak
+  /// menyediakannya, dan percakapan Facebook kerap tidak pernah tertaut ke
+  /// Person — tanpa kolom ini Inbox hanya bisa menampilkan ID acak.
+  channel_user_name String?
   status          ConversationStatus @default(OPEN)
   assigned_to     String?
   last_message_at DateTime           @default(now())

@@ -68,9 +68,15 @@ export async function tarikDmFacebook(slug: string, sejakHari = 7): Promise<Hasi
         tenant_slug: slug, channel: 'FB', channel_user_id: String(lawan.id) } },
       create: {
         tenant_slug: slug, channel: 'FB', channel_user_id: String(lawan.id),
+        channel_user_name: lawan.name ? String(lawan.name) : null,
         last_message_at: new Date(pct.updated_time ?? Date.now()),
       },
-      update: { last_message_at: new Date(pct.updated_time ?? Date.now()) },
+      // Nama ikut disegarkan: pengguna bisa mengubah nama profilnya, dan Inbox
+      // yang menampilkan nama usang lebih membingungkan daripada menampilkan ID.
+      update: {
+        channel_user_name: lawan.name ? String(lawan.name) : undefined,
+        last_message_at: new Date(pct.updated_time ?? Date.now()),
+      },
     })
     percakapan++
 

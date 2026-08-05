@@ -29,7 +29,7 @@ function Avatar({ name, size = 40, bg = WA_GREEN_DARK }: { name: string; size?: 
 
 /* ─── Types ─── */
 interface ConvSummary {
-  id: string; channel: string; channel_user_id: string; status: string
+  id: string; channel: string; channel_user_id: string; channel_user_name?: string | null; status: string
   unread_count: number; last_message_at: string
   person: { id: string; name: string; no_hp: string } | null
   messages: { content: string; direction: string; is_internal_note: boolean }[]
@@ -43,7 +43,7 @@ interface MsgRow {
   sender?: { id: string; name: string } | null
 }
 interface ConvDetail {
-  id: string; channel: string; channel_user_id: string; status: string
+  id: string; channel: string; channel_user_id: string; channel_user_name?: string | null; status: string
   // Dikirim API sejak awal (lihat select di /api/[slug]/inbox/[id]) tapi belum
   // pernah dideklarasikan di sini — nama agen tetap tampil, hanya tipenya bolong.
   assigned_user: { id: string; name: string } | null
@@ -547,7 +547,7 @@ export default function InboxShell({
           ) : convs.map(c => {
             const active  = c.id === activeId
             const lastMsg = c.messages[0]
-            const name    = c.person?.name ?? c.channel_user_id
+            const name    = c.person?.name ?? c.channel_user_name ?? c.channel_user_id
             const preview = lastMsg
               ? (lastMsg.is_internal_note ? '📝 ' : lastMsg.direction === 'outgoing' ? '✓ ' : '') + lastMsg.content.slice(0, 52) + (lastMsg.content.length > 52 ? '…' : '')
               : ''
@@ -671,7 +671,7 @@ export default function InboxShell({
                 {/* Avatar dengan channel dot */}
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <Avatar
-                    name={detail?.person?.name ?? detail?.channel_user_id ?? '?'}
+                    name={detail?.person?.name ?? detail?.channel_user_name ?? detail?.channel_user_id ?? '?'}
                     size={44}
                     bg={CH_COLOR[detail?.channel ?? ''] ?? WA_GREEN_DARK}
                   />
@@ -697,7 +697,7 @@ export default function InboxShell({
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     lineHeight: 1.3,
                   }}>
-                    {detail?.person?.name ?? detail?.channel_user_id ?? '…'}
+                    {detail?.person?.name ?? detail?.channel_user_name ?? detail?.channel_user_id ?? '…'}
                   </div>
                   <div style={{ fontSize: 12, color: '#667781', marginTop: 1 }}>
                     {detail?.person?.no_hp ?? detail?.channel_user_id ?? ''}

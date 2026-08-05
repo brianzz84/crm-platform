@@ -39,7 +39,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
       orderBy: { last_message_at: 'desc' },
       take: 50,
       select: {
-        id: true, channel: true, channel_user_id: true,
+        id: true, channel: true, channel_user_id: true, channel_user_name: true,
         status: true, unread_count: true, last_message_at: true,
         assigned_to: true,
         person: { select: { id: true, name: true, no_hp: true } },
