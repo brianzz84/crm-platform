@@ -823,6 +823,12 @@ model Message {
   status            MessageStatus    @default(PENDING)
   error_detail      String?
   wappin_message_id String?
+  /// ID pesan dari platform asal (mis. Messenger). Kunci idempotensi saat riwayat
+  /// ditarik ulang — tanpanya, tiap penarikan menggandakan seluruh percakapan.
+  /// Keunikannya dijaga PARTIAL INDEX (WHERE NOT NULL), bukan unique biasa:
+  /// Postgres menganggap tiap NULL berbeda, jadi unique biasa akan diam-diam
+  /// berhenti mencegah duplikat untuk pesan yang tidak punya ID eksternal.
+  external_id       String?
   sent_by           String?
   ai_generated      Boolean          @default(false)
   sent_at           DateTime?

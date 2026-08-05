@@ -117,6 +117,13 @@ async function main() {
 
         return result
       }
+      if (job.name === 'medsos-dm') {
+        const { tarikDmFacebook } = await import('@/lib/meta-dm')
+        const hasil = await tarikDmFacebook(job.data.tenantSlug, job.data.sejakHari ?? 7)
+        job.log(`[MEDSOS_DM] ${hasil.percakapan} percakapan, ${hasil.pesanBaru} pesan baru${hasil.galat ? ' — ' + hasil.galat : ''}`)
+        return hasil
+      }
+
       if (job.name === 'medsos-story') {
         const { tangkapStory } = await import('@/lib/social-snapshot')
         const hasil = await tangkapStory(job.data.tenantSlug)

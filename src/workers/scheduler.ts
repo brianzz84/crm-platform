@@ -173,6 +173,23 @@ export async function runScanner(job: Job) {
         enqueued++
       }
 
+      // DM FACEBOOK: tiap jam. Berbeda dari story, riwayatnya TIDAK hilang — Meta
+      // menyimpannya berbulan-bulan. Yang dikejar di sini kesegaran Inbox, bukan
+      // penyelamatan data, jadi kegagalan sesaat tidak berakibat permanen.
+      if (snap?.aktif) {
+        await queue.add(
+          'medsos-dm',
+          { type: 'MEDSOS_DM', tenantSlug: tenant.slug },
+          {
+            jobId: `medsos-dm-${tenant.slug}-${nowWib.toISOString().slice(0, 13)}`,
+            attempts: 2,
+            removeOnComplete: 5,
+            removeOnFail: 10,
+          },
+        )
+        enqueued++
+      }
+
       if (snap?.aktif && snap.jam_snapshot === hourWib) {
         const today = nowWib.toISOString().slice(0, 10)
         await queue.add(

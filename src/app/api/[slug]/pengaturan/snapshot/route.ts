@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { backfillKonten, jalankanSnapshot } from '@/lib/social-snapshot'
+import { tarikDmFacebook } from '@/lib/meta-dm'
 
 type Ctx = { params: { slug: string } }
 
@@ -107,6 +108,15 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({
         success: true, status: 'ok', hasil: hasilBackfill, data: await ambilConfig(params.slug),
       })
+    }
+
+    // Penarikan DM dipisah: sifatnya berbeda dari snapshot angka, dan penarikan
+    // riwayat pertama jauh lebih panjang daripada penarikan rutin.
+    if (body?.mode === 'dm') {
+      const hari = Math.min(400, Math.max(1, Number(body.hari) || 7))
+      const dm = await tarikDmFacebook(params.slug, hari)
+      return NextResponse.json({ success: !dm.galat, status: dm.galat ? 'gagal' : 'ok', hasil: dm,
+        error: dm.galat, data: await ambilConfig(params.slug) })
     }
 
     const hasil = await jalankanSnapshot(params.slug)
