@@ -233,7 +233,14 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     const kurang  = SCOPE_WAJIB.filter(s => !granted.includes(s))
     hasil.push({
       kunci: 'token', label: 'Token & Scope', status: kurang.length ? 'gagal' : 'ok',
-      pesan: kurang.length ? `Token valid, tapi scope kurang: ${kurang.join(', ')}` : 'Token valid & semua scope wajib tersedia.',
+      // Token PENGGUNA menjawab /me/permissions; token PAGE tidak. Jadi terbacanya
+      // daftar scope justru pertanda token yang SALAH JENIS untuk endpoint Halaman —
+      // dan itu perlu dikatakan terang-terangan, sebab gejalanya di baris lain
+      // (#190) terbaca seolah izin kurang, bukan jenis token yang keliru.
+      pesan: 'INI TOKEN PENGGUNA, bukan token Page. Endpoint tingkat Halaman (Insights Page, ' +
+             'postingan, percakapan, webhook) akan ditolak dengan galat #190. ' +
+             'Jalankan me/accounts dengan token ini, lalu pakai access_token milik entri Page.' +
+             (kurang.length ? ` Scope yang belum ada: ${kurang.join(', ')}.` : ''),
       detail: `granted: ${granted.join(', ') || '(kosong)'}`,
     })
   } else {
