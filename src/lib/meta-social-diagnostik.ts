@@ -435,21 +435,42 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
       hasil.push({ kunci, label, status: 'lewati', pesan: 'Page ID belum diisi di form.', fase: 'Fase 2' })
       continue
     }
-    const r = await graphGet(
-      `${cfg.page_id}/conversations?fields=id,updated_time,message_count&limit=25${platform}`,
-      token, 30_000,
-    )
-    if (!r.ok) {
-      hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r), fase: 'Fase 2' })
+    // Tangga permintaan dari kaya ke ringan. `message_count` menuntut Graph
+    // menghitung seluruh pesan tiap percakapan dan itulah yang memicu galat
+    // "reduce the amount of data" (code 1) — galat UKURAN, bukan izin. Karena
+    // pesannya mudah dikira penolakan, jalur ringan dicoba dulu sebelum
+    // menyimpulkan apa pun.
+    const tangga = [
+      { fields: 'id,updated_time,message_count', limit: 10 },
+      { fields: 'id,updated_time',               limit: 10 },
+      { fields: 'id',                            limit: 3  },
+    ]
+
+    let r: GraphResult | null = null
+    for (const t of tangga) {
+      r = await graphGet(
+        `${cfg.page_id}/conversations?fields=${t.fields}&limit=${t.limit}${platform}`,
+        token, 30_000,
+      )
+      if (r.ok) break
+      // Hanya galat ukuran yang layak dicoba lagi lebih ringan; galat izin tidak
+      // akan berubah betapapun permintaannya diperkecil.
+      if (r.json?.error?.code !== 1) break
+    }
+
+    if (!r?.ok) {
+      hasil.push({ kunci, label, status: 'gagal', pesan: pesanErrorGraph(r!), fase: 'Fase 2' })
       continue
     }
+
     const daftar: any[] = r.json?.data ?? []
     const waktu = daftar.map(d => d.updated_time).filter(Boolean).sort()
     const pesanTotal = daftar.reduce((n, d) => n + Number(d.message_count ?? 0), 0)
     hasil.push({
       kunci, label, status: 'ok', fase: 'Fase 2', detail: potong(r.json, 400),
       pesan: daftar.length
-        ? `${daftar.length} percakapan terbaca, ${pesanTotal} pesan. Terlama: ${String(waktu[0]).slice(0, 10)} — riwayat sejauh itu bisa ditarik masuk.`
+        ? `${daftar.length} percakapan terbaca${pesanTotal ? `, ${pesanTotal} pesan` : ''}.` +
+          (waktu.length ? ` Terlama: ${String(waktu[0]).slice(0, 10)} — riwayat sejauh itu bisa ditarik masuk.` : '')
         : 'Endpoint bisa diakses, tapi belum ada percakapan. Bukan kegagalan.',
     })
   }
