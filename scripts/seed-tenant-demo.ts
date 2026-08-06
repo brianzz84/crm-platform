@@ -128,15 +128,41 @@ async function main() {
   await copyGlobalToTenant(tenant.id)
   const db = await getTenantDb(SLUG)
 
+  /**
+   * PERAN PENINJAU — JANGAN PERNAH SUPER_ADMIN.
+   *
+   * SUPER_ADMIN dibebaskan dari pemeriksaan lintas-tenant, baik di
+   * `requireTenantPermission` maupun di layout `[slug]`. Memberikannya kepada
+   * peninjau berarti mereka cukup mengganti slug di URL untuk membuka tenant
+   * RKZ — percakapan pasien sungguhan, keluhan, nomor telepon. Tidak ada galat
+   * yang muncul; halamannya terbuka begitu saja.
+   *
+   * Dua peran sempit ini memberi persis yang diperlukan peragaan, tidak lebih:
+   *   SUPERVISOR → viewAllInbox, assignConversation, replyChat
+   *   ADMIN_OPS  → manageBroadcast, yang menjaga menu Kanal Publik tetap terbuka
+   *
+   * Yang sengaja TIDAK diberikan: manageUsers dan configSystem. Peninjau tidak
+   * perlu menambah pengguna atau menyunting kredensial Meta untuk menilai apa
+   * pun, dan keduanya jalan paling langsung menuju kerusakan permanen.
+   */
+  const PERAN_PENINJAU = ['SUPERVISOR', 'ADMIN_OPS']
+
   await db.appUser.upsert({
     where:  { id: `demo-reviewer-${SLUG}` },
     create: {
       id: `demo-reviewer-${SLUG}`, tenant_slug: SLUG,
       name: 'Meta Reviewer', email: EMAIL,
       password_hash: await hashPassword(SANDI),
-      roles: ['SUPER_ADMIN'], aktif: true,
+      roles: PERAN_PENINJAU, aktif: true,
     },
-    update: { password_hash: await hashPassword(SANDI), aktif: true },
+    // `roles` WAJIB ikut diperbarui, bukan hanya diisi saat pembuatan. Akun ini
+    // pernah tersimpan dengan SUPER_ADMIN; kalau cabang update tidak menurunkan
+    // perannya, menjalankan ulang skrip ini tidak memperbaiki apa-apa dan
+    // kekeliruannya menetap tanpa jejak.
+    update: {
+      password_hash: await hashPassword(SANDI),
+      roles: PERAN_PENINJAU, aktif: true,
+    },
   })
   console.log(`[demo] Akun peninjau: ${EMAIL}`)
 
