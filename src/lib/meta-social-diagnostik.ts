@@ -522,6 +522,146 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
         detail: potong(r.json, 300),
       })
     }
+
+    // 6e) UJI TUNTAS DM INSTAGRAM — dijalankan setelah aplikasi diterbitkan.
+    //
+    // Dua gerbang menghalangi DM Instagram sekaligus: aplikasi harus TERBIT, dan
+    // izin harus Advanced Access lewat App Review. Selama keduanya tertutup,
+    // galat yang muncul sama saja — `(#3) Application does not have the
+    // capability` — sehingga mustahil tahu gerbang mana yang sebenarnya mengunci.
+    //
+    // Tiga cek di bawah memisahkannya. Kalau ternyata penerbitan saja cukup,
+    // seluruh pekerjaan App Review tidak diperlukan.
+
+    // (a) IZIN YANG MELEKAT PADA TOKEN INI.
+    //
+    // Menerbitkan aplikasi TIDAK menambahkan izin ke token yang sudah telanjur
+    // dibuat — izin Meta tidak berlaku surut. Jadi bila daftar di bawah tidak
+    // memuat izin pesan, penghalangnya bukan App Review melainkan token yang
+    // dibuat sebelum izinnya ditambahkan, dan cukup dibuat ulang.
+    //
+    // `me/permissions` hanya ada pada token PENGGUNA; untuk token Page dipakai
+    // `debug_token`. Keduanya dicoba supaya jenis token apa pun terbaca.
+    {
+      const IZIN_PESAN = [
+        'instagram_manage_messages', 'pages_messaging',
+        'instagram_business_manage_messages',
+      ]
+
+      let scopes: string[] = []
+      let sumber = ''
+      let galat  = ''
+
+      const rp = await graphGet('me/permissions', token, 20_000)
+      if (rp.ok) {
+        scopes = (rp.json?.data ?? [])
+          .filter((d: any) => d.status === 'granted')
+          .map((d: any) => String(d.permission))
+        sumber = 'me/permissions (token pengguna)'
+      } else {
+        // Token dipakai sebagai input DAN sebagai pemeriksa. Sah selama token itu
+        // milik admin aplikasi — dan kalau tidak, galatnya sendiri yang memberi tahu.
+        const rd = await graphGet(
+          `debug_token?input_token=${encodeURIComponent(token)}`, token, 20_000,
+        )
+        if (rd.ok) {
+          scopes = (rd.json?.data?.scopes ?? []).map(String)
+          sumber = `debug_token (jenis: ${rd.json?.data?.type ?? '?'})`
+        } else {
+          galat = pesanErrorGraph(rd)
+        }
+      }
+
+      const punya = IZIN_PESAN.filter(i => scopes.includes(i))
+      hasil.push({
+        kunci: 'izin_pesan_ig', label: 'Izin Pesan pada Token Ini', fase: 'Fase 2',
+        status: galat ? 'gagal' : punya.length ? 'ok' : 'lewati',
+        pesan: galat
+          ? `Daftar izin tidak terbaca: ${galat}`
+          : punya.length
+            ? `${punya.join(', ')} SUDAH melekat pada token ini (${sumber}). ` +
+              'Kalau DM Instagram tetap ditolak, penghalangnya App Review — bukan token.'
+            : `Tidak satu pun izin pesan melekat pada token ini (${sumber}). ` +
+              'Buat ULANG token setelah izin ditambahkan di dasbor — izin Meta tidak berlaku surut, ' +
+              'jadi token lama tetap tanpa izin betapapun aplikasinya sudah terbit.',
+        // Hanya nama izin yang ditampilkan. Respons mentahnya memuat token yang
+        // sedang diperiksa, dan panel ini dibuat untuk ditempel ke tiket.
+        detail: scopes.length ? `scopes: ${scopes.join(', ')}` : undefined,
+      })
+    }
+
+    // (b) APAKAH AKUN INSTAGRAM MEMANG TERSAMBUNG KE HALAMAN INI.
+    //
+    // DM Instagram ditarik LEWAT Halaman, bukan langsung dari akun IG. Bila
+    // sambungannya putus, seluruh galat di atas menjadi salah alamat: tidak ada
+    // izin mana pun yang bisa memperbaikinya.
+    {
+      const r = await graphGet(
+        `${cfg.page_id}?fields=instagram_business_account{id,username},connected_instagram_account{id,username}`,
+        token, 20_000,
+      )
+      const iba = r.json?.instagram_business_account
+      const cia = r.json?.connected_instagram_account
+      hasil.push({
+        kunci: 'ig_tersambung', label: 'Instagram Tersambung ke Halaman', fase: 'Fase 2',
+        status: r.ok ? (iba || cia ? 'ok' : 'gagal') : 'gagal',
+        pesan: !r.ok ? pesanErrorGraph(r)
+          : iba ? `@${iba.username ?? iba.id} tersambung sebagai akun bisnis — jalur DM tersedia.`
+          : cia ? `@${cia.username ?? cia.id} tersambung, tapi BUKAN sebagai akun bisnis. ` +
+                  'DM hanya bisa ditarik dari akun Bisnis/Kreator yang tertaut Halaman.'
+          : 'Tidak ada akun Instagram yang tertaut ke Halaman ini. Sambungkan dulu lewat ' +
+            'Pengaturan Halaman → Instagram sebelum menguji DM.',
+        detail: potong(r.json, 300),
+      })
+    }
+
+    // (c) MEMBACA ISI PESAN, bukan sekadar daftar percakapan.
+    //
+    // Perbedaan ini menentukan. Mendaftar percakapan bisa saja dilayani sementara
+    // membaca isinya ditolak — dan isi pesan itulah yang sebenarnya dibutuhkan
+    // Inbox. Menyimpulkan "DM sudah bisa" dari daftar percakapan yang lolos adalah
+    // persis jenis kekeliruan yang membuat kolektor dibangun di atas lubang.
+    {
+      const rDaftar = await graphGet(
+        `${cfg.page_id}/conversations?fields=id&limit=1&platform=instagram`, token, 30_000,
+      )
+      const pctId = rDaftar.json?.data?.[0]?.id ?? null
+
+      if (!rDaftar.ok) {
+        hasil.push({
+          kunci: 'ig_dm_isi', label: 'Isi Pesan Instagram (uji tuntas)', status: 'gagal', fase: 'Fase 2',
+          pesan: `Daftar percakapan IG belum bisa dibuka, jadi isinya belum bisa diuji: ${pesanErrorGraph(rDaftar)}`,
+        })
+      } else if (!pctId) {
+        hasil.push({
+          kunci: 'ig_dm_isi', label: 'Isi Pesan Instagram (uji tuntas)', status: 'lewati', fase: 'Fase 2',
+          pesan: 'Endpoint dilayani, tapi belum ada percakapan Instagram untuk diuji. ' +
+                 'Kirim satu DM dari akun lain ke @akun RKZ, lalu jalankan probe ini lagi.',
+        })
+      } else {
+        // `from{id,username}` diminta dengan subfield EKSPLISIT. Tanpa itu Graph
+        // tidak selalu menyertakan id pengirim, dan arah pesan jatuh seluruhnya ke
+        // "masuk" — kekeliruan senyap yang sudah pernah terjadi pada jalur Facebook
+        // dan membuat setiap percakapan tampak tidak terjawab.
+        const r = await graphGet(
+          `${pctId}/messages?fields=id,created_time,from{id,username},message&limit=3`,
+          token, 30_000,
+        )
+        const pesanMasuk: any[] = r.json?.data ?? []
+        const adaArah = pesanMasuk.some(m => m?.from?.id)
+        hasil.push({
+          kunci: 'ig_dm_isi', label: 'Isi Pesan Instagram (uji tuntas)', fase: 'Fase 2',
+          status: r.ok ? (adaArah ? 'ok' : 'gagal') : 'gagal',
+          pesan: !r.ok ? pesanErrorGraph(r)
+            : adaArah
+              ? `${pesanMasuk.length} pesan terbaca lengkap dengan pengirimnya — ` +
+                'DM Instagram siap ditarik ke Inbox tanpa App Review.'
+              : 'Pesan terbaca tapi TANPA data pengirim. Arah masuk/keluar tidak bisa ' +
+                'ditentukan, dan tanpa itu waktu tanggap akan salah hitung. Belum layak dipakai.',
+          detail: potong(r.json, 400),
+        })
+      }
+    }
   }
 
   // 7) Marketing API (iklan) — butuh ads_read, DAN pemilik Ad Account memberi akses app.
