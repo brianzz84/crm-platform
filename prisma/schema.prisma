@@ -25,6 +25,13 @@ model Tenant {
   database_url  String
   custom_domain String?
   aktif         Boolean    @default(true)
+  /// Tenant peragaan: pesan keluar DICATAT tapi tidak pernah benar-benar dikirim.
+  ///
+  /// Sengaja kolom eksplisit per tenant, bukan disimpulkan dari ketiadaan
+  /// konfigurasi kanal. Kalau disimpulkan, rumah sakit sungguhan yang lupa
+  /// menyetel Meta akan mengira pesannya terkirim padahal tidak — kekeliruan
+  /// senyap yang jauh lebih mahal daripada galat yang terlihat.
+  mode_demo     Boolean    @default(false)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 

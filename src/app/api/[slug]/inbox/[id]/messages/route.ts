@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantDb } from '@/lib/tenant'
+import { getTenantDb, masterDb } from '@/lib/tenant'
 import { requireTenantPermission } from "@/lib/auth"
 import { z } from 'zod'
 import { getWappinToken, sendWaMessage, sendWaMedia } from '@/lib/wappin-client'
@@ -87,6 +87,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       select: {
         id: true, direction: true, content: true,
         media_url: true, media_type: true, is_internal_note: true, status: true,
+        // Ikut dikembalikan supaya catatan mode peragaan langsung tampil tanpa
+        // menunggu pemuatan ulang utas.
+        error_detail: true,
         ai_generated: true, created_at: true, sent_at: true,
         sender: { select: { id: true, name: true } },
       },
@@ -96,6 +99,33 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       where: { id: params.id },
       data: { last_message_at: new Date(), status: 'OPEN' },
     })
+
+    // ── Tenant peragaan: catat, jangan kirim ─────────────────────
+    //
+    // Diperiksa SEBELUM kanal mana pun dicoba, bukan di dalam salah satu cabang.
+    // Dengan begitu tidak ada jalur — WhatsApp, Messenger, Instagram — yang bisa
+    // meloloskan pesan sungguhan dari tenant peragaan. Menaruhnya di dalam cabang
+    // berarti kanal yang ditambahkan kelak akan luput tanpa ada yang menyadari.
+    const tenant = await masterDb.tenant.findUnique({
+      where:  { slug: params.slug },
+      select: { mode_demo: true },
+    })
+
+    const CATATAN_DEMO = 'Mode peragaan — pesan tidak dikirim ke penerima.'
+
+    if (!is_internal_note && tenant?.mode_demo) {
+      await db.message.update({
+        where: { id: msg.id },
+        // Catatan ditulis ke `error_detail` dan status tetap SENT. Antarmuka
+        // menampilkan kotak merah hanya untuk status FAILED, jadi catatan ini
+        // muncul netral — jujur menyebut pesannya tidak dikirim, tanpa terbaca
+        // sebagai kegagalan yang perlu ditindaklanjuti.
+        data:  { status: 'SENT', sent_at: new Date(), error_detail: CATATAN_DEMO },
+      })
+      msg.status       = 'SENT'
+      msg.error_detail = CATATAN_DEMO
+      return NextResponse.json({ success: true, data: msg }, { status: 201 })
+    }
 
     // ── Kirim ke channel (best-effort, tidak gagalkan response) ──
     if (!is_internal_note && (conv.channel === 'FB' || conv.channel === 'IG')) {

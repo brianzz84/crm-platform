@@ -979,6 +979,16 @@ export default function InboxShell({
                               color: '#B71C1C', background: '#FDECEA', borderRadius: 6, padding: '5px 8px',
                             }}>⚠ {m.error_detail}</div>
                           )}
+                          {/* Catatan pada pesan yang BERHASIL — bukan kegagalan, jadi sengaja
+                              netral. Dipakai mode peragaan untuk menyatakan terus terang bahwa
+                              pesannya tidak dikirim, tanpa memakai warna yang menyuruh staf
+                              menindaklanjuti sesuatu yang tidak rusak. */}
+                          {isOut && !m.is_internal_note && m.status === 'SENT' && m.error_detail && (
+                            <div style={{
+                              clear: 'both', marginTop: 6, fontSize: 11.5, lineHeight: 1.4,
+                              color: '#5A6B62', background: '#EEF2F0', borderRadius: 6, padding: '5px 8px',
+                            }}>ⓘ {m.error_detail}</div>
+                          )}
                           {/* Timestamp + centang — inline di kanan bawah teks */}
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 2,

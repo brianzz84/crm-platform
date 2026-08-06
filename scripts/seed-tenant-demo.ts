@@ -118,10 +118,13 @@ async function main() {
   const contoh = await masterDb.tenant.findFirst({ where: { aktif: true }, select: { database_url: true } })
   if (!contoh) { console.error('Tidak ada tenant aktif sebagai acuan database_url.'); process.exit(1) }
 
+  // `mode_demo` ikut di cabang update, bukan hanya saat pembuatan: tenant ini
+  // sudah ada di produksi sebelum kolomnya lahir, jadi tanpa itu menjalankan
+  // ulang skrip tidak menyalakan apa pun.
   const tenant = await masterDb.tenant.upsert({
     where:  { slug: SLUG },
-    create: { slug: SLUG, name: NAMA, database_url: contoh.database_url, aktif: true },
-    update: { name: NAMA, aktif: true },
+    create: { slug: SLUG, name: NAMA, database_url: contoh.database_url, aktif: true, mode_demo: true },
+    update: { name: NAMA, aktif: true, mode_demo: true },
   })
   console.log(`[demo] Tenant ${SLUG} siap`)
 
