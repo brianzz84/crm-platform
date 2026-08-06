@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb } from '@/lib/tenant'
+import { requireTenantPermission } from '@/lib/auth'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { slug: string; id: string } }
 ) {
+  // Middleware sengaja tidak mencakup /api/, jadi penjaga di sini satu-satunya
+  // yang ada. Tanpanya rekam pasien — identitas, kunjungan, percakapan — terbuka
+  // bagi siapa pun yang tahu id-nya, tanpa perlu masuk sama sekali.
+  const { error } = await requireTenantPermission(req, params.slug, 'viewPatients')
+  if (error) return error
+
   try {
     const db = await getTenantDb(params.slug)
 
@@ -54,6 +61,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { slug: string; id: string } }
 ) {
+  const { error } = await requireTenantPermission(req, params.slug, 'viewPatients')
+  if (error) return error
+
   try {
     const db   = await getTenantDb(params.slug)
     const body = await req.json()
@@ -65,9 +75,28 @@ export async function PATCH(
       if (key in body) data[key] = body[key]
     }
 
-    const person = await db.person.update({
-      where: { id: params.id },
-      data: { ...data, updated_at: new Date() },
+    // `updateMany` DIPAKAI SENGAJA, bukan `update`.
+    //
+    // `update` menuntut kunci unik, jadi ia hanya bisa menyaring `id` — dan id
+    // saja tidak menyebut tenant. Slug di URL akhirnya tidak berpengaruh apa pun
+    // pada baris mana yang tersentuh: pasien tenant lain ikut bisa disunting
+    // asal id-nya diketahui. Di produksi seluruh tenant berbagi satu database,
+    // jadi tidak ada batas lain yang menahannya.
+    //
+    // `updateMany` menerima penyaring gabungan, dan `count === 0` sekaligus
+    // menjadi jawaban 404 tanpa perlu membaca dulu — jadi tidak ada celah antara
+    // memeriksa dan mengubah.
+    const hasil = await db.person.updateMany({
+      where: { id: params.id, tenant_slug: params.slug },
+      data:  { ...data, updated_at: new Date() },
+    })
+
+    if (hasil.count === 0) {
+      return NextResponse.json({ error: 'Pasien tidak ditemukan' }, { status: 404 })
+    }
+
+    const person = await db.person.findFirst({
+      where: { id: params.id, tenant_slug: params.slug },
     })
 
     return NextResponse.json({ success: true, data: person })
