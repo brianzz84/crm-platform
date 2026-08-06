@@ -98,10 +98,17 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     })
 
     // ── Kirim ke channel (best-effort, tidak gagalkan response) ──
-    if (!is_internal_note && conv.channel === 'FB') {
-      // Messenger: tujuannya PSID, bukan nomor HP. Percakapan FB kerap belum
-      // tertaut ke Person sama sekali — Instagram/Facebook hanya memberi ID acak,
-      // jadi menuntut nomor HP di sini akan memblokir balasan tanpa alasan.
+    if (!is_internal_note && (conv.channel === 'FB' || conv.channel === 'IG')) {
+      // Messenger DAN Instagram, keduanya. Send API-nya sama: POST ke
+      // {page-id}/messages dengan pengenal dari platform sebagai tujuan — PSID
+      // untuk Messenger, IGSID untuk Instagram.
+      //
+      // Sebelumnya syarat ini hanya 'FB', sehingga balasan Instagram jatuh ke
+      // cabang WhatsApp dan ditolak dengan "Pasien belum punya nomor WhatsApp di
+      // data." Pengguna Instagram tidak pernah punya nomor itu: platform hanya
+      // memberi ID acak, dan percakapannya kerap tidak tertaut ke Person sama
+      // sekali. Jadi galatnya bukan sekadar membingungkan — ia memblokir balasan
+      // yang sebenarnya sah, dan menyalahkan data pasien atas salah rute.
       const { kirimPesanMessenger } = await import('@/lib/meta-dm')
       const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
       const token   = metaCfg?.insights_token || metaCfg?.access_token
