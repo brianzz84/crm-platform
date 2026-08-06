@@ -9,8 +9,25 @@ import { PrismaPg } from '@prisma/adapter-pg'
 // Cache koneksi per slug untuk menghindari connection pool exhausted
 const connectionCache = new Map<string, PrismaClient>()
 
+/**
+ * Pemaksaan proksi publik untuk skrip pemeliharaan dari LUAR jaringan Railway.
+ *
+ * `database_url` tiap tenant menunjuk hostname *.railway.internal — cepat, dan
+ * tidak ditagih sebagai egress. Hostname itu hanya bisa diresolusi dari dalam
+ * jaringan Railway, sehingga skrip yang dijalankan dari laptop mati di langkah
+ * pertama yang menyentuh data tenant, betapapun variabel lingkungannya lengkap.
+ *
+ * Sengaja memakai variabel TERSENDIRI, bukan sekadar keberadaan
+ * DATABASE_PUBLIC_URL: Railway mengisi variabel itu otomatis di produksi, jadi
+ * menjadikannya pemicu akan diam-diam membelokkan SELURUH lalu lintas aplikasi
+ * ke proksi publik yang lebih lambat, kadang putus, dan ditagih sebagai egress.
+ * Kekeliruan seperti itu tidak menimbulkan galat — hanya tagihan dan latensi.
+ */
+const proksiLuar =
+  process.env.DB_LEWAT_PROKSI === '1' ? process.env.DATABASE_PUBLIC_URL : undefined
+
 function createClient(connectionString: string): PrismaClient {
-  const adapter = new PrismaPg({ connectionString })
+  const adapter = new PrismaPg({ connectionString: proksiLuar || connectionString })
   return new PrismaClient({ adapter })
 }
 
