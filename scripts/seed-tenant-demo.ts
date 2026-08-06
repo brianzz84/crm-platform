@@ -31,13 +31,23 @@ const SANDI = process.env.DEMO_PASSWORD
  *
  * Sebagian sengaja SUDAH DIBALAS dan sebagian belum — peninjau perlu melihat
  * percakapan dua arah, dan itu pula yang membuat metrik waktu respons masuk akal.
+ *
+ * DUA KANAL, dan yang IG ada alasannya. App Review menuntut peragaan izin yang
+ * belum diberikan: selama `instagram_manage_messages` masih Standard Access,
+ * percakapan Instagram yang sungguhan tidak bisa ditarik sama sekali. Baris
+ * berlabel IG di bawah menutup celah itu — peninjau bisa melihat bentuk akhirnya
+ * di kotak masuk yang sama.
+ *
+ * Rekaman layar WAJIB menyebutkan bahwa baris IG adalah data contoh. Bukan
+ * datanya yang membuat pengajuan ditolak, melainkan menyajikannya seolah data
+ * sungguhan lalu ketahuan.
  */
 const PERCAKAPAN: {
-  nama: string; psid: string; jamLalu: number
+  nama: string; psid: string; jamLalu: number; kanal: 'FB' | 'IG'
   pesan: { dari: 'user' | 'halaman'; teks: string; menitSetelah: number }[]
 }[] = [
   {
-    nama: 'Rina Kusuma', psid: 'demo-psid-001', jamLalu: 30,
+    nama: 'Rina Kusuma', psid: 'demo-psid-001', jamLalu: 30, kanal: 'FB',
     pesan: [
       { dari: 'user',    teks: 'Selamat pagi, dokter jantung praktek hari apa saja ya?', menitSetelah: 0 },
       { dari: 'halaman', teks: 'Selamat pagi Ibu Rina. Poli Jantung buka Senin–Jumat pukul 08.00–14.00. Untuk pendaftaran bisa lewat aplikasi atau datang langsung. Terima kasih.', menitSetelah: 42 },
@@ -45,21 +55,21 @@ const PERCAKAPAN: {
     ],
   },
   {
-    nama: 'Bagus Prakoso', psid: 'demo-psid-002', jamLalu: 26,
+    nama: 'Bagus Prakoso', psid: 'demo-psid-002', jamLalu: 26, kanal: 'FB',
     pesan: [
       { dari: 'user',    teks: 'Mau tanya, biaya medical check up paket lengkap berapa ya?', menitSetelah: 0 },
       { dari: 'halaman', teks: 'Terima kasih atas pertanyaannya. Paket MCU tersedia mulai dari beberapa pilihan sesuai kebutuhan. Boleh kami hubungi di nomor berapa agar tim kami menjelaskan lebih rinci?', menitSetelah: 18 },
     ],
   },
   {
-    nama: 'Siti Marlina', psid: 'demo-psid-003', jamLalu: 20,
+    nama: 'Siti Marlina', psid: 'demo-psid-003', jamLalu: 20, kanal: 'FB',
     pesan: [
       { dari: 'user',    teks: 'Halo, apakah sedang ada lowongan untuk perawat?', menitSetelah: 0 },
       { dari: 'halaman', teks: 'Halo, terima kasih atas minatnya. Informasi lowongan kami umumkan lewat akun resmi dan situs rumah sakit. Silakan pantau secara berkala ya.', menitSetelah: 130 },
     ],
   },
   {
-    nama: 'Andi Wijaya', psid: 'demo-psid-004', jamLalu: 8,
+    nama: 'Andi Wijaya', psid: 'demo-psid-004', jamLalu: 8, kanal: 'FB',
     pesan: [
       // Sengaja BELUM dibalas — peninjau perlu melihat percakapan yang menunggu,
       // dan itu pula yang membuat penghitungan waktu respons ada gunanya.
@@ -67,9 +77,32 @@ const PERCAKAPAN: {
     ],
   },
   {
-    nama: 'Dewi Anggraini', psid: 'demo-psid-005', jamLalu: 4,
+    nama: 'Dewi Anggraini', psid: 'demo-psid-005', jamLalu: 4, kanal: 'FB',
     pesan: [
       { dari: 'user', teks: 'Apakah bisa konsultasi ke dokter anak di hari Sabtu?', menitSetelah: 0 },
+    ],
+  },
+  {
+    nama: 'putri.andini', psid: 'demo-igsid-001', jamLalu: 18, kanal: 'IG',
+    pesan: [
+      { dari: 'user',    teks: 'Kak, imunisasi bayi 6 bulan jadwalnya hari apa ya?', menitSetelah: 0 },
+      { dari: 'halaman', teks: 'Halo Kak Putri. Poli Anak melayani imunisasi Senin sampai Sabtu pukul 08.00-13.00. Sebaiknya daftar dulu agar tidak menunggu lama ya. Terima kasih.', menitSetelah: 25 },
+      { dari: 'user',    teks: 'Oke kak, makasih banyak.', menitSetelah: 31 },
+    ],
+  },
+  {
+    nama: 'hendra.wibowo', psid: 'demo-igsid-002', jamLalu: 11, kanal: 'IG',
+    pesan: [
+      { dari: 'user',    teks: 'Halo, untuk operasi katarak apakah bisa pakai BPJS?', menitSetelah: 0 },
+      { dari: 'halaman', teks: 'Terima kasih atas pertanyaannya. Layanan tersebut dapat menggunakan BPJS dengan rujukan dari faskes tingkat pertama. Silakan bawa rujukan dan kartu BPJS saat pendaftaran.', menitSetelah: 63 },
+    ],
+  },
+  {
+    nama: 'maya.sari', psid: 'demo-igsid-003', jamLalu: 2, kanal: 'IG',
+    pesan: [
+      // Belum dibalas — peninjau perlu melihat percakapan yang masih menunggu,
+      // dan itu pula yang membuat penghitungan waktu tanggap ada gunanya.
+      { dari: 'user', teks: 'Seminar kesehatan jantung yang diposting kemarin masih ada kuota tidak ya?', menitSetelah: 0 },
     ],
   },
 ]
@@ -113,9 +146,9 @@ async function main() {
 
     const pct = await db.conversation.upsert({
       where:  { tenant_slug_channel_channel_user_id: {
-        tenant_slug: SLUG, channel: 'FB', channel_user_id: p.psid } },
+        tenant_slug: SLUG, channel: p.kanal, channel_user_id: p.psid } },
       create: {
-        tenant_slug: SLUG, channel: 'FB', channel_user_id: p.psid,
+        tenant_slug: SLUG, channel: p.kanal, channel_user_id: p.psid,
         channel_user_name: p.nama, status: 'OPEN',
         last_message_at: new Date(mulai + p.pesan[p.pesan.length - 1].menitSetelah * 60_000),
       },
