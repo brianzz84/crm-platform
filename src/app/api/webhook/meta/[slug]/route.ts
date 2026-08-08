@@ -105,6 +105,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             timestamp:  msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : undefined,
             mediaUrl,
             mediaType,
+            // Hanya ada pada pesan PERTAMA sesudah iklan Click-to-WhatsApp diklik,
+            // dan tidak bisa ditarik ulang belakangan lewat endpoint mana pun.
+            referral:   (msg as any).referral ?? null,
           })
         }
 

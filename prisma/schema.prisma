@@ -812,15 +812,70 @@ model Conversation {
   unread_count    Int                @default(0)
   created_at      DateTime           @default(now())
 
-  person        Person?   @relation(fields: [person_id], references: [id])
-  assigned_user AppUser?  @relation("AssignedUser", fields: [assigned_to], references: [id])
+  person        Person?      @relation(fields: [person_id], references: [id])
+  assigned_user AppUser?     @relation("AssignedUser", fields: [assigned_to], references: [id])
   messages      Message[]
+  ad_referrals  AdReferral[]
 
   @@unique([tenant_slug, channel, channel_user_id])
   @@index([tenant_slug])
   @@index([status])
   @@index([last_message_at])
   @@map("crm_conversations")
+}
+
+/// Jejak iklan yang mengantar seseorang masuk ke percakapan.
+///
+/// KENAPA TABEL SENDIRI, bukan kolom di Conversation. Satu orang bisa mengklik
+/// iklan berbeda di lain waktu; menyimpannya sebagai kolom berarti sentuhan
+/// terakhir menimpa yang sebelumnya, dan atribusi multi-sentuh jadi mustahil
+/// selamanya. Baris tidak pernah diperbarui, hanya ditambah.
+///
+/// KENAPA MENDESAK. `ctwa_clid` HANYA dikirim sekali, pada pesan pertama sesudah
+/// iklan diklik. Tidak ada endpoint untuk menariknya belakangan — persis seperti
+/// metrik harian Instagram yang hilang sebelum snapshot dinyalakan. Percakapan
+/// yang masuk sebelum penangkap ini hidup tidak akan pernah bisa diatribusikan.
+///
+/// CATATAN JALUR. Hanya terisi dari webhook Meta Cloud API langsung. Callback
+/// Wappin tidak membawa referral sama sekali, jadi lalu lintas yang lewat sana
+/// tidak akan pernah menghasilkan baris di sini.
+model AdReferral {
+  id                  String   @id @default(uuid())
+  tenant_slug         String
+  conversation_id     String
+  /// ID pesan dari platform yang membawa referral ini. Webhook Meta mengirim
+  /// ulang saat gagal, jadi kolom ini yang menjaga agar satu klik tidak tercatat
+  /// berkali-kali. Wajib ada — bukan nullable, supaya unique-nya benar-benar
+  /// menggigit (Postgres menganggap tiap NULL berbeda).
+  message_external_id String
+  channel             Channel  @default(WA)
+
+  /// Kunci join deterministik ke iklan Click-to-WhatsApp. Inilah yang membuat
+  /// atribusi tidak perlu menebak lewat pencocokan probabilistik.
+  ctwa_clid           String?
+  /// ID iklan atau postingan asal.
+  source_id           String?
+  /// "ad" | "post"
+  source_type         String?
+  source_url          String?
+  headline            String?
+  body                String?
+  media_type          String?
+
+  /// Payload referral mentah. Meta menambah field tanpa pengumuman, dan yang
+  /// tidak disimpan hari ini tidak bisa diambil ulang besok.
+  raw                 Json?
+
+  occurred_at         DateTime @default(now())
+  created_at          DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id])
+
+  @@unique([tenant_slug, message_external_id])
+  @@index([tenant_slug, ctwa_clid])
+  @@index([tenant_slug, source_id])
+  @@index([conversation_id])
+  @@map("crm_ad_referrals")
 }
 
 model Message {
