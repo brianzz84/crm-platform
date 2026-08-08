@@ -54,6 +54,11 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         // memakai izin manageBroadcast karena audiensnya sama-sama tim marketing;
         // hak akses tersendiri akan ditata belakangan.
         { href: `${base}/kanal-publik`, label: 'Kanal Publik', icon: '📣', feature: 'manageBroadcast' },
+        // Iklan berdiri sendiri, tidak di dalam Kanal Publik: yang diukur di sini
+        // justru orang yang TERIDENTIFIKASI — dari klik iklan sampai kunjungan
+        // yang tercatat di SIMRS. Sifatnya berlawanan dengan Kanal Publik yang
+        // seluruhnya tentang audiens anonim.
+        { href: `${base}/iklan`, label: 'Iklan', icon: '📈', feature: 'manageBroadcast' },
       ],
     },
     {
