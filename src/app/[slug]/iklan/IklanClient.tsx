@@ -29,7 +29,7 @@ interface Laporan {
 const hariLalu = (n: number) =>
   new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 
-export default function IklanClient({ slug }: { slug: string }) {
+export default function IklanClient({ slug, jalurLangsung }: { slug: string; jalurLangsung: boolean }) {
   const [mulai, setMulai]     = useState(hariLalu(90))
   const [selesai, setSelesai] = useState(hariLalu(0))
   const [jendela, setJendela] = useState(30)
@@ -80,6 +80,29 @@ export default function IklanClient({ slug }: { slug: string }) {
         Rantainya: iklan diklik &rarr; percakapan masuk &rarr; nomornya cocok dengan data
         pasien &rarr; kunjungan tercatat di SIMRS. Angka di sini <strong>tidak dikirim ke Meta</strong>.
       </p>
+
+      {/* Peringatan ini muncul SEBELUM angka apa pun, dan tidak bisa ditutup.
+          Gejala jalur yang salah hanyalah tabel kosong — mudah dikira "iklannya
+          belum menghasilkan" padahal tidak pernah terekam. Dan klik yang lewat
+          tanpa terekam tidak bisa diambil ulang belakangan. */}
+      {!jalurLangsung && (
+        <div style={{
+          marginTop: 'var(--sp-5)', background: '#FFFBEB', color: '#57432A',
+          padding: '14px 18px', borderRadius: 'var(--r-md)', borderLeft: '4px solid #D97706',
+          fontSize: 13, lineHeight: 1.7,
+        }}>
+          <strong>Jalur Meta langsung belum aktif — iklan tidak akan terlacak.</strong>
+          <div style={{ marginTop: 6 }}>
+            Jejak iklan hanya tiba lewat webhook Meta Cloud API. Callback Wappin tidak
+            membawa data referral sama sekali, jadi klik yang masuk ke sana hilang tanpa
+            jejak dan <strong>tidak bisa ditarik ulang belakangan</strong>. Aktifkan di{' '}
+            <a href={`/${slug}/pengaturan/meta`} style={{ color: '#B45309', fontWeight: 700 }}>
+              Pengaturan &rarr; Integrasi Meta
+            </a>{' '}
+            sebelum iklan berikutnya dijalankan.
+          </div>
+        </div>
+      )}
 
       <div style={{ ...kartu, marginTop: 'var(--sp-5)', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ fontSize: 12, color: 'var(--c-text-muted)', fontWeight: 700 }}>
