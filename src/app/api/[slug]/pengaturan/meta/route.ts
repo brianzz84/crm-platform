@@ -14,8 +14,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   if (!cfg) return NextResponse.json({ success: true, data: null })
 
-  const { access_token, insights_token, ...safe } = cfg as any
-  return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token, has_insights_token: !!insights_token } })
+  // Tiga token sengaja TIDAK pernah dikirim ke klien — hanya penanda ada/tidak.
+  const { access_token, insights_token, ads_token, ...safe } = cfg as any
+  return NextResponse.json({ success: true, data: { ...safe,
+    has_token: !!access_token, has_insights_token: !!insights_token, has_ads_token: !!ads_token } })
 }
 
 const MetaSchema = z.object({
@@ -27,6 +29,7 @@ const MetaSchema = z.object({
   ig_business_id:  z.string().optional(),
   ad_account_id:   z.string().optional(),
   insights_token:  z.string().optional(),
+  ads_token:       z.string().optional(),
   aktif:           z.boolean().default(true),
 })
 
@@ -45,13 +48,17 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const data: any = { ...parsed.data }
     if (!data.access_token) delete data.access_token
     if (!data.insights_token) delete data.insights_token
+    // Kosong berarti "jangan diubah", bukan "kosongkan" — kalau dihapus,
+    // menyimpan form tanpa mengetik ulang token akan menghapus token yang ada.
+    if (!data.ads_token) delete data.ads_token
 
     const cfg = existing
       ? await db.metaConfig.update({ where: { tenant_slug: params.slug }, data })
       : await db.metaConfig.create({ data: { ...data, tenant_slug: params.slug } })
 
-    const { access_token, ...safe } = cfg as any
-    return NextResponse.json({ success: true, data: { ...safe, has_token: !!access_token } })
+    const { access_token, insights_token, ads_token, ...safe } = cfg as any
+    return NextResponse.json({ success: true, data: { ...safe,
+      has_token: !!access_token, has_insights_token: !!insights_token, has_ads_token: !!ads_token } })
   } catch (e) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }

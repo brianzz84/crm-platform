@@ -96,6 +96,7 @@ export default async function MetaConfigPage({ params }: { params: { slug: strin
           aktif:           cfg.aktif,
           has_token:          !!cfg.access_token,
           has_insights_token: !!cfg.insights_token,
+          has_ads_token:      !!cfg.ads_token,
           tested_at:       cfg.tested_at?.toISOString() ?? null,
         } : null}
       />

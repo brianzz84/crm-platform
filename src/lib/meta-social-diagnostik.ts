@@ -29,6 +29,8 @@ export interface HasilCek {
 export interface ConfigProbe {
   access_token?:   string | null
   insights_token?: string | null
+  /** Token Marketing API. Terpisah karena Graph tidak melayani token Halaman di sana. */
+  ads_token?:      string | null
   page_id?:        string | null
   ig_business_id?: string | null
   ad_account_id?:  string | null
@@ -664,9 +666,44 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     }
   }
 
-  // 7) Marketing API (iklan) — butuh ads_read, DAN pemilik Ad Account memberi akses app.
-  await cek('ads', 'Marketing API (Iklan)', cfg.ad_account_id, `${cfg.ad_account_id}/insights?date_preset=last_7d&fields=spend,impressions&limit=1`,
-    j => `Ad Account bisa ditarik (${j.data?.length ?? 0} baris 7 hari terakhir).`, 'Fase 4')
+  // 7) Marketing API (iklan).
+  //
+  // MEMAKAI TOKEN SENDIRI, bukan `token` di atas. Marketing API tidak dilayani
+  // token Halaman — ia menuntut token Pengguna atau System User. Memakai token
+  // insights yang sama akan selalu gagal, dan galatnya menyesatkan: Meta
+  // menjawab "(#200) Ad account owner has NOT granted ads_read", seolah masalah
+  // ada pada pemberian akses di Business Manager, padahal tokennya memang tidak
+  // pernah membawa scope itu dan jenisnya pun keliru.
+  {
+    const kunci = 'ads', label = 'Marketing API (Iklan)', fase = 'Fase 4'
+    if (!cfg.ad_account_id) {
+      hasil.push({ kunci, label, status: 'lewati', fase, pesan: 'Ad Account ID belum diisi di form.' })
+    } else if (!cfg.ads_token) {
+      hasil.push({
+        kunci, label, status: 'lewati', fase,
+        pesan: 'Token Ads belum diisi. Marketing API menuntut token Pengguna atau System User ' +
+               'ber-scope ads_read — token Halaman tidak dilayani, sehingga token Insights ' +
+               'tidak bisa dipakai di sini.',
+      })
+    } else {
+      const r = await graphGet(
+        `${cfg.ad_account_id}/insights?date_preset=last_7d&fields=spend,impressions&limit=1`,
+        cfg.ads_token,
+      )
+      hasil.push({
+        kunci, label, fase,
+        status: r.ok ? 'ok' : 'gagal',
+        pesan: r.ok
+          ? `Ad Account bisa ditarik (${r.json?.data?.length ?? 0} baris 7 hari terakhir).`
+          : pesanErrorGraph(r) +
+            (r.json?.error?.code === 200
+              ? ' — periksa dua hal: scope ads_read pada token, dan apakah aplikasi/System User ' +
+                'sudah diberi akses ke Ad Account ini di Business Settings.'
+              : ''),
+        detail: potong(r.json),
+      })
+    }
+  }
 
   // 8) Langganan webhook Page — butuh pages_manage_metadata (satu-satunya izin non-baca).
   await cek('webhook', 'Langganan Webhook Page', cfg.page_id, `${cfg.page_id}/subscribed_apps`,

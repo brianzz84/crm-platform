@@ -671,6 +671,22 @@ model MetaConfig {
   ig_business_id  String? // Instagram Business Account ID — analitik & DM IG
   ad_account_id   String? // Ad Account (act_...) — Marketing API
   insights_token  String? // Token terpisah ber-scope Insights/Ads (Page/System User)
+  /// Token KHUSUS Marketing API. Sengaja kolom sendiri, bukan menumpang
+  /// `insights_token`, karena dua alasan yang tidak bisa disiasati:
+  ///
+  /// 1. JENIS TOKENNYA BERBEDA. Marketing API tidak dilayani token Halaman —
+  ///    ia menuntut token Pengguna atau System User. Sedangkan `insights_token`
+  ///    yang sekarang berjalan justru token Halaman, dan menggantinya akan
+  ///    mematikan analitik Kanal Publik serta penarikan DM yang sudah jalan.
+  ///
+  /// 2. PRESEDEN YANG SAMA SUDAH TERJADI. `insights_token` dulu dipisahkan dari
+  ///    `access_token` persis karena alasan ini: menimpa satu token dengan
+  ///    keperluan lain mematikan fitur yang tidak ada hubungannya, dan gejalanya
+  ///    baru terlihat saat ada pesan gagal terkirim.
+  ///
+  /// Scope yang diperlukan: ads_read (dan business_management bila Ad Account
+  /// berada di bawah Business Manager).
+  ads_token       String?
   aktif           Boolean   @default(true)
   tested_at       DateTime?
   created_at      DateTime  @default(now())

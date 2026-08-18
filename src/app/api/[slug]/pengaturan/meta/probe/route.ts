@@ -21,6 +21,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const hasil = await jalankanProbeMedsos(params.slug, {
       access_token:   cfg.access_token,
       insights_token: cfg.insights_token,
+      ads_token:      cfg.ads_token,
       page_id:        cfg.page_id,
       ig_business_id: cfg.ig_business_id,
       ad_account_id:  cfg.ad_account_id,

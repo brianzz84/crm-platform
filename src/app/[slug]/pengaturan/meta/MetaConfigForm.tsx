@@ -13,6 +13,7 @@ interface InitialData {
   aktif:           boolean
   has_token:          boolean
   has_insights_token: boolean
+  has_ads_token:      boolean
   tested_at:       string | null
 }
 
@@ -25,6 +26,7 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
   const [igBusinessId,  setIgBusinessId]  = useState(initialData?.ig_business_id ?? '')
   const [adAccountId,   setAdAccountId]   = useState(initialData?.ad_account_id ?? '')
   const [insightsToken, setInsightsToken] = useState('')
+  const [adsToken,      setAdsToken]      = useState('')
   const [aktif,         setAktif]         = useState(initialData?.aktif ?? true)
   const [saving,        setSaving]        = useState(false)
   const [testing,       setTesting]       = useState(false)
@@ -46,6 +48,7 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
           ig_business_id:  igBusinessId || undefined,
           ad_account_id:   adAccountId || undefined,
           insights_token:  insightsToken || undefined,
+          ads_token:       adsToken || undefined,
           aktif,
         }),
       })
@@ -54,6 +57,7 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
       setMsg({ type: 'success', text: 'Konfigurasi berhasil disimpan.' })
       setAccessToken('') // clear setelah simpan
       setInsightsToken('')
+      setAdsToken('')
     } finally { setSaving(false) }
   }
 
@@ -186,6 +190,17 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
               placeholder={initialData?.has_insights_token ? 'Kosongkan jika tidak ingin mengubah token' : 'Page / System User token ber-scope Insights & Ads'} style={inputStyle} />
             <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
               Terpisah dari token WhatsApp. Butuh scope: instagram_manage_insights, pages_read_engagement, read_insights, ads_read.
+            </p>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Token Ads (Marketing API)</label>
+            <input value={adsToken} onChange={e => setAdsToken(e.target.value)} type="password"
+              placeholder={initialData?.has_ads_token ? 'Kosongkan jika tidak ingin mengubah token' : 'System User token ber-scope ads_read'} style={inputStyle} />
+            <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
+              Terpisah dari dua token di atas, dan memang harus. Marketing API <strong>tidak dilayani token Halaman</strong> —
+              ia menuntut token Pengguna atau System User. Butuh scope <code>ads_read</code>,
+              plus <code>business_management</code> bila Ad Account berada di bawah Business Manager.
             </p>
           </div>
 
