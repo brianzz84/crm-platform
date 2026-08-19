@@ -185,11 +185,18 @@ export default function MetaConfigForm({ slug, initialData }: { slug: string; in
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Token Insights / Ads</label>
+            <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>Token Insights (Halaman &amp; Instagram)</label>
             <input value={insightsToken} onChange={e => setInsightsToken(e.target.value)} type="password"
-              placeholder={initialData?.has_insights_token ? 'Kosongkan jika tidak ingin mengubah token' : 'Page / System User token ber-scope Insights & Ads'} style={inputStyle} />
+              placeholder={initialData?.has_insights_token ? 'Kosongkan jika tidak ingin mengubah token' : 'TOKEN HALAMAN — bukan token System User'} style={inputStyle} />
+            {/* Label lama berbunyi "Token Insights / Ads" dan keterangannya menyebut
+                ads_read. Itu menyesatkan: kolom ini menuntut TOKEN HALAMAN, sedangkan
+                Marketing API menuntut token System User. Sudah pernah membuat token
+                iklan tertempel ke sini dan mematikan seluruh analitik Page/IG. */}
             <p style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 4, margin: '4px 0 0' }}>
-              Terpisah dari token WhatsApp. Butuh scope: instagram_manage_insights, pages_read_engagement, read_insights, ads_read.
+              Harus <strong>token Halaman</strong>, bukan token System User — endpoint Page dan Instagram
+              menolak token pengguna dengan galat #190. Butuh scope: pages_read_engagement, read_insights,
+              pages_read_user_content, instagram_basic, instagram_manage_insights.
+              <br />Token iklan <strong>bukan</strong> di sini — pakai kolom di bawah.
             </p>
           </div>
 
