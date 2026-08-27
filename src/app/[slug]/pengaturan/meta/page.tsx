@@ -1,11 +1,11 @@
 import { Metadata } from 'next'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSessionFromHeaders } from '@/lib/auth'
 import { canDo } from '@/constants'
 import { getTenantDb } from '@/lib/tenant'
 import MetaConfigForm from './MetaConfigForm'
 import MetaSocialDiagnostik from './MetaSocialDiagnostik'
-import SnapshotPanel from './SnapshotPanel'
 
 export const metadata: Metadata = { title: 'Integrasi Meta Cloud API' }
 
@@ -102,7 +102,24 @@ export default async function MetaConfigPage({ params }: { params: { slug: strin
       />
 
       <MetaSocialDiagnostik slug={params.slug} />
-      <SnapshotPanel slug={params.slug} />
+
+      {/* Panel snapshot dipindah ke Pengaturan → Penarikan Data. Jadwalnya kini
+          mengatur Meta DAN Google, sehingga menaruhnya di halaman yang namanya
+          menyebut satu integrasi saja menyesatkan. Tautan ini ditinggalkan supaya
+          yang terbiasa mencarinya di sini tidak tersesat. */}
+      <div style={{
+        background: 'white', border: '1px solid var(--c-border)', borderRadius: 'var(--r-lg)',
+        padding: 'var(--sp-5)', marginTop: 'var(--sp-5)',
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--c-primary)' }}>📸 Snapshot pindah</div>
+        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', margin: '6px 0 0', lineHeight: 1.6 }}>
+          Jadwal dan riwayat perekaman kini ada di{' '}
+          <Link href={`/${params.slug}/pengaturan/penarikan`} style={{ color: 'var(--c-secondary)', fontWeight: 700 }}>
+            Pengaturan → Penarikan Data
+          </Link>
+          , bersama penarikan Google Bisnis yang memakai jadwal yang sama.
+        </p>
+      </div>
     </div>
   )
 }

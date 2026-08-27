@@ -1444,6 +1444,41 @@ model SocialContentSnapshot {
   @@map("crm_social_content_snapshots")
 }
 
+/// Sumber penarikan terjadwal. Tetap (ditentukan integrasi kita), bukan taksonomi
+/// yang berbeda tiap rumah sakit — jadi enum di sini aman, tidak seperti
+/// `SimrsVisit.unit` yang dulu keliru dibuat enum.
+enum SumberSnapshot {
+  META
+  GOOGLE
+}
+
+/// Satu baris per sumber per hari — hasil penarikan terjadwal.
+///
+/// KENAPA TABEL SENDIRI, bukan kolom di SocialSnapshotConfig. Config hanya punya
+/// SATU `last_status`, dan sejak Google ikut ditarik, dua sumber akan saling
+/// menimpa — "Meta gagal" dan "Google gagal" jadi tidak bisa dibedakan.
+///
+/// Kunci `tanggal` disengaja dan bukan sekadar riwayat: ia membuat HARI YANG
+/// BOLONG bisa dideteksi. Untuk fitur yang tujuannya laporan triwulan, itu
+/// pertanyaan yang wajib bisa dijawab — laporan bisa tampak wajar padahal ada
+/// sepekan yang tidak pernah tertarik, dan tanpa tabel ini tidak ada cara tahu.
+model SnapshotRun {
+  id          String         @id @default(uuid())
+  tenant_slug String
+  sumber      SumberSnapshot
+  tanggal     DateTime       @db.Date
+
+  status     String // 'ok' | 'sebagian' | 'gagal'
+  pesan      String?
+  durasi_ms  Int      @default(0)
+  dijalankan DateTime @default(now())
+
+  /// Tanpa kolom nullable — lihat catatan yang sama di GbpLocationDaily.
+  @@unique([tenant_slug, sumber, tanggal])
+  @@index([tenant_slug, tanggal])
+  @@map("crm_snapshot_runs")
+}
+
 /// Metrik harian satu lokasi Google Business Profile.
 ///
 /// KENAPA DISIMPAN, sementara dasbor Kanal Publik membaca langsung dari API:

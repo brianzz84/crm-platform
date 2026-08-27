@@ -134,7 +134,9 @@ async function main() {
       if (job.name === 'medsos-snapshot') {
         const { jalankanSnapshot } = await import('@/lib/social-snapshot')
         const { getTenantDb }      = await import('@/lib/tenant')
+        const { catatSnapshotRun } = await import('@/lib/snapshot-run')
 
+        const mulai = Date.now()
         const hasil = await jalankanSnapshot(job.data.tenantSlug)
         const gagal = hasil.filter(h => h.status === 'gagal')
         const ok    = hasil.filter(h => h.status === 'ok')
@@ -153,6 +155,14 @@ async function main() {
           },
         })
 
+        // Ditulis SEBAGAI TAMBAHAN, bukan pengganti: `SocialSnapshotConfig` di atas
+        // masih dipakai panel lama dan tidak diubah perilakunya.
+        await catatSnapshotRun(
+          job.data.tenantSlug, 'META', status as 'ok' | 'sebagian' | 'gagal',
+          hasil.map(h => `${h.kanal}: ${h.pesan}`).join(' | '),
+          Date.now() - mulai,
+        )
+
         job.log(`[MEDSOS_SNAPSHOT] ${status} — ${hasil.map(h => `${h.kanal}=${h.status}`).join(', ')}`)
         if (gagal.length && ok.length === 0) throw new Error(gagal.map(g => g.pesan).join('; '))
         return { status, hasil }
@@ -160,11 +170,21 @@ async function main() {
 
       if (job.name === 'google-snapshot') {
         const { jalankanSnapshotGoogle } = await import('@/lib/google-snapshot')
+        const { catatSnapshotRun }       = await import('@/lib/snapshot-run')
 
+        const mulai = Date.now()
         const hasil = await jalankanSnapshotGoogle(job.data.tenantSlug)
         const gagal = hasil.filter(h => h.status === 'gagal')
         const ok    = hasil.filter(h => h.status === 'ok')
         const status = gagal.length === 0 ? 'ok' : ok.length > 0 ? 'sebagian' : 'gagal'
+
+        // Dicatat sebelum kemungkinan throw di bawah: kegagalan pun harus terlihat
+        // di Pengaturan → Penarikan Data, bukan hanya di log BullMQ.
+        await catatSnapshotRun(
+          job.data.tenantSlug, 'GOOGLE', status,
+          hasil.map(h => `${h.lokasi}: ${h.pesan}`).join(' | '),
+          Date.now() - mulai,
+        )
 
         job.log(`[GOOGLE_SNAPSHOT] ${status} — ${hasil.map(h => `${h.lokasi}: ${h.pesan}`).join(' | ')}`)
 

@@ -87,6 +87,15 @@ const SUB_MENUS = [
     badgeColor: (meta: Meta) => meta.googleBisnisAktif ? '#22C55E' : meta.googleBisnisAda ? '#F59E0B' : '#94A3B8',
   },
   {
+    key:   'penarikan',
+    icon:  '⏱️',
+    label: 'Penarikan Data',
+    desc:  'Jadwal dan riwayat perekaman harian Meta dan Google yang menopang laporan triwulan.',
+    href:  (slug: string) => `/${slug}/pengaturan/penarikan`,
+    badge: () => 'Terjadwal',
+    badgeColor: () => '#0EA5E9',
+  },
+  {
     key:   'eflyer',
     icon:  '🖼️',
     label: 'Integrasi E-Flyer',

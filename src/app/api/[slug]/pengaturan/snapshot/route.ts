@@ -16,6 +16,7 @@ import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { backfillKonten, jalankanSnapshot } from '@/lib/social-snapshot'
 import { tarikDmFacebook } from '@/lib/meta-dm'
+import { ringkasRiwayat } from '@/lib/snapshot-run'
 
 type Ctx = { params: { slug: string } }
 
@@ -27,12 +28,18 @@ async function ambilConfig(slug: string) {
     update: {},
   })
 
-  const [barisHarian, jumlahKonten, terlama] = await Promise.all([
+  const [barisHarian, jumlahKonten, terlama, sumber, gcfg, barisGbp, ulasanGbp] = await Promise.all([
     db.socialAccountDaily.count({ where: { tenant_slug: slug } }),
     db.socialContent.count({ where: { tenant_slug: slug } }),
     db.socialAccountDaily.findFirst({
       where: { tenant_slug: slug }, orderBy: { tanggal: 'asc' }, select: { tanggal: true },
     }),
+    ringkasRiwayat(slug, 30),
+    db.googleConfig.findUnique({
+      where: { tenant_slug: slug }, select: { aktif: true, refresh_token: true },
+    }),
+    db.gbpLocationDaily.count({ where: { tenant_slug: slug } }),
+    db.gbpReview.count({ where: { tenant_slug: slug } }),
   ])
 
   return {
@@ -46,6 +53,13 @@ async function ambilConfig(slug: string) {
     // Sejak kapan riwayat tersimpan — menjawab "laporan triwulan mana yang sudah
     // bisa dibuat otomatis" tanpa admin harus menebak.
     terekamSejak: terlama?.tanggal ?? null,
+
+    // Per sumber: status terakhir dan hari yang bolong. `last_status` di atas
+    // TIDAK dihapus — panel lama masih memakainya — tetapi ia hanya mewakili Meta.
+    sumber,
+    googleTersambung: !!(gcfg?.aktif && gcfg.refresh_token),
+    barisGbp,
+    ulasanGbp,
   }
 }
 
@@ -125,12 +139,22 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // seluruh riwayat ulasan (~33 halaman untuk listing terbesar RKZ).
     if (body?.mode === 'google') {
       const { jalankanSnapshotGoogle } = await import('@/lib/google-snapshot')
-      const g = await jalankanSnapshotGoogle(params.slug)
+      const { catatSnapshotRun }       = await import('@/lib/snapshot-run')
+
+      const mulai  = Date.now()
+      const g      = await jalankanSnapshotGoogle(params.slug)
       const gGagal = g.filter(h => h.status === 'gagal')
       const gOk    = g.filter(h => h.status === 'ok')
+      const gStatus = gGagal.length === 0 ? 'ok' : gOk.length > 0 ? 'sebagian' : 'gagal'
+
+      // Penarikan manual ikut tercatat: kalau tidak, menjalankannya di hari yang
+      // penarikan terjadwalnya gagal akan tetap terlihat sebagai hari bolong.
+      await catatSnapshotRun(params.slug, 'GOOGLE', gStatus,
+        g.map(h => `${h.lokasi}: ${h.pesan}`).join(' | '), Date.now() - mulai)
+
       return NextResponse.json({
         success: gOk.length > 0,
-        status:  gGagal.length === 0 ? 'ok' : gOk.length > 0 ? 'sebagian' : 'gagal',
+        status:  gStatus,
         hasil:   g,
         data:    await ambilConfig(params.slug),
       })
@@ -149,6 +173,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         last_pesan:  hasil.map(h => `${h.kanal}: ${h.pesan}`).join(' | ').slice(0, 500),
       },
     })
+
+    const { catatSnapshotRun } = await import('@/lib/snapshot-run')
+    await catatSnapshotRun(params.slug, 'META', status,
+      hasil.map(h => `${h.kanal}: ${h.pesan}`).join(' | '))
 
     return NextResponse.json({ success: true, status, hasil, data: await ambilConfig(params.slug) })
   } catch (e) {
