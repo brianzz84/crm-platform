@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import LaporanGoogle from './LaporanGoogle'
 
 interface Sel { jumlah: number; jangkauan: number; interaksi: number; suka: number }
 interface BarisAkun {
@@ -55,12 +56,15 @@ const kiri: React.CSSProperties = { textAlign: 'left' }
 const gulir: React.CSSProperties = { overflowX: 'auto', padding: 'var(--sp-4) var(--sp-5)' }
 
 export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mulai: string; selesai: string }) {
-  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE'>('IG')
+  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE'>('IG')
   const [data, setData]   = useState<Laporan | null>(null)
   const [muat, setMuat]   = useState(false)
   const [galat, setGalat] = useState('')
 
   const ambil = useCallback(async () => {
+    // Google dirender komponennya sendiri dengan bentuk data yang berbeda, jadi
+    // permintaan ke endpoint medsos di sini justru akan salah sasaran.
+    if (kanal === 'GOOGLE') { setData(null); setGalat(''); return }
     setMuat(true); setGalat('')
     try {
       const q = new URLSearchParams({ kanal, mulai, selesai })
@@ -89,6 +93,7 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
         <button onClick={() => setKanal('IG')} style={tombol(kanal === 'IG')}>Instagram</button>
         <button onClick={() => setKanal('FB')} style={tombol(kanal === 'FB')}>Facebook</button>
         <button onClick={() => setKanal('YOUTUBE')} style={tombol(kanal === 'YOUTUBE')}>YouTube</button>
+        <button onClick={() => setKanal('GOOGLE')} style={tombol(kanal === 'GOOGLE')}>Google Bisnis</button>
         <span style={{ fontSize: 11, color: 'var(--c-text-faint)', marginLeft: 'auto' }}>
           {mulai} s/d {selesai} · dihitung dari data snapshot
         </span>
@@ -99,7 +104,9 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
       )}
       {muat && <div style={{ color: 'var(--c-text-muted)', fontSize: 13, marginBottom: 12 }}>Menghitung…</div>}
 
-      {data && (
+      {kanal === 'GOOGLE' && <LaporanGoogle slug={slug} mulai={mulai} selesai={selesai} />}
+
+      {data && kanal !== 'GOOGLE' && (
         <>
           {data.belumDitandai > 0 && kanal !== 'YOUTUBE' && (
             <div style={{ background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: 'var(--sp-4)', borderRadius: 'var(--r-md)', fontSize: 13, lineHeight: 1.7, marginBottom: 'var(--sp-5)' }}>

@@ -90,9 +90,9 @@ function keTanggal(d: { year?: number; month?: number; day?: number } | undefine
  * berulang), bukan tujuh panggilan terpisah.
  */
 async function tarikMetrik(
-  token: string, lokasi: string,
+  token: string, lokasi: string, hariKeBelakang = HARI_TARIK,
 ): Promise<{ ok: true; data: Map<string, Record<string, number>> } | { ok: false; pesan: string }> {
-  const a = mundur(HARI_TARIK), b = mundur(1)
+  const a = mundur(hariKeBelakang), b = mundur(1)
   const q = new URLSearchParams()
   for (const m of METRIK) q.append('dailyMetrics', m)
   q.set('dailyRange.startDate.year',  String(a.getUTCFullYear()))
@@ -106,6 +106,17 @@ async function tarikMetrik(
   if (!r.ok) return { ok: false, pesan: pesanErrorGoogle(r) }
 
   const peta = new Map<string, Record<string, number>>()
+
+  // Tanggal yang punya SETIDAKNYA SATU nilai hadir. Google mengirim deretan
+  // tanggal lengkap bahkan untuk periode yang tidak ia layani lagi — di luar
+  // jendela ~18 bulan, seluruh `value` hilang. Tanpa pembedaan ini, backfill akan
+  // menuliskan nol untuk periode yang sebenarnya TIDAK DIKETAHUI, dan laporan
+  // membacanya seolah RKZ tidak ditemukan siapa pun.
+  //
+  // Absennya `value` pada SEBAGIAN metrik tetap berarti nol — itu memang cara
+  // Google menyatakan nol. Yang menandakan "tidak ada data" adalah absen SEMUA.
+  const adaNilai = new Set<string>()
+
   for (const multi of r.json?.multiDailyMetricTimeSeries ?? []) {
     for (const deret of multi?.dailyMetricTimeSeries ?? []) {
       const kolom = KOLOM[deret?.dailyMetric]
@@ -113,14 +124,15 @@ async function tarikMetrik(
       for (const titik of deret?.timeSeries?.datedValues ?? []) {
         const tgl = keTanggal(titik?.date)
         if (!tgl) continue
-        // Nilai 0 datang sebagai field yang HILANG, bukan sebagai 0 — jadi absennya
-        // `value` berarti nol, bukan "tidak diketahui".
+        if (titik?.value != null) adaNilai.add(tgl)
         const baris = peta.get(tgl) ?? {}
         baris[kolom] = Number(titik?.value ?? 0)
         peta.set(tgl, baris)
       }
     }
   }
+
+  for (const tgl of peta.keys()) if (!adaNilai.has(tgl)) peta.delete(tgl)
   return { ok: true, data: peta }
 }
 
@@ -223,6 +235,86 @@ async function tarikUlasan(
   return { baru, diperbarui }
 }
 
+/**
+ * Menuliskan peta tanggal→metrik ke basis data.
+ *
+ * Dipakai bersama oleh tarikan harian dan backfill. `ringkas` adalah keadaan
+ * ulasan SAAT DIAMBIL, bukan nilai historis tanggal itu — pada backfill ia
+ * sengaja TIDAK ditulis, karena menempelkan rata-rata hari ini ke tanggal dua
+ * tahun lalu akan membuat grafik rating tampak datar sempurna, dan itu dusta.
+ */
+async function simpanMetrik(
+  slug: string,
+  l: LokasiGbp,
+  data: Map<string, Record<string, number>>,
+  ringkas: { jumlah: number; rataRata: number } | null,
+): Promise<void> {
+  const db = await getTenantDb(slug)
+  for (const [tgl, nilai] of data) {
+    const isi = {
+      lokasi_judul:            l.judul,
+      tayangan_maps_desktop:   nilai.tayangan_maps_desktop   ?? 0,
+      tayangan_search_desktop: nilai.tayangan_search_desktop ?? 0,
+      tayangan_maps_mobile:    nilai.tayangan_maps_mobile    ?? 0,
+      tayangan_search_mobile:  nilai.tayangan_search_mobile  ?? 0,
+      permintaan_rute:         nilai.permintaan_rute         ?? 0,
+      klik_telepon:            nilai.klik_telepon            ?? 0,
+      klik_website:            nilai.klik_website            ?? 0,
+      diambil_pada:            new Date(),
+      ...(ringkas ? { jumlah_ulasan: ringkas.jumlah, rata_rata: ringkas.rataRata } : {}),
+    }
+    await db.gbpLocationDaily.upsert({
+      where:  { tenant_slug_lokasi_tanggal: { tenant_slug: slug, lokasi: l.nama, tanggal: new Date(tgl) } },
+      update: isi,
+      create: { tenant_slug: slug, lokasi: l.nama, tanggal: new Date(tgl), ...isi },
+    })
+  }
+}
+
+/**
+ * Tarik metrik jauh ke belakang, sekali jalan.
+ *
+ * MENDESAK saat pertama disiapkan, dan alasannya bukan kerapian: jendela ~18
+ * bulan Google BERGESER TIAP HARI. Hari yang jatuh keluar tidak bisa diambil
+ * kembali oleh siapa pun, termasuk Google sendiri. Menunda backfill sebulan
+ * berarti kehilangan sebulan tertua secara permanen.
+ *
+ * Murah: satu panggilan per lokasi menutup seluruh rentang — diuji 27 Agu 2026,
+ * 545 hari dalam satu permintaan, seluruhnya terisi.
+ */
+export async function backfillMetrikGoogle(
+  slug: string, hari = 545,
+): Promise<HasilSnapshotGoogle[]> {
+  const klien = await siapkanKlien(slug)
+  if (!klien.ok) return [{ lokasi: '-', status: 'gagal', pesan: klien.pesan }]
+
+  const lokasi = await daftarLokasi(klien.token, klien.accountId)
+  if (lokasi.length === 0) {
+    return [{ lokasi: '-', status: 'gagal', pesan: 'Tidak ada lokasi terbaca dari akun Google.' }]
+  }
+
+  const hasil: HasilSnapshotGoogle[] = []
+  for (const l of lokasi) {
+    const metrik = await tarikMetrik(klien.token, l.nama, Math.min(Math.max(hari, 30), 600))
+    if (!metrik.ok) {
+      hasil.push({ lokasi: l.judul, status: 'gagal', pesan: `metrik: ${metrik.pesan}` })
+      continue
+    }
+    // Tanpa `ringkas`: baris lama tidak boleh dicap rata-rata rating hari ini.
+    await simpanMetrik(slug, l, metrik.data, null)
+
+    const tgl = [...metrik.data.keys()].sort()
+    hasil.push({
+      lokasi: l.judul,
+      status: metrik.data.size > 0 ? 'ok' : 'gagal',
+      pesan:  metrik.data.size > 0
+        ? `${metrik.data.size} hari (${tgl[0]} s/d ${tgl[tgl.length - 1]})`
+        : 'tidak ada data dalam rentang itu',
+    })
+  }
+  return hasil
+}
+
 /** Snapshot seluruh lokasi satu tenant. */
 export async function jalankanSnapshotGoogle(slug: string): Promise<HasilSnapshotGoogle[]> {
   const klien = await siapkanKlien(slug)
@@ -233,7 +325,6 @@ export async function jalankanSnapshotGoogle(slug: string): Promise<HasilSnapsho
     return [{ lokasi: '-', status: 'gagal', pesan: 'Tidak ada lokasi terbaca dari akun Google.' }]
   }
 
-  const db = await getTenantDb(slug)
   const hasil: HasilSnapshotGoogle[] = []
 
   for (const l of lokasi) {
@@ -247,26 +338,7 @@ export async function jalankanSnapshotGoogle(slug: string): Promise<HasilSnapsho
       catatan.push(`metrik: ${metrik.pesan}`)
     } else {
       const ringkas = await tarikRingkasUlasan(klien.token, klien.accountId, l.nama)
-      for (const [tgl, nilai] of metrik.data) {
-        const isi = {
-          lokasi_judul:            l.judul,
-          tayangan_maps_desktop:   nilai.tayangan_maps_desktop   ?? 0,
-          tayangan_search_desktop: nilai.tayangan_search_desktop ?? 0,
-          tayangan_maps_mobile:    nilai.tayangan_maps_mobile    ?? 0,
-          tayangan_search_mobile:  nilai.tayangan_search_mobile  ?? 0,
-          permintaan_rute:         nilai.permintaan_rute         ?? 0,
-          klik_telepon:            nilai.klik_telepon            ?? 0,
-          klik_website:            nilai.klik_website            ?? 0,
-          jumlah_ulasan:           ringkas.jumlah,
-          rata_rata:               ringkas.rataRata,
-          diambil_pada:            new Date(),
-        }
-        await db.gbpLocationDaily.upsert({
-          where:  { tenant_slug_lokasi_tanggal: { tenant_slug: slug, lokasi: l.nama, tanggal: new Date(tgl) } },
-          update: isi,
-          create: { tenant_slug: slug, lokasi: l.nama, tanggal: new Date(tgl), ...isi },
-        })
-      }
+      await simpanMetrik(slug, l, metrik.data, ringkas)
       catatan.push(`metrik ${metrik.data.size} hari`)
     }
 

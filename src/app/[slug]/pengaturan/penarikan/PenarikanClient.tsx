@@ -222,12 +222,21 @@ export default function PenarikanClient({ slug }: { slug: string }) {
                 Metrik harian tiap lokasi dan seluruh ulasan.
               </div>
             </div>
-            <button
-              onClick={() => jalankan('google', { mode: 'google' }, 'Penarikan Google selesai.')}
-              disabled={!!sibuk || !cfg.googleTersambung}
-              style={{ ...tombol(true, sibuk === 'google'), opacity: cfg.googleTersambung ? 1 : .5 }}>
-              {sibuk === 'google' ? '⏳ Memproses…' : '▶ Jalankan sekarang'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => jalankan('gbackfill', { mode: 'google-backfill', hari: 545 },
+                  'Metrik lama ditarik. Rentangnya kini sepanjang yang masih dilayani Google.')}
+                disabled={!!sibuk || !cfg.googleTersambung}
+                style={{ ...tombol(false, sibuk === 'gbackfill'), opacity: cfg.googleTersambung ? 1 : .5 }}>
+                ⟲ Tarik metrik lama (18 bulan)
+              </button>
+              <button
+                onClick={() => jalankan('google', { mode: 'google' }, 'Penarikan Google selesai.')}
+                disabled={!!sibuk || !cfg.googleTersambung}
+                style={{ ...tombol(true, sibuk === 'google'), opacity: cfg.googleTersambung ? 1 : .5 }}>
+                {sibuk === 'google' ? '⏳ Memproses…' : '▶ Jalankan sekarang'}
+              </button>
+            </div>
           </div>
 
           {!cfg.googleTersambung && (
@@ -252,6 +261,9 @@ export default function PenarikanClient({ slug }: { slug: string }) {
             ulasan baru atau yang disunting. Metrik selalu ditarik ulang 14 hari ke belakang, sebab
             angka Google belum matang saat tanggalnya lewat — tayangan Search dan klik telepon baru
             terisi sekitar hari keenam.
+            {' '}<strong>Tarik metrik lama</strong> cukup dijalankan sekali, dan sebaiknya SEGERA:
+            Google hanya melayani sekitar 18 bulan ke belakang, dan jendela itu bergeser tiap hari —
+            tanggal yang jatuh keluar tidak bisa diambil kembali oleh siapa pun.
           </p>
         </div>
       )}

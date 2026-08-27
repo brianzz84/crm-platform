@@ -137,6 +137,26 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // scheduler: keduanya integrasi berbeda, dan menjalankan Google tidak boleh
     // menuntut Meta ikut sehat. Jalan PERTAMA jauh lebih berat karena menarik
     // seluruh riwayat ulasan (~33 halaman untuk listing terbesar RKZ).
+    // Menarik metrik jauh ke belakang, sekali jalan. Dipisah dari jalan harian
+    // karena mendesak dan sekali-pakai: jendela ~18 bulan Google bergeser tiap
+    // hari, dan hari yang jatuh keluar hilang untuk selamanya.
+    //
+    // TIDAK mencatat SnapshotRun: backfill mengisi tanggal LAMA, sementara
+    // riwayat itu menjawab "apakah penarikan hari X berjalan". Mencatatnya akan
+    // membuat hari ini tampak berhasil padahal tarikan hariannya belum jalan.
+    if (body?.mode === 'google-backfill') {
+      const { backfillMetrikGoogle } = await import('@/lib/google-snapshot')
+      const hari = Math.min(600, Math.max(30, Number(body.hari) || 545))
+      const g = await backfillMetrikGoogle(params.slug, hari)
+      const gOk = g.filter(h => h.status === 'ok')
+      return NextResponse.json({
+        success: gOk.length > 0,
+        status:  gOk.length === g.length ? 'ok' : gOk.length > 0 ? 'sebagian' : 'gagal',
+        hasil:   g,
+        data:    await ambilConfig(params.slug),
+      })
+    }
+
     if (body?.mode === 'google') {
       const { jalankanSnapshotGoogle } = await import('@/lib/google-snapshot')
       const { catatSnapshotRun }       = await import('@/lib/snapshot-run')

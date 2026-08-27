@@ -18,6 +18,25 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const q     = req.nextUrl.searchParams
   const diminta = q.get('kanal') ?? ''
+
+  // Google punya bentuk laporan yang berbeda sama sekali dari kanal medsos —
+  // lokasi, bukan konten — jadi dirakit oleh modulnya sendiri alih-alih dipaksa
+  // masuk ke bentuk LaporanMedsos.
+  if (diminta === 'GOOGLE') {
+    const cekG = periksaRentang(q.get('mulai') ?? '', q.get('selesai') ?? '')
+    if (!cekG.ok) return NextResponse.json({ success: false, error: cekG.pesan }, { status: 400 })
+    try {
+      const { rakitLaporanGoogle } = await import('@/lib/laporan-google')
+      const data = await rakitLaporanGoogle(params.slug, cekG.rentang.mulai, cekG.rentang.selesai)
+      return NextResponse.json({ success: true, kanal: 'GOOGLE', data })
+    } catch (e) {
+      return NextResponse.json(
+        { success: false, error: e instanceof Error ? e.message : 'Server error' },
+        { status: 500 },
+      )
+    }
+  }
+
   const kanal: KanalLaporan =
     (['IG', 'FB', 'YOUTUBE', 'GA4'] as const).includes(diminta as any) ? diminta as KanalLaporan : 'IG'
 
