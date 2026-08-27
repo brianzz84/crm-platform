@@ -119,6 +119,23 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         error: dm.galat, data: await ambilConfig(params.slug) })
     }
 
+    // Snapshot Google dipisah dari snapshot Meta, sejalan dengan pemisahannya di
+    // scheduler: keduanya integrasi berbeda, dan menjalankan Google tidak boleh
+    // menuntut Meta ikut sehat. Jalan PERTAMA jauh lebih berat karena menarik
+    // seluruh riwayat ulasan (~33 halaman untuk listing terbesar RKZ).
+    if (body?.mode === 'google') {
+      const { jalankanSnapshotGoogle } = await import('@/lib/google-snapshot')
+      const g = await jalankanSnapshotGoogle(params.slug)
+      const gGagal = g.filter(h => h.status === 'gagal')
+      const gOk    = g.filter(h => h.status === 'ok')
+      return NextResponse.json({
+        success: gOk.length > 0,
+        status:  gGagal.length === 0 ? 'ok' : gOk.length > 0 ? 'sebagian' : 'gagal',
+        hasil:   g,
+        data:    await ambilConfig(params.slug),
+      })
+    }
+
     const hasil = await jalankanSnapshot(params.slug)
     const gagal = hasil.filter(h => h.status === 'gagal')
     const ok    = hasil.filter(h => h.status === 'ok')
