@@ -208,6 +208,30 @@ export async function runScanner(job: Job) {
         )
         enqueued++
         job.log(`[scanner] Enqueue MEDSOS_SNAPSHOT untuk ${tenant.slug} (jam ${snap.jam_snapshot}:00 WIB)`)
+
+        // Google menumpang jadwal yang sama, tapi berdiri sebagai job TERPISAH:
+        // Meta dan Google adalah dua integrasi yang bisa hidup sendiri-sendiri,
+        // dan menyatukannya membuat kegagalan Meta ikut menahan Google.
+        // Dijalankan hanya bila tenant memang tersambung ke Google.
+        const gcfg = await db.googleConfig.findUnique({
+          where:  { tenant_slug: tenant.slug },
+          select: { aktif: true, refresh_token: true },
+        })
+        if (gcfg?.aktif && gcfg.refresh_token) {
+          await queue.add(
+            'google-snapshot',
+            { type: 'GOOGLE_SNAPSHOT', tenantSlug: tenant.slug },
+            {
+              jobId: `google-snapshot-${tenant.slug}-${today}`,
+              attempts: 3,
+              backoff:  { type: 'exponential', delay: 60_000 },
+              removeOnComplete: 20,
+              removeOnFail:     30,
+            },
+          )
+          enqueued++
+          job.log(`[scanner] Enqueue GOOGLE_SNAPSHOT untuk ${tenant.slug}`)
+        }
       }
 
     } catch (e: any) {

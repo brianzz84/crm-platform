@@ -1444,6 +1444,96 @@ model SocialContentSnapshot {
   @@map("crm_social_content_snapshots")
 }
 
+/// Metrik harian satu lokasi Google Business Profile.
+///
+/// KENAPA DISIMPAN, sementara dasbor Kanal Publik membaca langsung dari API:
+/// Business Performance API hanya melayani ~18 bulan ke belakang. Diuji langsung
+/// 27 Agu 2026 — data terisi penuh pada 17 bulan lalu, KOSONG pada 19 bulan.
+/// Tanpa rekaman ini, pembandingan tahun-ke-tahun mustahil dibuat.
+///
+/// Angka Google direvisi beberapa hari setelah tanggalnya, jadi snapshot menarik
+/// ulang beberapa hari terakhir tiap malam dan meng-upsert — bukan menulis sekali
+/// lalu dianggap final.
+///
+/// Metrik yang TIDAK dibuatkan kolom: BUSINESS_CONVERSATIONS, BUSINESS_BOOKINGS,
+/// dan BUSINESS_FOOD_ORDERS. Ketiganya dilayani API tapi selalu 0 untuk rumah
+/// sakit — kolom yang selamanya nol hanya menyesatkan pembaca laporan.
+model GbpLocationDaily {
+  id           String   @id @default(uuid())
+  tenant_slug  String
+  lokasi       String // "locations/123"
+  lokasi_judul String // didenormalisasi: laporan lama harus tetap terbaca
+  tanggal      DateTime @db.Date
+
+  tayangan_maps_desktop   Int @default(0)
+  tayangan_search_desktop Int @default(0)
+  tayangan_maps_mobile    Int @default(0)
+  tayangan_search_mobile  Int @default(0)
+  permintaan_rute         Int @default(0)
+  klik_telepon            Int @default(0)
+  klik_website            Int @default(0)
+
+  /// Keduanya ikut gratis pada respons ulasan mana pun, jadi direkam sekalian —
+  /// nilainya adalah keadaan SAAT DIAMBIL, bukan nilai historis tanggal itu.
+  jumlah_ulasan Int   @default(0)
+  rata_rata     Float @default(0)
+
+  diambil_pada DateTime @default(now())
+
+  /// Tanpa kolom nullable — Postgres menganggap tiap NULL berbeda, sehingga unique
+  /// yang mengandungnya diam-diam berhenti mencegah duplikat.
+  @@unique([tenant_slug, lokasi, tanggal])
+  @@index([tenant_slug, tanggal])
+  @@map("crm_gbp_location_daily")
+}
+
+/// Ulasan Google yang direkam untuk laporan triwulan dan evaluasi.
+///
+/// Ulasan sendiri PERMANEN di Google dan bisa diambil ulang kapan pun lewat
+/// `GET .../reviews/{reviewId}` (terverifikasi 27 Agu 2026), jadi secara teknis
+/// `review_id` saja sudah cukup sebagai pegangan. Teksnya tetap disimpan atas
+/// keputusan sadar user: dipakai mengangkat ulasan tertentu untuk evaluasi, dan
+/// menghitung ulang dari API tiap kali laporan disusun berarti ~33 panggilan
+/// berpaginasi per lokasi yang terus bertambah tiap kuartal.
+///
+/// BATAS YANG MENGIKAT: konten ini TIDAK BOLEH ditayangkan ulang ke luar CRM —
+/// mis. menampilkan ulasan Google di website rumah sakit. Kebijakan Google
+/// melarang pemakaian "outside of your Business Profile project" tanpa tafsir
+/// yang menyelamatkan.
+model GbpReview {
+  id           String   @id @default(uuid())
+  tenant_slug  String
+  lokasi       String
+  lokasi_judul String
+  review_id    String
+
+  bintang      Int
+  pengulas     String
+  foto_pengulas String?
+  teks         String? // kosong bila pengulas hanya memberi bintang (~16% kasus)
+  terjemahan   String? // bagian setelah "(Translated by Google)", dipisah saat tarik
+  /// URL thumbnail dari Google. BERUMUR PENDEK — disegarkan tiap snapshot, sama
+  /// seperti `SocialContent.sampul_url`. Jangan diperlakukan sebagai tautan tetap.
+  foto         String[] @default([])
+
+  dibuat_pada   DateTime
+  diubah_pada   DateTime
+  balasan_teks  String?
+  balasan_pada  DateTime?
+
+  /// Milik CRM, bukan konten Google — dipakai mengangkat ulasan untuk evaluasi.
+  /// Tidak pernah dikirim ke Google dan tidak ikut terhapus saat ulasan disegarkan.
+  ditandai String? // mis. unit yang perlu menindaklanjuti
+  catatan  String?
+
+  diambil_pada DateTime @default(now())
+
+  @@unique([tenant_slug, review_id])
+  @@index([tenant_slug, lokasi, dibuat_pada])
+  @@index([tenant_slug, bintang])
+  @@map("crm_gbp_reviews")
+}
+
 /// Master sifat konten per tenant — Edukasi, Info Layanan, Momen & Event, dst.
 ///
 /// Sengaja TABEL, bukan enum. `SimrsVisit.unit` dulunya enum dan mengubahnya jadi

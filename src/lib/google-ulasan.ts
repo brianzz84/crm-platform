@@ -80,6 +80,9 @@ export interface UlasanGbp {
   teks:         string
   terjemahan:   string | null
   dibuatPada:   string
+  /// Berubah saat pengulas menyunting ulasannya ATAU saat balasan diubah. Dipakai
+  /// snapshot untuk berhenti menarik begitu sampai pada ulasan yang tak berubah.
+  diubahPada:   string
   balasan:      { teks: string; diperbaruiPada: string } | null
   fotoUlasan:   string[]
 }
@@ -173,17 +176,18 @@ export async function ringkasSemuaLokasi(
 
 /** Bentuk mentah satu ulasan dari API v4 — semua opsional, karena Google memang
  *  menghilangkan field yang kosong (ulasan tanpa teks tidak punya `comment`). */
-interface UlasanMentah {
+export interface UlasanMentah {
   reviewId?: string
   starRating?: string
   comment?: string
   createTime?: string
+  updateTime?: string
   reviewer?: { displayName?: string; profilePhotoUrl?: string }
   reviewReply?: { comment?: string; updateTime?: string }
   reviewMediaItems?: { thumbnailUrl?: string }[]
 }
 
-function petakanUlasan(u: UlasanMentah): UlasanGbp {
+export function petakanUlasan(u: UlasanMentah): UlasanGbp {
   const { asli, terjemahan } = pisahTerjemahan(u.comment)
   return {
     reviewId:     u.reviewId ?? '',
@@ -193,6 +197,7 @@ function petakanUlasan(u: UlasanMentah): UlasanGbp {
     teks:         asli,
     terjemahan,
     dibuatPada:   u.createTime ?? '',
+    diubahPada:   u.updateTime ?? u.createTime ?? '',
     balasan:      u.reviewReply
       ? { teks: u.reviewReply.comment ?? '', diperbaruiPada: u.reviewReply.updateTime ?? '' }
       : null,

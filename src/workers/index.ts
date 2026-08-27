@@ -158,6 +158,22 @@ async function main() {
         return { status, hasil }
       }
 
+      if (job.name === 'google-snapshot') {
+        const { jalankanSnapshotGoogle } = await import('@/lib/google-snapshot')
+
+        const hasil = await jalankanSnapshotGoogle(job.data.tenantSlug)
+        const gagal = hasil.filter(h => h.status === 'gagal')
+        const ok    = hasil.filter(h => h.status === 'ok')
+        const status = gagal.length === 0 ? 'ok' : ok.length > 0 ? 'sebagian' : 'gagal'
+
+        job.log(`[GOOGLE_SNAPSHOT] ${status} — ${hasil.map(h => `${h.lokasi}: ${h.pesan}`).join(' | ')}`)
+
+        // Dilempar hanya bila SELURUH lokasi gagal. Satu lokasi bermasalah tidak
+        // boleh membuat enam lokasi lain ditarik ulang percuma saat retry.
+        if (gagal.length && ok.length === 0) throw new Error(gagal.map(g => g.pesan).join('; '))
+        return { status, hasil }
+      }
+
       const { processSapaanJob } = await import('./sapaan.worker') as any
       return processSapaanJob(job)
     },
