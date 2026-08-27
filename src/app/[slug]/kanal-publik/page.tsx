@@ -31,6 +31,10 @@ export default async function KanalPublikPage({ params }: { params: { slug: stri
         punyaYoutube: true,   // channel diambil dari akun tersambung bila ID tidak diisi
         punyaIg:      punyaTokenMeta && !!meta?.ig_business_id,
         punyaFb:      punyaTokenMeta && !!meta?.page_id,
+        // Dihitung di server: klien tidak pernah menerima daftar role, jadi
+        // kemampuan membalas dikirim sebagai satu boolean yang sudah diputuskan.
+        // Ini hanya menyembunyikan tombol — penjaga sebenarnya ada di route POST.
+        bisaBalas:    canDo(session.roles, 'balasUlasan'),
       }}
     />
   )

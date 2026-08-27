@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import KontenTab from './KontenTab'
 import LaporanTab from './LaporanTab'
+import GoogleBisnisTab from './GoogleBisnisTab'
 
 /* ─── Tipe (cerminan bentuk dari src/lib/google-kanal.ts) ─── */
 interface TotalYouTube { tayangan: number; menitDitonton: number; retensiPersen: number; subscriberNaik: number; subscriberTurun: number }
@@ -565,7 +566,7 @@ export default function KanalPublikClient({
   slug: string
   status: {
     tersambung: boolean; akun: string | null; punyaGa4: boolean; punyaYoutube: boolean
-    punyaIg: boolean; punyaFb: boolean
+    punyaIg: boolean; punyaFb: boolean; bisaBalas: boolean
   }
 }) {
   const [tab, setTab] = useState<Tab>('website')
@@ -1007,16 +1008,20 @@ export default function KanalPublikClient({
           {tab === 'konten'  && <KontenTab slug={slug} />}
           {tab === 'laporan' && <LaporanTab slug={slug} mulai={mulai} selesai={selesai} />}
 
-          {/* ── Google Bisnis ── */}
+          {/* ── Google Bisnis ──
+              Tidak memakai rentang tanggal seperti tab lain: ulasan bukan deret
+              harian, dan Google mengurutkannya sendiri lewat orderBy. */}
           {tab === 'google-bisnis' && (
-            <Pesan nada="info">
-              <strong>Menunggu persetujuan Google.</strong> Akses Google Business Profile API masih ditinjau,
-              sehingga kuota project masih 0 permintaan/menit. Status persisnya bisa dilihat lewat tombol{' '}
-              <strong>Jalankan Probe</strong> di{' '}
-              <Link href={`/${slug}/pengaturan/google-bisnis`} style={{ color: 'var(--c-secondary)', fontWeight: 600 }}>
-                Pengaturan → Integrasi Google Business
-              </Link>. Begitu disetujui, tab ini diisi performa lokasi, status listing, dan ulasan pasien.
-            </Pesan>
+            status.tersambung
+              ? <GoogleBisnisTab slug={slug} bisaBalas={status.bisaBalas} />
+              : (
+                <Pesan nada="info">
+                  Belum tersambung ke Google. Buka{' '}
+                  <Link href={`/${slug}/pengaturan/google-bisnis`} style={{ color: 'var(--c-secondary)', fontWeight: 600 }}>
+                    Pengaturan → Integrasi Google Business
+                  </Link>{' '}lalu klik <strong>Hubungkan dengan Google</strong>.
+                </Pesan>
+              )
           )}
       </>
     </div>

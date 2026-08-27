@@ -153,6 +153,11 @@ export const ROLE_CAN = {
   viewAllInbox:       ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR'],
   assignConversation: ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR'],
   replyChat:          ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR', 'AGEN'],
+  // Membalas ulasan Google. SENGAJA lebih sempit dari replyChat: balasan ini
+  // tayang publik di Maps dan Search atas nama rumah sakit, beda kelas risikonya
+  // dengan membalas chat pribadi — jadi AGEN dan SUPERVISOR tidak termasuk.
+  // ADMIN_MEDSOS akan ditambahkan di sini saat role itu dibuat.
+  balasUlasan:        ['SUPER_ADMIN', 'ADMIN_IT'],
 } as const
 
 export type FeatureKey = keyof typeof ROLE_CAN

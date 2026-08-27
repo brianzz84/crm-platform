@@ -135,6 +135,50 @@ export async function googlePost(url: string, accessToken: string, body: unknown
   }
 }
 
+/**
+ * PUT satu endpoint Google. Dipakai membalas ulasan.
+ *
+ * Perhatikan sifatnya: balasan ulasan bersifat UPSERT — satu ulasan hanya punya
+ * satu balasan, dan PUT kedua MENIMPA yang pertama, bukan menambah. Tidak ada
+ * riwayat balasan di sisi Google, jadi teks lama hilang tanpa jejak.
+ */
+export async function googlePut(url: string, accessToken: string, body: unknown): Promise<HasilGoogle> {
+  try {
+    const res = await fetch(url, {
+      method:  'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body ?? {}),
+      signal:  AbortSignal.timeout(15_000),
+    })
+    const json = await res.json().catch(() => ({}))
+    return { ok: res.ok, status: res.status, json }
+  } catch (e) {
+    const pesan = e instanceof Error ? e.message : 'network error'
+    return { ok: false, status: 0, json: { error: { message: pesan } } }
+  }
+}
+
+/**
+ * DELETE satu endpoint Google. Dipakai menarik balasan ulasan.
+ *
+ * Respons suksesnya berbadan kosong, bukan JSON — karena itu `json()` di sini
+ * dibiarkan gagal diam-diam alih-alih dianggap error.
+ */
+export async function googleDelete(url: string, accessToken: string): Promise<HasilGoogle> {
+  try {
+    const res = await fetch(url, {
+      method:  'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal:  AbortSignal.timeout(15_000),
+    })
+    const json = await res.json().catch(() => ({}))
+    return { ok: res.ok, status: res.status, json }
+  } catch (e) {
+    const pesan = e instanceof Error ? e.message : 'network error'
+    return { ok: false, status: 0, json: { error: { message: pesan } } }
+  }
+}
+
 /** Pesan error Google yang ramah dibaca admin. */
 export function pesanErrorGoogle(r: HasilGoogle): string {
   const e = r.json?.error
