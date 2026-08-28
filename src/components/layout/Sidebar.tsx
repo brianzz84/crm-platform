@@ -44,16 +44,21 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
       title: 'Menu Utama',
       items: [
         { href: `${base}/dashboard`, label: 'Dashboard',   icon: '📊' },
-        { href: `${base}/pasien`,    label: 'Data Pasien', icon: '👥' },
+        // Dulu tanpa penjaga, sehingga tampil untuk SEMUA peran padahal API-nya
+        // menuntut viewPatients — AGEN dan SUPERVISOR pun hanya mendapat halaman
+        // kosong. Ditutup saat ADMIN_MEDSOS dibuat: membiarkan menu yang pasti
+        // gagal dibuka lebih buruk daripada tidak menampilkannya.
+        { href: `${base}/pasien`,    label: 'Data Pasien', icon: '👥', feature: 'viewPatients' },
         { href: `${base}/segmen`,    label: 'Segmentasi',  icon: '🎯', feature: 'manageSegments' },
         { href: `${base}/ai-partner`, label: 'AI Partner', icon: '🤖', feature: 'manageSegments' },
         { href: `${base}/broadcast`, label: 'Broadcast',   icon: '📢', feature: 'manageBroadcast' },
         { href: `${base}/inbox`,     label: 'Inbox',       icon: '💬', feature: 'replyChat', badge: inboxUnread || undefined },
         // Audiens ANONIM (website, YouTube, profil Google) — berbeda sifat dari
-        // menu lain yang seluruhnya tentang orang teridentifikasi. Sementara
-        // memakai izin manageBroadcast karena audiensnya sama-sama tim marketing;
-        // hak akses tersendiri akan ditata belakangan.
-        { href: `${base}/kanal-publik`, label: 'Kanal Publik', icon: '📣', feature: 'manageBroadcast' },
+        // menu lain yang seluruhnya tentang orang teridentifikasi. Kini punya izin
+        // sendiri: dulu menumpang manageBroadcast, yang juga menjaga pengiriman
+        // WhatsApp massal — sehingga admin medsos tak bisa diberi akses ke sini
+        // tanpa sekalian diberi kemampuan menyiarkan ke ribuan pasien.
+        { href: `${base}/kanal-publik`, label: 'Kanal Publik', icon: '📣', feature: 'viewKanalPublik' },
         // Iklan berdiri sendiri, tidak di dalam Kanal Publik: yang diukur di sini
         // justru orang yang TERIDENTIFIKASI — dari klik iklan sampai kunjungan
         // yang tercatat di SIMRS. Sifatnya berlawanan dengan Kanal Publik yang

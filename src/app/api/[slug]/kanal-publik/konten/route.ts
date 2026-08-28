@@ -9,7 +9,7 @@
  * dan hanya di sanalah konten dari seluruh periode berkumpul — bukan cuma jendela
  * yang kebetulan sedang dilihat.
  *
- * Guard: manageBroadcast — sama dengan halaman Kanal Publik.
+ * Guard: viewKanalPublik — sama dengan halaman Kanal Publik.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
@@ -21,7 +21,7 @@ type Ctx = { params: { slug: string } }
 const PER_HAL = 40
 
 export async function GET(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
+  const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
   const q       = req.nextUrl.searchParams
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
+  const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
   try {

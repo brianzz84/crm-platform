@@ -133,6 +133,7 @@ export const USER_ROLE = {
   ADMIN_OPS:   'ADMIN_OPS',
   SUPERVISOR:  'SUPERVISOR',
   AGEN:        'AGEN',
+  ADMIN_MEDSOS: 'ADMIN_MEDSOS',
 } as const
 
 // Hak akses per fitur — gunakan untuk guard di API route dan UI
@@ -148,16 +149,31 @@ export const ROLE_CAN = {
   manageTagRules:     ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   manageSegments:     ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   manageBroadcast:    ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
+  /**
+   * Halaman Kanal Publik dan seluruh API-nya.
+   *
+   * DIPISAH dari `manageBroadcast` saat ADMIN_MEDSOS dibuat, dan pemisahan ini
+   * bukan kerapian: `manageBroadcast` juga menjaga `broadcast/[id]/send`, yang
+   * MENGIRIM WhatsApp massal ke segmen pasien. Memberikannya kepada admin medsos
+   * — hanya supaya ia bisa membuka Kanal Publik — berarti sekalian memberi
+   * kemampuan menyiarkan pesan ke ribuan pasien.
+   *
+   * Ketiga peran lama tetap ada di sini, jadi tidak seorang pun kehilangan akses
+   * yang sudah dimilikinya.
+   */
+  viewKanalPublik:    ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'ADMIN_MEDSOS'],
   manageSapaan:       ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   manageKegiatan:     ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
-  viewAllInbox:       ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR'],
+  // ADMIN_MEDSOS ikut melihat SELURUH percakapan, termasuk WhatsApp pasien —
+  // keputusan sadar user 27 Agu 2026 ("semua yg ada didalamnya bisa diakses
+  // termasuk whatsapp"), setelah diberitahu bahwa Inbox memuat data pasien.
+  viewAllInbox:       ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR', 'ADMIN_MEDSOS'],
   assignConversation: ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR'],
-  replyChat:          ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR', 'AGEN'],
+  replyChat:          ['SUPER_ADMIN', 'ADMIN_IT', 'SUPERVISOR', 'AGEN', 'ADMIN_MEDSOS'],
   // Membalas ulasan Google. SENGAJA lebih sempit dari replyChat: balasan ini
   // tayang publik di Maps dan Search atas nama rumah sakit, beda kelas risikonya
   // dengan membalas chat pribadi — jadi AGEN dan SUPERVISOR tidak termasuk.
-  // ADMIN_MEDSOS akan ditambahkan di sini saat role itu dibuat.
-  balasUlasan:        ['SUPER_ADMIN', 'ADMIN_IT'],
+  balasUlasan:        ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_MEDSOS'],
 } as const
 
 export type FeatureKey = keyof typeof ROLE_CAN

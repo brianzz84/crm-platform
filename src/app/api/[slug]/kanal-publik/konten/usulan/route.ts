@@ -24,7 +24,7 @@ type Ctx = { params: { slug: string } }
 const MAKS_SEKALI = 40
 
 export async function POST(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
+  const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
   try {

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Kanal Publik' }
 export default async function KanalPublikPage({ params }: { params: { slug: string } }) {
   const session = getSessionFromHeaders()
   if (!session) redirect('/login')
-  if (!canDo(session.roles, 'manageBroadcast')) redirect(`/${params.slug}/dashboard`)
+  if (!canDo(session.roles, 'viewKanalPublik')) redirect(`/${params.slug}/dashboard`)
 
   const db = await getTenantDb(params.slug)
   const [cfg, meta] = await Promise.all([

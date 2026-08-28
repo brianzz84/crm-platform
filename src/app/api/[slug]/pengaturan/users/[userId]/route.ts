@@ -7,7 +7,7 @@ import { z } from 'zod'
 type Ctx = { params: { slug: string; userId: string } }
 
 const UpdateSchema = z.object({
-  roles: z.array(z.enum(['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'SUPERVISOR', 'AGEN'])).min(1).optional(),
+  roles: z.array(z.enum(['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'SUPERVISOR', 'AGEN', 'ADMIN_MEDSOS'])).min(1).optional(),
   aktif: z.boolean().optional(),
   name:  z.string().min(2).optional(),
 })

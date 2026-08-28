@@ -1230,6 +1230,10 @@ enum UserRole {
   ADMIN_OPS
   SUPERVISOR
   AGEN
+  /// Admin media sosial. Hanya Kanal Publik dan Inbox — TANPA broadcast, segmen,
+  /// maupun Data Pasien. Sengaja tidak diberi `manageBroadcast`, yang juga menjaga
+  /// pengiriman WhatsApp massal ke segmen pasien.
+  ADMIN_MEDSOS
 }
 
 enum TagSource {

@@ -15,7 +15,7 @@ import { daftarLokasi, ringkasSemuaLokasi, siapkanKlien } from '@/lib/google-ula
 type Ctx = { params: { slug: string } }
 
 export async function GET(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
+  const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
   try {

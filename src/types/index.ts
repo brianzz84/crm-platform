@@ -57,7 +57,7 @@ export type ConversationStatus = 'open' | 'resolved' | 'pending'
  */
 export type SimrsUnit = string
 
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN_IT' | 'ADMIN_OPS' | 'SUPERVISOR' | 'AGEN'
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN_IT' | 'ADMIN_OPS' | 'SUPERVISOR' | 'AGEN' | 'ADMIN_MEDSOS'
 
 export type TenantPlan = 'TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE'
 

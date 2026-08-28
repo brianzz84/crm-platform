@@ -26,7 +26,7 @@ const KANAL = ['ga4', 'youtube', 'instagram', 'facebook'] as const
 type Kanal = typeof KANAL[number]
 
 export async function GET(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
+  const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
   const q      = req.nextUrl.searchParams

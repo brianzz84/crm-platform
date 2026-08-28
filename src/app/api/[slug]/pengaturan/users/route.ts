@@ -8,7 +8,7 @@ import { z } from 'zod'
 const InviteSchema = z.object({
   name:  z.string().min(2),
   email: z.string().email(),
-  roles: z.array(z.enum(['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'SUPERVISOR', 'AGEN'])).min(1),
+  roles: z.array(z.enum(['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'SUPERVISOR', 'AGEN', 'ADMIN_MEDSOS'])).min(1),
 })
 
 // GET: list semua user dalam tenant

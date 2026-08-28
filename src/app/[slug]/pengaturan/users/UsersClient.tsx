@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-type UserRole = 'SUPER_ADMIN' | 'ADMIN_IT' | 'ADMIN_OPS' | 'SUPERVISOR' | 'AGEN'
+type UserRole = 'SUPER_ADMIN' | 'ADMIN_IT' | 'ADMIN_OPS' | 'SUPERVISOR' | 'AGEN' | 'ADMIN_MEDSOS'
 
 interface AppUser {
   id: string; name: string; email: string
@@ -17,6 +17,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN_OPS:   'Admin Ops',
   SUPERVISOR:  'Supervisor',
   AGEN:        'Agen',
+  ADMIN_MEDSOS: 'Admin Medsos',
 }
 
 const ROLE_COLORS: Record<UserRole, { bg: string; color: string }> = {
@@ -25,9 +26,10 @@ const ROLE_COLORS: Record<UserRole, { bg: string; color: string }> = {
   ADMIN_OPS:   { bg: '#E0F4F4', color: '#006E89' },
   SUPERVISOR:  { bg: '#FEF3C7', color: '#92400E' },
   AGEN:        { bg: '#F3F4F6', color: '#374151' },
+  ADMIN_MEDSOS: { bg: '#FCE7F3', color: '#BE185D' },
 }
 
-const ALL_ROLES: UserRole[] = ['ADMIN_IT', 'ADMIN_OPS', 'SUPERVISOR', 'AGEN']
+const ALL_ROLES: UserRole[] = ['ADMIN_IT', 'ADMIN_OPS', 'ADMIN_MEDSOS', 'SUPERVISOR', 'AGEN']
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -382,6 +384,7 @@ export default function UsersClient({
                             ADMIN_OPS:   'Import, tag, segmen, broadcast, sapaan terjadwal',
                             SUPERVISOR:  'Monitor semua inbox & assign percakapan',
                             AGEN:        'Balas chat pasien di inbox yang di-assign',
+                            ADMIN_MEDSOS: 'Kanal Publik + seluruh Inbox (termasuk WhatsApp). Tanpa broadcast & data pasien',
                           } as Record<string, string>)[role]}
                         </div>
                       </div>

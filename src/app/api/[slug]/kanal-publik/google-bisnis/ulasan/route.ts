@@ -4,7 +4,7 @@
  * POST /api/[slug]/kanal-publik/google-bisnis/ulasan
  *        { lokasi, reviewId, teks }   → kirim balasan
  *
- * Membaca memakai izin yang sama dengan seluruh Kanal Publik (`manageBroadcast`),
+ * Membaca memakai izin yang sama dengan seluruh Kanal Publik (`viewKanalPublik`),
  * tetapi MEMBALAS memakai `balasUlasan` yang lebih sempit — balasan tayang publik
  * di Maps dan Search atas nama rumah sakit.
  */
@@ -28,7 +28,7 @@ const POLA_REVIEW = /^[A-Za-z0-9_-]{1,255}$/
 const URUTAN: readonly UrutanUlasan[] = ['terbaru', 'terburuk', 'terbaik']
 
 export async function GET(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageBroadcast')
+  const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
   const q      = req.nextUrl.searchParams
