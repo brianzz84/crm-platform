@@ -21,8 +21,9 @@ interface BarisBulan {
   perLokasi: BarisBulanLokasi[]
 }
 interface BarisLokasi {
-  lokasi: string; judul: string; tayangan: number; permintaanRute: number
-  klikTelepon: number; klikWebsite: number; jumlahUlasan: number; rataRata: number | null
+  lokasi: string; judul: string; tayanganSearch: number; tayanganMaps: number
+  permintaanRute: number; klikTelepon: number; klikWebsite: number
+  ulasanPeriode: number; rataRataPeriode: number | null
 }
 interface BarisUlasanBulan {
   bulan: string; jumlah: number; rataRata: number; dibalas: number
@@ -293,33 +294,35 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
         <div style={kartu}>
           <div style={judulKartu}>Performa per Profil Bisnis</div>
           <div style={gulir}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
               <thead>
                 <tr>
                   <th style={{ ...th, ...kiri }}>Profil</th>
-                  <th style={th}>Tayangan</th>
+                  <th style={th}>Tayangan Search</th>
+                  <th style={th}>Tayangan Maps</th>
                   <th style={th}>Permintaan Rute</th>
                   <th style={th}>Klik Telepon</th>
                   <th style={th}>Klik Website</th>
-                  <th style={th}>Ulasan</th>
-                  <th style={th}>Rating</th>
+                  <th style={th}>Ulasan Baru</th>
+                  <th style={th}>Rata-rata</th>
                 </tr>
               </thead>
               <tbody>
                 {data.perLokasi.map(l => (
                   <tr key={l.lokasi}>
                     <td style={{ ...td, ...kiri, fontWeight: 700 }}>{l.judul}</td>
-                    <td style={td}>{angka(l.tayangan)}</td>
+                    <td style={td}>{angka(l.tayanganSearch)}</td>
+                    <td style={td}>{angka(l.tayanganMaps)}</td>
                     <td style={td}>{angka(l.permintaanRute)}</td>
                     <td style={td}>{angka(l.klikTelepon)}</td>
                     <td style={td}>{angka(l.klikWebsite)}</td>
-                    <td style={td}>{angka(l.jumlahUlasan)}</td>
+                    <td style={td}>{angka(l.ulasanPeriode)}</td>
                     <td style={{
                       ...td, fontWeight: 800,
-                      color: l.rataRata == null ? 'var(--c-text-muted)'
-                        : l.rataRata < 3.5 ? '#B91C1C' : l.rataRata < 4 ? '#B45309' : '#16A34A',
+                      color: l.rataRataPeriode == null ? 'var(--c-text-muted)'
+                        : l.rataRataPeriode < 3.5 ? '#B91C1C' : l.rataRataPeriode < 4 ? '#B45309' : '#16A34A',
                     }}>
-                      {l.rataRata != null ? l.rataRata.toFixed(2) : '—'}
+                      {l.rataRataPeriode != null ? l.rataRataPeriode.toFixed(2) : '—'}
                     </td>
                   </tr>
                 ))}
@@ -327,10 +330,11 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
             </table>
           </div>
           <div style={{ padding: '0 var(--sp-5) var(--sp-4)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
-            Jumlah ulasan dan rating adalah keadaan terakhir, bukan penjumlahan harian — keduanya
-            nilai berjalan, bukan kejadian per hari. Perbandingan tujuh profil berdampingan seperti
-            ini tidak tersedia di Google Business Profile Manager, yang hanya menampilkan satu
-            lokasi per layar.
+            Seluruh kolom berlingkup periode yang dipilih, termasuk ulasan dan rata-ratanya —
+            jadi baris ini tidak mencampur jumlah periode dengan keadaan hari ini. Rating
+            keseluruhan tiap listing (akumulasi sejak listing dibuat) ada di kartu profil pada tab
+            Google Bisnis, bukan di sini. Perbandingan tujuh profil berdampingan seperti ini tidak
+            tersedia di Google Business Profile Manager, yang hanya menampilkan satu lokasi per layar.
           </div>
         </div>
       )}

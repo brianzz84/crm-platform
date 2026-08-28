@@ -48,12 +48,28 @@ export interface BarisBulan {
 export interface BarisLokasi {
   lokasi:         string
   judul:          string
-  tayangan:       number
+  /** Dipisah Search/Maps agar sebangun dengan tabel bulanan — sebelumnya tabel
+   *  ini menggabungkannya, sehingga konsep yang sama tampil dua cara berbeda. */
+  tayanganSearch: number
+  tayanganMaps:   number
   permintaanRute: number
   klikTelepon:    number
   klikWebsite:    number
-  jumlahUlasan:   number
-  rataRata:       number | null
+  /**
+   * Ulasan yang MASUK pada periode, dihitung dari tabel ulasan — bukan dari
+   * kolom `jumlah_ulasan` di tabel metrik harian.
+   *
+   * Kolom itu hanya diisi snapshot harian, tidak oleh backfill (sengaja: menulis
+   * rating hari ini ke tanggal dua tahun lalu adalah dusta). Akibatnya 3.674 dari
+   * 3.758 baris kosong, dan tabel ini melaporkan "0 ulasan, rating —" untuk
+   * SELURUH profil pada periode mana pun sebelum 13 Agu 2026. Tabel ulasan punya
+   * riwayat lengkap sejak 2011, jadi di situlah sumber yang benar.
+   *
+   * Sekalian membuat baris ini utuh secara makna: seluruh kolomnya kini
+   * berlingkup periode, bukan campuran jumlah periode dan keadaan hari ini.
+   */
+  ulasanPeriode:  number
+  rataRataPeriode: number | null
 }
 
 export interface BarisUlasanBulan {
@@ -145,7 +161,7 @@ export async function rakitLaporanGoogle(
     }),
     db.gbpReview.findMany({
       where:   { tenant_slug: slug, dibuat_pada: { gte: dariTgl, lte: sampaiTgl } },
-      select:  { bintang: true, dibuat_pada: true, balasan_teks: true, balasan_pada: true },
+      select:  { bintang: true, dibuat_pada: true, balasan_teks: true, balasan_pada: true, lokasi: true },
       orderBy: { dibuat_pada: 'asc' },
     }),
     db.gbpLocationDaily.findFirst({
@@ -219,31 +235,37 @@ export async function rakitLaporanGoogle(
   }
 
   // ── Rekap per lokasi ───────────────────────────────────────────────────
-  // Jumlah ulasan dan rating diambil dari baris TERBARU tiap lokasi, bukan
-  // dijumlahkan: keduanya nilai keadaan saat diambil, bukan kejadian harian.
-  // Menjumlahkannya akan menghasilkan angka yang berlipat sebanyak jumlah hari.
+  // Metrik dijumlahkan dari baris harian; ulasan dihitung dari tabel ulasan.
+  // Keduanya berlingkup periode yang sama, sehingga satu baris di tabel ini
+  // tidak lagi mencampur jumlah periode dengan keadaan hari ini.
+  const ulasanPerLokasi = new Map<string, { jumlah: number; total: number }>()
+  for (const u of ulasan) {
+    const s = ulasanPerLokasi.get(u.lokasi) ?? { jumlah: 0, total: 0 }
+    s.jumlah++
+    s.total += u.bintang
+    ulasanPerLokasi.set(u.lokasi, s)
+  }
+
   const petaLokasi = new Map<string, BarisLokasi>()
-  const terbaruLokasi = new Map<string, Date>()
   for (const h of harian) {
     const baris = petaLokasi.get(h.lokasi) ?? {
       lokasi: h.lokasi, judul: h.lokasi_judul,
-      tayangan: 0, permintaanRute: 0, klikTelepon: 0, klikWebsite: 0,
-      jumlahUlasan: 0, rataRata: null,
+      tayanganSearch: 0, tayanganMaps: 0, permintaanRute: 0, klikTelepon: 0, klikWebsite: 0,
+      ulasanPeriode: 0, rataRataPeriode: null,
     }
     baris.judul = h.lokasi_judul
-    baris.tayangan += h.tayangan_search_desktop + h.tayangan_search_mobile
-                    + h.tayangan_maps_desktop  + h.tayangan_maps_mobile
+    baris.tayanganSearch += h.tayangan_search_desktop + h.tayangan_search_mobile
+    baris.tayanganMaps   += h.tayangan_maps_desktop + h.tayangan_maps_mobile
     baris.permintaanRute += h.permintaan_rute
     baris.klikTelepon    += h.klik_telepon
     baris.klikWebsite    += h.klik_website
-
-    const terbaru = terbaruLokasi.get(h.lokasi)
-    if (!terbaru || h.tanggal > terbaru) {
-      terbaruLokasi.set(h.lokasi, h.tanggal)
-      baris.jumlahUlasan = h.jumlah_ulasan
-      baris.rataRata     = h.rata_rata > 0 ? h.rata_rata : null
-    }
     petaLokasi.set(h.lokasi, baris)
+  }
+
+  for (const [lok, baris] of petaLokasi) {
+    const u = ulasanPerLokasi.get(lok)
+    baris.ulasanPeriode   = u?.jumlah ?? 0
+    baris.rataRataPeriode = u && u.jumlah > 0 ? Number((u.total / u.jumlah).toFixed(2)) : null
   }
 
   // ── Ulasan per bulan ───────────────────────────────────────────────────
@@ -294,7 +316,8 @@ export async function rakitLaporanGoogle(
     metrikSejak: metrikTertua?.tanggal.toISOString().slice(0, 10) ?? null,
     ulasanSejak: ulasanTertua?.dibuat_pada.toISOString().slice(0, 10) ?? null,
     bulanan,
-    perLokasi: [...petaLokasi.values()].sort((a, b) => b.tayangan - a.tayangan),
+    perLokasi: [...petaLokasi.values()].sort(
+      (a, b) => (b.tayanganSearch + b.tayanganMaps) - (a.tayanganSearch + a.tayanganMaps)),
     ulasanBulan,
     jeda,
     ringkas: {
