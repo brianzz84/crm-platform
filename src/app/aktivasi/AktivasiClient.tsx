@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 type Stage = 'loading' | 'form' | 'done' | 'invalid' | 'expired'
 
 export default function AktivasiClient() {
   const searchParams = useSearchParams()
-  const router       = useRouter()
   const token        = searchParams.get('token') || ''
 
   const [stage, setStage]       = useState<Stage>('loading')
@@ -56,7 +55,9 @@ export default function AktivasiClient() {
       setStage('done')
       // Auto-login sudah aktif (cookie di-set server) → langsung ke dashboard tenant
       const dest = json.redirect || (json.tenantSlug ? `/${json.tenantSlug}` : '/login')
-      setTimeout(() => { router.push(dest); router.refresh() }, 1500)
+      // Sama seperti login: identitas berubah, jadi Router Cache harus dibuang
+      // seluruhnya. router.refresh() saja tidak cukup dan urutannya pun rawan.
+      setTimeout(() => window.location.assign(dest), 1500)
     } catch (e: any) {
       setError(e.message || 'Terjadi kesalahan')
     } finally {

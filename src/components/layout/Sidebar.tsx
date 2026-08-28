@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { canDo } from '@/constants'
 
@@ -23,7 +23,6 @@ interface SidebarProps {
 
 export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, userRoles }: SidebarProps) {
   const pathname = usePathname()
-  const router   = useRouter()
   const base     = `/${tenantSlug}`
 
   const [mobileOpen,   setMobileOpen]   = useState(false)
@@ -87,7 +86,10 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
+    // Muat ulang penuh: menyisakan Router Cache berisi halaman milik pengguna
+    // yang baru saja keluar adalah cara paling mudah membuat pengguna berikutnya
+    // melihat menu orang lain.
+    window.location.assign('/login')
   }
 
   const roleLabels: Record<string, string> = {

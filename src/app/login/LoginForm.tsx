@@ -1,10 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 export default function LoginForm() {
-  const router       = useRouter()
   const searchParams = useSearchParams()
 
   // Ekstrak slug dari ?from=/rkz/... jika ada
@@ -37,7 +36,14 @@ export default function LoginForm() {
       }
 
       const from = searchParams.get('from') || `/${json.tenantSlug}/dashboard`
-      router.push(from)
+
+      // MUAT ULANG PENUH, bukan router.push(). Router Cache milik Next menyimpan
+      // payload RSC di sisi peramban, dan navigasi klien akan menyajikan kembali
+      // halaman yang sudah tersimpan dari SESI SEBELUMNYA — sidebar dan menu
+      // muncul sesuai peran pengguna yang lama. `force-dynamic` di layout tidak
+      // menolong: ia mengatur perenderan di server, bukan cache di peramban.
+      // Terjadi sungguhan 28 Agu 2026, dan hanya pulih setelah hard refresh.
+      window.location.assign(from)
     } catch {
       setError('Terjadi kesalahan. Coba lagi.')
     } finally {
