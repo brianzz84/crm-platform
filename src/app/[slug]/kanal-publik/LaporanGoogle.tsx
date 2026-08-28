@@ -342,16 +342,23 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
           <div style={gulir}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
               <thead>
+                {/* Urutan kolom mengikuti alur membaca, bukan urutan menghitung:
+                    berapa masuk → berapa dijawab → apa isinya → berapa rata-ratanya.
+                    "Ulasan Baru" dan "Dibalas" sengaja BERSEBELAHAN karena itu
+                    pasangan yang paling sering dibandingkan; sebelumnya keduanya
+                    terpisah enam kolom. Rata-rata ditaruh terakhir supaya terbaca
+                    sebagai kesimpulan dari sebaran, bukan angka yang muncul
+                    entah dari mana. */}
                 <tr>
                   <th style={{ ...th, ...kiri }}>Bulan</th>
                   <th style={th}>Ulasan Baru</th>
-                  <th style={th}>Rata-rata</th>
+                  <th style={th}>Ulasan Dibalas</th>
                   <th style={{ ...th, color: '#16A34A' }}>5★</th>
                   <th style={th}>4★</th>
                   <th style={th}>3★</th>
                   <th style={th}>2★</th>
                   <th style={{ ...th, color: '#B91C1C' }}>1★</th>
-                  <th style={th}>Dibalas</th>
+                  <th style={th}>Rata-rata Bulan Ini</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,10 +366,16 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
                   <tr key={u.bulan}>
                     <td style={{ ...td, ...kiri, fontWeight: 700 }}>{labelBulan(u.bulan)}</td>
                     <td style={td}>{angka(u.jumlah)}</td>
-                    <td style={{
-                      ...td, fontWeight: 700,
-                      color: u.rataRata < 3.5 ? '#B91C1C' : u.rataRata < 4 ? '#B45309' : '#16A34A',
-                    }}>{u.rataRata.toFixed(2)}</td>
+                    {/* Selisihnya ditampilkan langsung, supaya "13 masuk, 3 dibalas"
+                        tidak perlu dihitung sendiri oleh pembaca laporan. */}
+                    <td style={td}>
+                      {angka(u.dibalas)}
+                      {u.jumlah > 0 && (
+                        <span style={{ color: 'var(--c-text-faint)', fontSize: 11, fontWeight: 400 }}>
+                          {' '}({Math.round((u.dibalas / u.jumlah) * 100)}%)
+                        </span>
+                      )}
+                    </td>
                     {/* Nol ditampilkan pudar supaya angka yang ADA menonjol —
                         sebaran RKZ dua kutub, jadi kolom tengah kerap kosong. */}
                     <td style={{ ...td, color: u.bintang.b5 ? '#16A34A' : 'var(--c-border)', fontWeight: u.bintang.b5 ? 700 : 400 }}>{u.bintang.b5}</td>
@@ -370,17 +383,22 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
                     <td style={{ ...td, color: u.bintang.b3 ? undefined : 'var(--c-border)' }}>{u.bintang.b3}</td>
                     <td style={{ ...td, color: u.bintang.b2 ? undefined : 'var(--c-border)' }}>{u.bintang.b2}</td>
                     <td style={{ ...td, color: u.bintang.b1 ? '#B91C1C' : 'var(--c-border)', fontWeight: u.bintang.b1 ? 800 : 400 }}>{u.bintang.b1}</td>
-                    <td style={td}>{angka(u.dibalas)}</td>
+                    <td style={{
+                      ...td, fontWeight: 700,
+                      color: u.rataRata < 3.5 ? '#B91C1C' : u.rataRata < 4 ? '#B45309' : '#16A34A',
+                    }}>{u.rataRata.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div style={{ padding: '0 var(--sp-5) var(--sp-4)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
-            <strong>Rata-rata</strong> adalah rata-rata bintang ulasan yang <em>masuk pada bulan itu</em> —
-            bukan rating listing Anda. Rating yang tampil di Google adalah akumulasi sejak listing
-            dibuat, jadi keduanya hampir selalu berbeda. <strong>Dibalas</strong> menghitung ulasan
-            bulan itu yang sudah punya balasan, kapan pun balasannya dikirim.
+            <strong>Rata-rata Bulan Ini</strong> dihitung hanya dari ulasan yang <em>masuk pada bulan
+            itu</em> — bukan rating listing Anda. Rating yang tampil di Google adalah akumulasi sejak
+            listing dibuat, jadi keduanya hampir selalu berbeda.{' '}
+            <strong>Ulasan Dibalas</strong> menghitung ulasan bulan itu yang sudah punya balasan,
+            kapan pun balasannya dikirim — jadi bulan terakhir wajar terlihat lebih rendah, karena
+            ulasannya belum sempat semuanya dijawab.
           </div>
         </div>
       )}
