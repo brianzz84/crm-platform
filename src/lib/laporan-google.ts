@@ -17,6 +17,17 @@
 
 import { getTenantDb } from './tenant'
 
+/** Angka satu profil dalam satu bulan — isi baris yang muncul saat bulan dibuka. */
+export interface BarisBulanLokasi {
+  lokasi:         string
+  judul:          string
+  tayanganSearch: number
+  tayanganMaps:   number
+  permintaanRute: number
+  klikTelepon:    number
+  klikWebsite:    number
+}
+
 export interface BarisBulan {
   bulan:           string // "2026-08"
   tayanganSearch:  number
@@ -24,6 +35,14 @@ export interface BarisBulan {
   permintaanRute:  number
   klikTelepon:     number
   klikWebsite:     number
+  /**
+   * Rincian tiap profil pada bulan itu. Ikut dikirim, bukan diambil lewat
+   * permintaan terpisah saat baris dibuka: seluruhnya hanya 18 bulan × 7 profil,
+   * dan memuatnya sekaligus membuat rincian ikut tercetak — laporan ini akan
+   * dicetak dan ditempel ke paparan, jadi isi yang hanya ada setelah diklik akan
+   * hilang justru saat dipakai.
+   */
+  perLokasi:       BarisBulanLokasi[]
 }
 
 export interface BarisLokasi {
@@ -99,17 +118,48 @@ export async function rakitLaporanGoogle(
 
   // ── Rekap per bulan ────────────────────────────────────────────────────
   const petaBulan = new Map<string, BarisBulan>()
+  // Kunci gabungan bulan+lokasi, supaya rincian per profil dihitung dalam satu
+  // sapuan yang sama — bukan mengulang perulangan atas 3.758 baris.
+  const petaBulanLokasi = new Map<string, BarisBulanLokasi>()
+
   for (const h of harian) {
     const b = bulanDari(h.tanggal)
+    const search = h.tayangan_search_desktop + h.tayangan_search_mobile
+    const maps   = h.tayangan_maps_desktop + h.tayangan_maps_mobile
+
     const baris = petaBulan.get(b) ?? {
-      bulan: b, tayanganSearch: 0, tayanganMaps: 0, permintaanRute: 0, klikTelepon: 0, klikWebsite: 0,
+      bulan: b, tayanganSearch: 0, tayanganMaps: 0, permintaanRute: 0,
+      klikTelepon: 0, klikWebsite: 0, perLokasi: [],
     }
-    baris.tayanganSearch += h.tayangan_search_desktop + h.tayangan_search_mobile
-    baris.tayanganMaps   += h.tayangan_maps_desktop + h.tayangan_maps_mobile
+    baris.tayanganSearch += search
+    baris.tayanganMaps   += maps
     baris.permintaanRute += h.permintaan_rute
     baris.klikTelepon    += h.klik_telepon
     baris.klikWebsite    += h.klik_website
     petaBulan.set(b, baris)
+
+    const kunci = `${b}|${h.lokasi}`
+    const rinci = petaBulanLokasi.get(kunci) ?? {
+      lokasi: h.lokasi, judul: h.lokasi_judul,
+      tayanganSearch: 0, tayanganMaps: 0, permintaanRute: 0, klikTelepon: 0, klikWebsite: 0,
+    }
+    rinci.judul = h.lokasi_judul
+    rinci.tayanganSearch += search
+    rinci.tayanganMaps   += maps
+    rinci.permintaanRute += h.permintaan_rute
+    rinci.klikTelepon    += h.klik_telepon
+    rinci.klikWebsite    += h.klik_website
+    petaBulanLokasi.set(kunci, rinci)
+  }
+
+  for (const [kunci, rinci] of petaBulanLokasi) {
+    petaBulan.get(kunci.split('|')[0])?.perLokasi.push(rinci)
+  }
+  // Profil terbesar di atas, supaya urutannya sama tiap bulan dan mata tidak
+  // perlu mencari ulang saat membandingkan dua bulan yang dibuka bersamaan.
+  for (const b of petaBulan.values()) {
+    b.perLokasi.sort((x, y) =>
+      (y.tayanganSearch + y.tayanganMaps) - (x.tayanganSearch + x.tayanganMaps))
   }
 
   // ── Rekap per lokasi ───────────────────────────────────────────────────

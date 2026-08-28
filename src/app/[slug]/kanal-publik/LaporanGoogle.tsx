@@ -9,11 +9,16 @@
  * sama-sama sulit dibaca.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 
+interface BarisBulanLokasi {
+  lokasi: string; judul: string; tayanganSearch: number; tayanganMaps: number
+  permintaanRute: number; klikTelepon: number; klikWebsite: number
+}
 interface BarisBulan {
   bulan: string; tayanganSearch: number; tayanganMaps: number
   permintaanRute: number; klikTelepon: number; klikWebsite: number
+  perLokasi: BarisBulanLokasi[]
 }
 interface BarisLokasi {
   lokasi: string; judul: string; tayangan: number; permintaanRute: number
@@ -61,6 +66,7 @@ const gulir: React.CSSProperties = { overflowX: 'auto', padding: 'var(--sp-4) va
 
 export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; mulai: string; selesai: string }) {
   const [data, setData]   = useState<Laporan | null>(null)
+  const [buka, setBuka]   = useState<Set<string>>(new Set())
   const [muat, setMuat]   = useState(false)
   const [galat, setGalat] = useState('')
 
@@ -78,6 +84,17 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
 
   useEffect(() => { ambil() }, [ambil])
 
+  // Baris yang terbuka dilupakan saat periode berganti — bulan yang sama belum
+  // tentu ada pada periode berikutnya, dan menyisakannya membuat tabel terbuka
+  // di tempat yang tidak diminta siapa pun.
+  useEffect(() => { setBuka(new Set()) }, [mulai, selesai])
+
+  const alih = (bulan: string) => setBuka(s => {
+    const baru = new Set(s)
+    if (baru.has(bulan)) baru.delete(bulan); else baru.add(bulan)
+    return baru
+  })
+
   if (galat) {
     return <div style={{ background: '#FEF2F2', color: '#B91C1C', padding: '10px 14px', borderRadius: 'var(--r-sm)', fontSize: 13, borderLeft: '3px solid #EF4444' }}>{galat}</div>
   }
@@ -86,6 +103,7 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
 
   const r = data.ringkas
   const persenBalas = r.totalUlasan > 0 ? (r.totalDibalas / r.totalUlasan) * 100 : 0
+  const semuaTerbuka = data.bulanan.length > 0 && data.bulanan.every(b => buka.has(b.bulan))
 
   // Metrik hanya sedalam kapan perekaman dimulai — berbeda dari ulasan yang
   // lengkap sejak listing dibuat. Dinyatakan, bukan digambar sebagai nol.
@@ -136,12 +154,28 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
         </div>
       </div>
 
-      {/* ── Performa per bulan ── */}
+      {/* ── Performa per bulan, bisa dibuka per profil ──
+          Rincian dibuat sebagai baris yang membentang, BUKAN tooltip: laporan ini
+          dicetak dan ditempel ke paparan, dan isi di balik hover tidak ikut
+          terbawa — hilang justru saat laporannya dipakai. Selain itu hover tidak
+          ada di layar sentuh, dan isi yang tersembunyi tidak bisa dibandingkan
+          berdampingan, padahal justru itu gunanya angka per profil. */}
       {data.bulanan.length > 0 && (
         <div style={kartu}>
-          <div style={judulKartu}>Performa Google per Bulan</div>
+          <div style={{ ...judulKartu, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>Performa Google per Bulan</span>
+            <button
+              onClick={() => setBuka(semuaTerbuka ? new Set() : new Set(data.bulanan.map(b => b.bulan)))}
+              style={{
+                padding: '5px 12px', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 11.5, fontWeight: 700, border: '1.5px solid var(--c-border)',
+                background: 'white', color: 'var(--c-text-muted)',
+              }}>
+              {semuaTerbuka ? 'Tutup semua' : 'Buka semua profil'}
+            </button>
+          </div>
           <div style={gulir}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
               <thead>
                 <tr>
                   <th style={{ ...th, ...kiri }}>Bulan</th>
@@ -153,18 +187,48 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
                 </tr>
               </thead>
               <tbody>
-                {data.bulanan.map(b => (
-                  <tr key={b.bulan}>
-                    <td style={{ ...td, ...kiri, fontWeight: 700 }}>{labelBulan(b.bulan)}</td>
-                    <td style={td}>{angka(b.tayanganSearch)}</td>
-                    <td style={td}>{angka(b.tayanganMaps)}</td>
-                    <td style={td}>{angka(b.permintaanRute)}</td>
-                    <td style={td}>{angka(b.klikTelepon)}</td>
-                    <td style={td}>{angka(b.klikWebsite)}</td>
-                  </tr>
-                ))}
+                {data.bulanan.map(b => {
+                  const terbuka = buka.has(b.bulan)
+                  return (
+                    <Fragment key={b.bulan}>
+                      <tr onClick={() => alih(b.bulan)}
+                        style={{ cursor: 'pointer', background: terbuka ? '#F8FAFC' : undefined }}>
+                        <td style={{ ...td, ...kiri, fontWeight: 700 }}>
+                          <span style={{
+                            display: 'inline-block', width: 13, color: 'var(--c-text-muted)',
+                            transform: terbuka ? 'rotate(90deg)' : 'none', transition: 'transform .12s',
+                          }}>›</span>
+                          {labelBulan(b.bulan)}
+                        </td>
+                        <td style={td}>{angka(b.tayanganSearch)}</td>
+                        <td style={td}>{angka(b.tayanganMaps)}</td>
+                        <td style={td}>{angka(b.permintaanRute)}</td>
+                        <td style={td}>{angka(b.klikTelepon)}</td>
+                        <td style={td}>{angka(b.klikWebsite)}</td>
+                      </tr>
+
+                      {terbuka && b.perLokasi.map(l => (
+                        <tr key={`${b.bulan}-${l.lokasi}`} style={{ background: '#F8FAFC' }}>
+                          <td style={{ ...td, ...kiri, paddingLeft: 30, fontSize: 12, color: 'var(--c-text-muted)' }}>
+                            {l.judul}
+                          </td>
+                          <td style={{ ...td, fontSize: 12 }}>{angka(l.tayanganSearch)}</td>
+                          <td style={{ ...td, fontSize: 12 }}>{angka(l.tayanganMaps)}</td>
+                          <td style={{ ...td, fontSize: 12 }}>{angka(l.permintaanRute)}</td>
+                          <td style={{ ...td, fontSize: 12 }}>{angka(l.klikTelepon)}</td>
+                          <td style={{ ...td, fontSize: 12 }}>{angka(l.klikWebsite)}</td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
+          </div>
+          <div style={{ padding: '0 var(--sp-5) var(--sp-4)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+            Angka pada baris bulan adalah jumlah ketujuh profil. Klik baris mana pun untuk
+            membentangkan rinciannya per profil; urutan profil sama tiap bulan, jadi dua bulan yang
+            dibuka bersamaan bisa dibandingkan langsung.
           </div>
         </div>
       )}
