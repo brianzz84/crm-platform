@@ -117,6 +117,17 @@ export default async function DashboardPage({ params }: { params: { slug: string
   const session = getSessionFromHeaders()
   if (!session) redirect('/login')
 
+  // Peran yang tidak berkepentingan dengan Dashboard diantar ke halaman kerjanya.
+  // Ditaruh DI SINI, bukan di halaman login, karena Dashboard adalah tujuan
+  // pantulan ~10 halaman lain saat izin kurang — satu penjaga menutup semuanya.
+  //
+  // Syarat `viewKanalPublik` bukan basa-basi: ia mencegah putaran tak berujung
+  // seandainya kelak ada peran tanpa kedua izin, karena Kanal Publik memantulkan
+  // balik ke Dashboard.
+  if (!canDo(session.roles, 'viewDashboard') && canDo(session.roles, 'viewKanalPublik')) {
+    redirect(`/${params.slug}/kanal-publik`)
+  }
+
   const slug = params.slug
   const canViewAll = canDo(session.roles, 'viewAllInbox')
 

@@ -162,6 +162,12 @@ export const ROLE_CAN = {
    * yang sudah dimilikinya.
    */
   viewKanalPublik:    ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'ADMIN_MEDSOS'],
+  /**
+   * Dashboard. Semua peran KECUALI ADMIN_MEDSOS — isinya pasien, segmen, dan
+   * broadcast, yang seluruhnya di luar jangkauan admin medsos, sehingga baginya
+   * hanya berupa halaman berisi angka yang tak bisa ia tindaklanjuti.
+   */
+  viewDashboard:      ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS', 'SUPERVISOR', 'AGEN'],
   manageSapaan:       ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   manageKegiatan:     ['SUPER_ADMIN', 'ADMIN_IT', 'ADMIN_OPS'],
   // ADMIN_MEDSOS ikut melihat SELURUH percakapan, termasuk WhatsApp pasien —
