@@ -570,6 +570,8 @@ export default function KanalPublikClient({
   }
 }) {
   const [tab, setTab] = useState<Tab>('website')
+  // Saluran yang harus terpilih saat tab Laporan dibuka lewat pintasan.
+  const [laporanKanal, setLaporanKanal] = useState<'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE' | undefined>()
 
   // Periode utama — bawaan 30 hari terakhir (berakhir kemarin; data hari ini belum lengkap).
   const [mulai,   setMulai]   = useState(hariLalu(30))
@@ -1006,14 +1008,15 @@ export default function KanalPublikClient({
           ))}
 
           {tab === 'konten'  && <KontenTab slug={slug} />}
-          {tab === 'laporan' && <LaporanTab slug={slug} mulai={mulai} selesai={selesai} />}
+          {tab === 'laporan' && <LaporanTab slug={slug} mulai={mulai} selesai={selesai} kanalAwal={laporanKanal} />}
 
           {/* ── Google Bisnis ──
               Tidak memakai rentang tanggal seperti tab lain: ulasan bukan deret
               harian, dan Google mengurutkannya sendiri lewat orderBy. */}
           {tab === 'google-bisnis' && (
             status.tersambung
-              ? <GoogleBisnisTab slug={slug} bisaBalas={status.bisaBalas} />
+              ? <GoogleBisnisTab slug={slug} bisaBalas={status.bisaBalas}
+                  keLaporan={() => { setLaporanKanal('GOOGLE'); setTab('laporan') }} />
               : (
                 <Pesan nada="info">
                   Belum tersambung ke Google. Buka{' '}

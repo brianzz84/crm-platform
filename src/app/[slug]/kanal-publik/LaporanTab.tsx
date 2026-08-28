@@ -55,8 +55,15 @@ const kiri: React.CSSProperties = { textAlign: 'left' }
 /** Tabel lebar harus bisa digeser sendiri — bukan memaksa seluruh halaman ikut melebar. */
 const gulir: React.CSSProperties = { overflowX: 'auto', padding: 'var(--sp-4) var(--sp-5)' }
 
-export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mulai: string; selesai: string }) {
-  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE'>('IG')
+export default function LaporanTab(
+  { slug, mulai, selesai, kanalAwal }:
+  { slug: string; mulai: string; selesai: string; kanalAwal?: 'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE' },
+) {
+  // Dipakai saat pengguna datang dari tab Google Bisnis: ia sudah menyatakan
+  // saluran mana yang dimaksud, jadi mendaratkannya di Instagram akan memaksa
+  // satu klik yang tak ada gunanya. Komponen ini di-unmount tiap ganti tab,
+  // sehingga nilai awal ini terbaca ulang tiap kali dibuka.
+  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE'>(kanalAwal ?? 'IG')
   const [data, setData]   = useState<Laporan | null>(null)
   const [muat, setMuat]   = useState(false)
   const [galat, setGalat] = useState('')
@@ -78,22 +85,63 @@ export default function LaporanTab({ slug, mulai, selesai }: { slug: string; mul
 
   useEffect(() => { ambil() }, [ambil])
 
-  const tombol = (aktif: boolean): React.CSSProperties => ({
-    padding: '5px 13px', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit',
-    fontSize: 12, fontWeight: 600,
-    border: `1.5px solid ${aktif ? 'var(--c-secondary)' : 'var(--c-border)'}`,
-    background: aktif ? 'var(--c-secondary)' : 'white',
-    color: aktif ? 'white' : 'var(--c-text-muted)',
-  })
+  /**
+   * Warna khas tiap saluran.
+   *
+   * Sebelumnya semua tombol aktif berwarna teal yang sama, sehingga saluran yang
+   * sedang dibuka tidak terbaca tanpa mengeja tulisannya. Titik warna tetap
+   * tampil walau tombolnya tidak aktif, supaya keempatnya bisa dikenali sekaligus.
+   */
+  const WARNA_KANAL: Record<string, string> = {
+    IG:      '#C13584',
+    FB:      '#1877F2',
+    YOUTUBE: '#FF0000',
+    GOOGLE:  '#188038',
+  }
+
+  const KANAL: { k: typeof kanal; label: string }[] = [
+    { k: 'IG',      label: 'Instagram' },
+    { k: 'FB',      label: 'Facebook' },
+    { k: 'YOUTUBE', label: 'YouTube' },
+    { k: 'GOOGLE',  label: 'Google Bisnis' },
+  ]
 
   return (
     <div>
-      <div style={{ ...kartu, padding: 'var(--sp-4) var(--sp-5)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kanal</span>
-        <button onClick={() => setKanal('IG')} style={tombol(kanal === 'IG')}>Instagram</button>
-        <button onClick={() => setKanal('FB')} style={tombol(kanal === 'FB')}>Facebook</button>
-        <button onClick={() => setKanal('YOUTUBE')} style={tombol(kanal === 'YOUTUBE')}>YouTube</button>
-        <button onClick={() => setKanal('GOOGLE')} style={tombol(kanal === 'GOOGLE')}>Google Bisnis</button>
+      {/* Kontrol TERSEGMEN, bukan empat tombol terpisah: keempatnya satu pilihan,
+          dan bentuk menyatu inilah idiom yang menyatakan "pilih salah satu".
+          Sebelumnya mereka tampak sama persis dengan tombol aksi lain di halaman,
+          sehingga tak ada yang memberi tahu bahwa ini pemilih saluran. */}
+      <div style={{ ...kartu, padding: 'var(--sp-4) var(--sp-5)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--c-text-muted)' }}>
+          Saluran
+        </span>
+        <div role="tablist" aria-label="Pilih saluran laporan" style={{
+          display: 'inline-flex', padding: 3, gap: 2, borderRadius: 10,
+          background: 'var(--c-bg)', border: '1px solid var(--c-border)', flexWrap: 'wrap',
+        }}>
+          {KANAL.map(t => {
+            const aktif = kanal === t.k
+            const warna = WARNA_KANAL[t.k]
+            return (
+              <button key={t.k} role="tab" aria-selected={aktif} onClick={() => setKanal(t.k)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                  padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 12.5, fontWeight: aktif ? 800 : 600,
+                  background: aktif ? 'white' : 'transparent',
+                  color: aktif ? warna : 'var(--c-text-muted)',
+                  boxShadow: aktif ? '0 1px 3px rgba(15,23,42,.16)' : 'none',
+                }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                  background: warna, opacity: aktif ? 1 : .45,
+                }} />
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
         <span style={{ fontSize: 11, color: 'var(--c-text-faint)', marginLeft: 'auto' }}>
           {mulai} s/d {selesai} · dihitung dari data snapshot
         </span>

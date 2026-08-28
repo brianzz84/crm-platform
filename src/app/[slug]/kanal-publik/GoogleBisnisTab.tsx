@@ -58,7 +58,10 @@ const tombol = (utama: boolean): React.CSSProperties => ({
   color: utama ? 'white' : 'var(--c-text-muted)',
 })
 
-export default function GoogleBisnisTab({ slug, bisaBalas }: { slug: string; bisaBalas: boolean }) {
+export default function GoogleBisnisTab(
+  { slug, bisaBalas, keLaporan }:
+  { slug: string; bisaBalas: boolean; keLaporan?: () => void },
+) {
   const [lokasi, setLokasi]     = useState<RingkasLokasi[]>([])
   const [pilih, setPilih]       = useState<string>('')
   const [ulasan, setUlasan]     = useState<Ulasan[]>([])
@@ -223,6 +226,38 @@ export default function GoogleBisnisTab({ slug, bisaBalas }: { slug: string; bis
             </button>
           )
         })}
+      </div>
+
+      {/* Halaman ini menjawab "apa yang terjadi SEKARANG": rating berjalan dan
+          ulasan yang perlu dibalas. Pertanyaan "bagaimana perkembangannya" dijawab
+          di tempat lain, dan tanpa penunjuk ini tidak ada apa pun di layar yang
+          memberi tahu bahwa tempat itu ada. Dibuat sebagai PINTASAN, bukan sekadar
+          petunjuk arah — dan langsung memilih saluran Google, karena pengguna sudah
+          menyatakan maksudnya dengan berada di tab ini. */}
+      <div style={{
+        ...kartu, padding: 'var(--sp-4) var(--sp-5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 14, flexWrap: 'wrap', borderLeft: '4px solid var(--c-secondary)',
+      }}>
+        <div style={{ fontSize: 13, lineHeight: 1.65, maxWidth: 660 }}>
+          <strong>Kartu di atas menampilkan keadaan terkini.</strong>{' '}
+          Untuk evaluasi dan performa — tren tayangan, permintaan rute, klik telepon,
+          perbandingan antarprofil per bulan, serta responsivitas membalas ulasan —
+          buka tab <strong>Laporan</strong>.
+          <div style={{ color: 'var(--c-text-muted)', fontSize: 12, marginTop: 4 }}>
+            Laporan dihitung dari rekaman harian, sehingga bisa ditarik mundur
+            per periode. Halaman ini selalu membaca langsung dari Google.
+          </div>
+        </div>
+        {keLaporan && (
+          <button onClick={keLaporan} style={{
+            padding: '9px 18px', borderRadius: 'var(--r-md)', border: 'none',
+            background: 'var(--c-secondary)', color: 'white', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: 13, fontWeight: 700, flexShrink: 0,
+          }}>
+            📑 Buka Laporan Google
+          </button>
+        )}
       </div>
 
       {/* ── Daftar ulasan lokasi terpilih ────────────────────────────────── */}
