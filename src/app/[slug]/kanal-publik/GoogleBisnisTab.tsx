@@ -45,6 +45,23 @@ function Bintang({ n }: { n: number }) {
   )
 }
 
+/**
+ * Versi lebih besar dari foto ulasan.
+ *
+ * Google hanya menyediakan `thumbnailUrl` — tidak ada field ukuran penuh. Tapi
+ * URL lh3.googleusercontent.com menerima parameter ukuran di akhir, dan itu
+ * sudah diuji langsung ke foto ulasan RKZ (27 Agu 2026):
+ *   =k-no (bawaan) → 230x512,  33 KB
+ *   =s1600         → 720x1600, 128 KB
+ *   =w1200         → 1080x2400, 742 KB
+ * Dipilih s1600: tiga kali lebih tajam dengan berat yang masih wajar dibuka
+ * berulang kali. Bila kelak Google mengubah bentuk URL-nya, fungsi ini hanya
+ * mengembalikan URL apa adanya — gambar tetap tampil, sekadar tidak membesar.
+ */
+function fotoBesar(url: string): string {
+  return /=[^=/]*$/.test(url) ? url.replace(/=[^=/]*$/, '=s1600') : `${url}=s1600`
+}
+
 const kartu: React.CSSProperties = {
   background: 'white', border: '1px solid var(--c-border)',
   borderRadius: 'var(--r-md)', marginBottom: 'var(--sp-5)',
@@ -77,6 +94,10 @@ export default function GoogleBisnisTab(
   const [konfirmasi, setKonfirmasi] = useState<{ u: Ulasan; teks: string } | null>(null)
   const [kirim, setKirim]       = useState(false)
   const [kabar, setKabar]       = useState('')
+
+  // Foto yang sedang dibuka besar: daftar foto milik satu ulasan + posisinya,
+  // supaya bisa berpindah antarfoto tanpa menutup modal.
+  const [lihatFoto, setLihatFoto] = useState<{ foto: string[]; ke: number } | null>(null)
 
   // ── Muat daftar lokasi sekali di awal ────────────────────────────────────
   useEffect(() => {
@@ -115,6 +136,19 @@ export default function GoogleBisnisTab(
   }, [slug, pilih, urutan])
 
   useEffect(() => { muatHalamanPertama() }, [muatHalamanPertama])
+
+  // Esc menutup, panah berpindah. Tanpa ini modal hanya bisa ditutup dengan
+  // mouse, dan itu menjengkelkan saat memeriksa banyak foto berturut-turut.
+  useEffect(() => {
+    if (!lihatFoto) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape')     setLihatFoto(null)
+      if (e.key === 'ArrowRight') setLihatFoto(v => v && { ...v, ke: (v.ke + 1) % v.foto.length })
+      if (e.key === 'ArrowLeft')  setLihatFoto(v => v && { ...v, ke: (v.ke - 1 + v.foto.length) % v.foto.length })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lihatFoto])
 
   async function muatLagi() {
     if (!lanjut) return
@@ -344,9 +378,16 @@ export default function GoogleBisnisTab(
                 {u.fotoUlasan.length > 0 && (
                   <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                     {u.fotoUlasan.map((f, i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={i} src={f} alt="" width={62} height={62}
-                        style={{ borderRadius: 'var(--r-md)', objectFit: 'cover', background: 'var(--c-border)' }} />
+                      <button key={i} onClick={() => setLihatFoto({ foto: u.fotoUlasan, ke: i })}
+                        title="Klik untuk memperbesar"
+                        style={{
+                          padding: 0, border: 'none', borderRadius: 'var(--r-md)',
+                          cursor: 'zoom-in', background: 'var(--c-border)', lineHeight: 0,
+                        }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={f} alt={`Foto dari ulasan ${u.pengulas}`} width={78} height={78}
+                          style={{ borderRadius: 'var(--r-md)', objectFit: 'cover', display: 'block' }} />
+                      </button>
                     ))}
                   </div>
                 )}
@@ -425,6 +466,61 @@ export default function GoogleBisnisTab(
             : lanjut && <button onClick={muatLagi} style={tombol(false)}>Muat 50 ulasan berikutnya</button>}
         </div>
       </div>
+
+      {/* ── Foto ulasan diperbesar ──
+          Sumbernya URL yang sama, hanya diminta ukuran lebih besar lewat fotoBesar().
+          Thumbnail di daftar tetap versi kecil supaya memuat daftar tidak jadi berat;
+          yang besar baru diambil saat benar-benar dibuka. */}
+      {lihatFoto && (
+        <div role="dialog" aria-modal="true" aria-label="Foto ulasan"
+          onClick={() => setLihatFoto(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(2,6,23,.88)', zIndex: 60,
+            display: 'grid', placeItems: 'center', padding: 20, cursor: 'zoom-out',
+          }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={fotoBesar(lihatFoto.foto[lihatFoto.ke])} alt="Foto ulasan"
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '100%', maxHeight: '86vh', objectFit: 'contain',
+              borderRadius: 8, cursor: 'default',
+            }} />
+
+          <button onClick={() => setLihatFoto(null)} aria-label="Tutup"
+            style={{
+              position: 'fixed', top: 16, right: 18, width: 38, height: 38, borderRadius: '50%',
+              border: 'none', background: 'rgba(255,255,255,.14)', color: 'white',
+              fontSize: 20, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1,
+            }}>×</button>
+
+          {lihatFoto.foto.length > 1 && (
+            <>
+              {[['‹', -1, { left: 18 }], ['›', 1, { right: 18 }]].map(([ikon, arah, pos]) => (
+                <button key={String(ikon)} aria-label={arah === 1 ? 'Foto berikutnya' : 'Foto sebelumnya'}
+                  onClick={e => {
+                    e.stopPropagation()
+                    setLihatFoto(v => v && {
+                      ...v,
+                      ke: (v.ke + (arah as number) + v.foto.length) % v.foto.length,
+                    })
+                  }}
+                  style={{
+                    position: 'fixed', top: '50%', transform: 'translateY(-50%)',
+                    ...(pos as React.CSSProperties),
+                    width: 42, height: 42, borderRadius: '50%', border: 'none',
+                    background: 'rgba(255,255,255,.14)', color: 'white',
+                    fontSize: 26, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1,
+                  }}>{ikon as string}</button>
+              ))}
+              <div style={{
+                position: 'fixed', bottom: 22, color: 'rgba(255,255,255,.75)', fontSize: 12.5,
+              }}>
+                {lihatFoto.ke + 1} dari {lihatFoto.foto.length} · gunakan tombol panah
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Dialog konfirmasi ────────────────────────────────────────────── */}
       {konfirmasi && (
