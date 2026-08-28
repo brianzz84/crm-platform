@@ -36,6 +36,7 @@ interface Laporan {
   ringkas: {
     tayangan: number; permintaanRute: number; klikTelepon: number; klikWebsite: number
     ulasanBaru: number; rataRata: number | null; rendah: number; dibalas: number
+    balasanDikirim: number; balasanUlasanLama: number
     totalUlasan: number; totalDibalas: number
   }
 }
@@ -102,7 +103,8 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
   if (!data) return null
 
   const r = data.ringkas
-  const persenBalas = r.totalUlasan > 0 ? (r.totalDibalas / r.totalUlasan) * 100 : 0
+  // Responsivitas periode ini — dasar warna pita dan angka utama.
+  const persenBalas = r.ulasanBaru > 0 ? (r.dibalas / r.ulasanBaru) * 100 : 0
   const semuaTerbuka = data.bulanan.length > 0 && data.bulanan.every(b => buka.has(b.bulan))
 
   // Metrik hanya sedalam kapan perekaman dimulai — berbeda dari ulasan yang
@@ -138,18 +140,36 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
         ))}
       </div>
 
-      {/* ── Tingkat balasan: temuan operasional, sengaja tidak dikubur di tabel ── */}
+      {/* ── Responsivitas petugas ──
+          Mengikuti PERIODE, bukan seluruh riwayat. Ini ukuran kinerja: tumpukan
+          ulasan bertahun sebelum periode ini bukan pekerjaan petugas sekarang,
+          dan memasukkannya membuat angkanya menghukum orang yang salah.
+          Riwayat penuh tetap ditampilkan, tapi sebagai konteks — bukan judul. */}
       <div style={{
         ...kartu, padding: 'var(--sp-4) var(--sp-5)',
         borderLeft: `4px solid ${persenBalas < 25 ? '#DC2626' : persenBalas < 60 ? '#F59E0B' : '#16A34A'}`,
       }}>
         <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-          <strong style={{ fontSize: 15 }}>{persenBalas.toFixed(1)}% ulasan pernah dibalas</strong>
-          {' '}— {angka(r.totalDibalas)} dari {angka(r.totalUlasan)} ulasan sepanjang riwayat.
-          {' '}Pada periode ini, {angka(r.dibalas)} dari {angka(r.ulasanBaru)} ulasan baru dibalas.
-          <div style={{ color: 'var(--c-text-muted)', fontSize: 12, marginTop: 4 }}>
-            Dihitung dari seluruh ulasan yang tersimpan, bukan hanya periode terpilih — supaya
-            angkanya tidak terlihat membaik hanya karena periodenya kebetulan rajin dibalas.
+          <strong style={{ fontSize: 15 }}>
+            {r.ulasanBaru > 0 ? `${persenBalas.toFixed(1)}% ulasan periode ini dibalas` : 'Tidak ada ulasan baru pada periode ini'}
+          </strong>
+          {r.ulasanBaru > 0 && <> — {angka(r.dibalas)} dari {angka(r.ulasanBaru)} ulasan yang masuk.</>}
+
+          {/* Balasan ke ulasan lama tidak masuk hitungan di atas, padahal itu
+              pekerjaan nyata. Ditampilkan terpisah supaya tidak hilang. */}
+          <div style={{ marginTop: 6 }}>
+            <strong>{angka(r.balasanDikirim)} balasan dikirim</strong> pada periode ini
+            {r.balasanUlasanLama > 0 && (
+              <>, <strong>{angka(r.balasanUlasanLama)}</strong> di antaranya untuk ulasan lama —
+              pekerjaan membereskan tumpukan, yang tidak terhitung pada persentase di atas</>
+            )}.
+          </div>
+
+          <div style={{ color: 'var(--c-text-muted)', fontSize: 12, marginTop: 6 }}>
+            Persentase di atas mengukur respons terhadap ulasan yang <em>masuk pada periode ini</em>,
+            sehingga menilai kinerja petugas sekarang — bukan warisan tahun-tahun sebelumnya.
+            Sebagai konteks, sepanjang riwayat {angka(r.totalDibalas)} dari {angka(r.totalUlasan)} ulasan
+            ({((r.totalDibalas / Math.max(r.totalUlasan, 1)) * 100).toFixed(1)}%) pernah dibalas.
           </div>
         </div>
       </div>

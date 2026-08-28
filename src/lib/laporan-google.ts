@@ -78,10 +78,27 @@ export interface LaporanGoogle {
     ulasanBaru:     number
     rataRata:       number | null
     rendah:         number
+    /** Ulasan yang LAHIR di periode ini dan sudah punya balasan. */
     dibalas:        number
-    // Tingkat balasan SELURUH ulasan yang tersimpan, bukan hanya periode ini.
-    // Sengaja: 5% dari 1636 adalah temuan operasional yang tidak boleh hilang
-    // hanya karena periode yang dipilih kebetulan rajin dibalas.
+
+    /**
+     * Balasan yang DIKIRIM pada periode ini, dihitung dari `balasan_pada` —
+     * bukan dari kapan ulasannya lahir.
+     *
+     * Dua ukuran ini menjawab pertanyaan berbeda, dan keduanya diperlukan untuk
+     * menilai kinerja petugas:
+     *   - `dibalas` / `ulasanBaru` → seberapa responsif terhadap ulasan yang masuk
+     *   - `balasanDikirim`         → seluruh pekerjaan membalas pada periode itu,
+     *     TERMASUK menggarap tumpukan lama
+     *
+     * Tanpa yang kedua, petugas yang membereskan ulasan bertahun lalu tidak
+     * mendapat kredit sama sekali. Pada Agustus 2026 itu bukan kasus teoretis:
+     * 11 dari 47 balasan ditujukan ke ulasan lama.
+     */
+    balasanDikirim:     number
+    balasanUlasanLama:  number
+
+    /** Konteks strategis, bukan ukuran kinerja — sengaja tidak dijadikan judul. */
     totalUlasan:        number
     totalDibalas:       number
   }
@@ -96,7 +113,10 @@ export async function rakitLaporanGoogle(
   const dariTgl = new Date(`${mulai}T00:00:00.000Z`)
   const sampaiTgl = new Date(`${selesai}T00:00:00.000Z`)
 
-  const [harian, ulasan, metrikTertua, ulasanTertua, totalUlasan, totalDibalas] = await Promise.all([
+  const [
+    harian, ulasan, metrikTertua, ulasanTertua, totalUlasan, totalDibalas,
+    balasanDikirim, balasanUlasanLama,
+  ] = await Promise.all([
     db.gbpLocationDaily.findMany({
       where:   { tenant_slug: slug, tanggal: { gte: dariTgl, lte: sampaiTgl } },
       orderBy: { tanggal: 'asc' },
@@ -114,6 +134,20 @@ export async function rakitLaporanGoogle(
     }),
     db.gbpReview.count({ where: { tenant_slug: slug } }),
     db.gbpReview.count({ where: { tenant_slug: slug, balasan_teks: { not: null } } }),
+
+    // Balasan yang DIKIRIM pada periode ini — rentangnya di `balasan_pada`,
+    // bukan `dibuat_pada`, jadi kueri terpisah dan tidak bisa diturunkan dari
+    // daftar ulasan di atas.
+    db.gbpReview.count({
+      where: { tenant_slug: slug, balasan_pada: { gte: dariTgl, lte: sampaiTgl } },
+    }),
+    db.gbpReview.count({
+      where: {
+        tenant_slug:  slug,
+        balasan_pada: { gte: dariTgl, lte: sampaiTgl },
+        dibuat_pada:  { lt: dariTgl },
+      },
+    }),
   ])
 
   // ── Rekap per bulan ────────────────────────────────────────────────────
@@ -229,6 +263,8 @@ export async function rakitLaporanGoogle(
         : null,
       rendah:       ulasan.filter(u => u.bintang > 0 && u.bintang <= 3).length,
       dibalas:      ulasan.filter(u => u.balasan_teks).length,
+      balasanDikirim,
+      balasanUlasanLama,
       totalUlasan,
       totalDibalas,
     },
