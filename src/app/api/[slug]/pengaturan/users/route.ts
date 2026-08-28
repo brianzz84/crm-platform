@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantDb, getMasterDb } from '@/lib/tenant'
 import { requireTenantPermission } from '@/lib/auth'
-import { hashPassword } from '@/lib/password'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
+import { kirimEmailUndangan } from '@/lib/email-undangan'
 
 const InviteSchema = z.object({
   name:  z.string().min(2),
@@ -92,7 +92,7 @@ export async function POST(
 
     // Kirim email undangan (jika RESEND_API_KEY ada)
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/aktivasi?token=${inviteToken}`
-    const emailResult = await sendInviteEmail(parsed.data.email, parsed.data.name, session!.name, brandName, inviteUrl)
+    const emailResult = await kirimEmailUndangan(parsed.data.email, parsed.data.name, session!.name, brandName, inviteUrl)
 
     return NextResponse.json({
       success:    true,
@@ -104,46 +104,5 @@ export async function POST(
   } catch (e) {
     console.error('[POST /pengaturan/users]', e)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
-  }
-}
-
-async function sendInviteEmail(
-  to: string, name: string, invitedBy: string, brandName: string, inviteUrl: string
-): Promise<{ sent: boolean; error?: string }> {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    console.warn('[invite] RESEND_API_KEY tidak ada — email tidak dikirim, gunakan inviteUrl')
-    return { sent: false, error: 'RESEND_API_KEY belum dikonfigurasi' }
-  }
-  const from = process.env.RESEND_FROM || `${brandName} <noreply@meditech.my.id>`
-
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to:      [to],
-        subject: `Undangan akses ${brandName}`,
-        html: `
-          <p>Halo <strong>${name}</strong>,</p>
-          <p>Anda diundang oleh <strong>${invitedBy}</strong> untuk mengakses <strong>${brandName}</strong>.</p>
-          <p>Klik tombol di bawah untuk mengaktifkan akun dan membuat password:</p>
-          <p><a href="${inviteUrl}" style="background:#0089A8;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Aktifkan Akun</a></p>
-          <p>Link ini berlaku selama 7 hari.</p>
-          <p style="color:#999;font-size:12px;">Jika Anda tidak merasa diundang, abaikan email ini.</p>
-        `,
-      }),
-    })
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
-      const msg = j?.message || j?.error?.message || `HTTP ${res.status}`
-      console.error('[invite] Resend menolak:', JSON.stringify(j))
-      return { sent: false, error: msg }
-    }
-    return { sent: true }
-  } catch (e: any) {
-    console.error('[invite] Gagal kirim email:', e)
-    return { sent: false, error: e?.message || 'network error' }
   }
 }

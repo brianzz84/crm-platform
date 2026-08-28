@@ -148,12 +148,29 @@ export default function UsersClient({
     }
   }
 
+  /**
+   * Kirim ulang undangan.
+   *
+   * Token lama SELALU batal begitu route ini dipanggil, jadi kegagalan kirim
+   * tidak boleh berakhir dengan pesan sukses: pengguna akan terjebak dengan
+   * undangan lama yang tak berlaku dan undangan baru yang tak pernah sampai.
+   * Karena itu hasil sebenarnya ditampilkan, dan saat email gagal link-nya
+   * disodorkan agar admin bisa mengirimkannya lewat jalan lain.
+   */
   async function resendInvite(u: AppUser) {
     try {
       const res  = await fetch(`/api/${slug}/pengaturan/users/${u.id}`, { method: 'POST' })
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
-      showToast('Link undangan baru telah dikirim')
+
+      if (json.emailSent) {
+        showToast(`Undangan baru dikirim ke ${u.email}`)
+      } else {
+        setInviteResult({
+          email: u.email, url: json.inviteUrl,
+          emailSent: false, emailError: json.emailError,
+        })
+      }
     } catch (e: any) {
       showToast(`Gagal: ${e.message}`)
     }

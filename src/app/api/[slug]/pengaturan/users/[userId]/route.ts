@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantDb } from '@/lib/tenant'
+import { getTenantDb, getMasterDb } from '@/lib/tenant'
 import { requireTenantPermission } from '@/lib/auth'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
+import { kirimEmailUndangan } from '@/lib/email-undangan'
 
 type Ctx = { params: { slug: string; userId: string } }
 
@@ -71,7 +72,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
 // POST: kirim ulang link undangan
 export async function POST(req: NextRequest, { params }: Ctx) {
-  const { error } = await requireTenantPermission(req, params.slug, 'manageUsers')
+  const { session, error } = await requireTenantPermission(req, params.slug, 'manageUsers')
   if (error) return error
 
   try {
@@ -90,7 +91,29 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     })
 
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/aktivasi?token=${inviteToken}`
-    return NextResponse.json({ success: true, inviteUrl })
+
+    // Sebelumnya route ini HANYA mengembalikan inviteUrl tanpa mengirim apa pun,
+    // sementara UI menampilkan "Link undangan baru telah dikirim". Akibatnya
+    // undangan lama batal (tokennya diganti di atas) dan yang baru tidak pernah
+    // sampai ke siapa pun — persis keluhan "kirim ulang tapi email tidak masuk".
+    const masterDb  = await getMasterDb()
+    const tenant    = await masterDb.tenant.findUnique({
+      where: { slug: params.slug }, select: { name: true },
+    })
+    const brandName = tenant?.name || 'CRM Platform'
+
+    const emailResult = await kirimEmailUndangan(
+      user.email, user.name, session!.name, brandName, inviteUrl,
+    )
+
+    // inviteUrl tetap dikembalikan supaya admin punya jalan keluar saat email
+    // gagal — tanpa itu, kegagalan kirim membuat undangan mustahil disampaikan.
+    return NextResponse.json({
+      success:    true,
+      inviteUrl,
+      emailSent:  emailResult.sent,
+      emailError: emailResult.error,
+    })
   } catch (e) {
     console.error('[POST resend /pengaturan/users/:id]', e)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
