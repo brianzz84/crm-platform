@@ -25,7 +25,11 @@ interface BarisLokasi {
   klikTelepon: number; klikWebsite: number; jumlahUlasan: number; rataRata: number | null
 }
 interface BarisUlasanBulan {
-  bulan: string; jumlah: number; rataRata: number; rendah: number; dibalas: number
+  bulan: string; jumlah: number; rataRata: number; dibalas: number
+  bintang: { b1: number; b2: number; b3: number; b4: number; b5: number }
+}
+interface JedaBalasan {
+  kurangSehari: number; satuTiga: number; empatTujuh: number; lebihTujuh: number; belum: number
 }
 interface Laporan {
   metrikSejak: string | null
@@ -33,6 +37,7 @@ interface Laporan {
   bulanan: BarisBulan[]
   perLokasi: BarisLokasi[]
   ulasanBulan: BarisUlasanBulan[]
+  jeda: JedaBalasan
   ringkas: {
     tayangan: number; permintaanRute: number; klikTelepon: number; klikWebsite: number
     ulasanBaru: number; rataRata: number | null; rendah: number; dibalas: number
@@ -172,6 +177,36 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
             ({((r.totalDibalas / Math.max(r.totalUlasan, 1)) * 100).toFixed(1)}%) pernah dibalas.
           </div>
         </div>
+
+        {/* Kecepatan membalas — diletakkan menempel pada angka responsivitas,
+            karena "berapa banyak dibalas" dan "berapa cepat" adalah satu
+            pertanyaan yang sama bagi orang yang menilai layanan. */}
+        {r.ulasanBaru > 0 && (
+          <div style={{ marginTop: 14, borderTop: '1px solid var(--c-border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+              Kecepatan membalas ulasan periode ini
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: 8 }}>
+              {[
+                { l: '< 1 hari',  v: data.jeda.kurangSehari, c: '#16A34A' },
+                { l: '1–3 hari',  v: data.jeda.satuTiga,     c: '#65A30D' },
+                { l: '4–7 hari',  v: data.jeda.empatTujuh,   c: '#B45309' },
+                { l: '> 7 hari',  v: data.jeda.lebihTujuh,   c: '#DC2626' },
+                { l: 'Belum dibalas', v: data.jeda.belum,    c: 'var(--c-text-muted)' },
+              ].map(x => (
+                <div key={x.l} style={{ border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)', padding: '8px 11px' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--c-text-muted)', fontWeight: 700 }}>{x.l}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: x.c }}>{angka(x.v)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 8, lineHeight: 1.6 }}>
+              Dihitung dari selisih waktu ulasan masuk dan balasan dikirim, hanya untuk ulasan yang
+              masuk pada periode ini. Balasan ke ulasan lama tidak ikut di sini — jedanya bertahun
+              dan akan menenggelamkan seluruh ember; pekerjaan itu terhitung pada baris di atas.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Performa per bulan, bisa dibuka per profil ──
@@ -305,13 +340,17 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
         <div style={kartu}>
           <div style={judulKartu}>Ulasan per Bulan</div>
           <div style={gulir}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
               <thead>
                 <tr>
                   <th style={{ ...th, ...kiri }}>Bulan</th>
                   <th style={th}>Ulasan Baru</th>
                   <th style={th}>Rata-rata</th>
-                  <th style={th}>Bintang ≤3</th>
+                  <th style={{ ...th, color: '#16A34A' }}>5★</th>
+                  <th style={th}>4★</th>
+                  <th style={th}>3★</th>
+                  <th style={th}>2★</th>
+                  <th style={{ ...th, color: '#B91C1C' }}>1★</th>
                   <th style={th}>Dibalas</th>
                 </tr>
               </thead>
@@ -324,12 +363,24 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
                       ...td, fontWeight: 700,
                       color: u.rataRata < 3.5 ? '#B91C1C' : u.rataRata < 4 ? '#B45309' : '#16A34A',
                     }}>{u.rataRata.toFixed(2)}</td>
-                    <td style={{ ...td, color: u.rendah > 0 ? '#B91C1C' : undefined }}>{angka(u.rendah)}</td>
+                    {/* Nol ditampilkan pudar supaya angka yang ADA menonjol —
+                        sebaran RKZ dua kutub, jadi kolom tengah kerap kosong. */}
+                    <td style={{ ...td, color: u.bintang.b5 ? '#16A34A' : 'var(--c-border)', fontWeight: u.bintang.b5 ? 700 : 400 }}>{u.bintang.b5}</td>
+                    <td style={{ ...td, color: u.bintang.b4 ? undefined : 'var(--c-border)' }}>{u.bintang.b4}</td>
+                    <td style={{ ...td, color: u.bintang.b3 ? undefined : 'var(--c-border)' }}>{u.bintang.b3}</td>
+                    <td style={{ ...td, color: u.bintang.b2 ? undefined : 'var(--c-border)' }}>{u.bintang.b2}</td>
+                    <td style={{ ...td, color: u.bintang.b1 ? '#B91C1C' : 'var(--c-border)', fontWeight: u.bintang.b1 ? 800 : 400 }}>{u.bintang.b1}</td>
                     <td style={td}>{angka(u.dibalas)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={{ padding: '0 var(--sp-5) var(--sp-4)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+            <strong>Rata-rata</strong> adalah rata-rata bintang ulasan yang <em>masuk pada bulan itu</em> —
+            bukan rating listing Anda. Rating yang tampil di Google adalah akumulasi sejak listing
+            dibuat, jadi keduanya hampir selalu berbeda. <strong>Dibalas</strong> menghitung ulasan
+            bulan itu yang sudah punya balasan, kapan pun balasannya dikirim.
           </div>
         </div>
       )}

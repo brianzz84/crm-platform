@@ -59,9 +59,30 @@ export interface BarisLokasi {
 export interface BarisUlasanBulan {
   bulan:    string
   jumlah:   number
+  /**
+   * Rata-rata bintang ulasan yang MASUK bulan itu — bukan rating listing.
+   * Rating yang tampil di Google adalah akumulasi sejak listing dibuat (RKZ:
+   * 2011), jadi keduanya hampir selalu berbeda dan mudah tertukar.
+   */
   rataRata: number
-  rendah:   number // bintang <= 3
+  /**
+   * Sebaran per bintang. Menggantikan satu ember "≤3", yang menyembunyikan
+   * perbedaan yang justru paling penting: pada RKZ, sebarannya DUA KUTUB —
+   * 12 bulan terakhir berisi 169 bintang-5 dan 25 bintang-1, dengan hampir
+   * tidak ada apa pun di antaranya. Satu angka "32 ulasan ≤3" menyamarkan bahwa
+   * 25 di antaranya adalah bintang terburuk.
+   */
+  bintang:  { b1: number; b2: number; b3: number; b4: number; b5: number }
   dibalas:  number
+}
+
+/** Kecepatan membalas ulasan yang masuk pada periode — ukuran layanan, bukan volume. */
+export interface JedaBalasan {
+  kurangSehari: number
+  satuTiga:     number
+  empatTujuh:   number
+  lebihTujuh:   number
+  belum:        number
 }
 
 export interface LaporanGoogle {
@@ -70,6 +91,7 @@ export interface LaporanGoogle {
   bulanan:      BarisBulan[]
   perLokasi:    BarisLokasi[]
   ulasanBulan:  BarisUlasanBulan[]
+  jeda:         JedaBalasan
   ringkas: {
     tayangan:       number
     permintaanRute: number
@@ -123,7 +145,7 @@ export async function rakitLaporanGoogle(
     }),
     db.gbpReview.findMany({
       where:   { tenant_slug: slug, dibuat_pada: { gte: dariTgl, lte: sampaiTgl } },
-      select:  { bintang: true, dibuat_pada: true, balasan_teks: true },
+      select:  { bintang: true, dibuat_pada: true, balasan_teks: true, balasan_pada: true },
       orderBy: { dibuat_pada: 'asc' },
     }),
     db.gbpLocationDaily.findFirst({
@@ -225,15 +247,36 @@ export async function rakitLaporanGoogle(
   }
 
   // ── Ulasan per bulan ───────────────────────────────────────────────────
-  const petaUlasan = new Map<string, { jumlah: number; total: number; rendah: number; dibalas: number }>()
+  const petaUlasan = new Map<string, {
+    jumlah: number; total: number; dibalas: number
+    b1: number; b2: number; b3: number; b4: number; b5: number
+  }>()
   for (const u of ulasan) {
     const b = bulanDari(u.dibuat_pada)
-    const s = petaUlasan.get(b) ?? { jumlah: 0, total: 0, rendah: 0, dibalas: 0 }
+    const s = petaUlasan.get(b) ?? { jumlah: 0, total: 0, dibalas: 0, b1: 0, b2: 0, b3: 0, b4: 0, b5: 0 }
     s.jumlah++
     s.total += u.bintang
-    if (u.bintang > 0 && u.bintang <= 3) s.rendah++
+    if (u.bintang === 1) s.b1++
+    else if (u.bintang === 2) s.b2++
+    else if (u.bintang === 3) s.b3++
+    else if (u.bintang === 4) s.b4++
+    else if (u.bintang === 5) s.b5++
     if (u.balasan_teks) s.dibalas++
     petaUlasan.set(b, s)
+  }
+
+  // ── Kecepatan membalas ulasan yang MASUK pada periode ──────────────────
+  // Sengaja dibatasi pada ulasan periode ini, sejalan dengan angka responsivitas
+  // di atasnya. Balasan ke ulasan lama punya jeda bertahun dan akan menenggelamkan
+  // seluruh ember; pekerjaan itu dihitung terpisah lewat `balasanUlasanLama`.
+  const jeda: JedaBalasan = { kurangSehari: 0, satuTiga: 0, empatTujuh: 0, lebihTujuh: 0, belum: 0 }
+  for (const u of ulasan) {
+    if (!u.balasan_pada) { jeda.belum++; continue }
+    const hari = (u.balasan_pada.getTime() - u.dibuat_pada.getTime()) / 86_400_000
+    if (hari < 1) jeda.kurangSehari++
+    else if (hari <= 3) jeda.satuTiga++
+    else if (hari <= 7) jeda.empatTujuh++
+    else jeda.lebihTujuh++
   }
 
   const ulasanBulan: BarisUlasanBulan[] = [...petaUlasan.entries()]
@@ -241,7 +284,8 @@ export async function rakitLaporanGoogle(
     .map(([bulan, s]) => ({
       bulan, jumlah: s.jumlah,
       rataRata: s.jumlah > 0 ? Number((s.total / s.jumlah).toFixed(2)) : 0,
-      rendah: s.rendah, dibalas: s.dibalas,
+      bintang: { b1: s.b1, b2: s.b2, b3: s.b3, b4: s.b4, b5: s.b5 },
+      dibalas: s.dibalas,
     }))
 
   const bulanan = [...petaBulan.values()].sort((a, b) => a.bulan.localeCompare(b.bulan))
@@ -252,6 +296,7 @@ export async function rakitLaporanGoogle(
     bulanan,
     perLokasi: [...petaLokasi.values()].sort((a, b) => b.tayangan - a.tayangan),
     ulasanBulan,
+    jeda,
     ringkas: {
       tayangan:       bulanan.reduce((n, b) => n + b.tayanganSearch + b.tayanganMaps, 0),
       permintaanRute: bulanan.reduce((n, b) => n + b.permintaanRute, 0),
