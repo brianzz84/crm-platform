@@ -687,6 +687,31 @@ model MetaConfig {
   /// Scope yang diperlukan: ads_read (dan business_management bila Ad Account
   /// berada di bawah Business Manager).
   ads_token       String?
+
+  // ── Instagram Messaging lewat Instagram Login ────────────────────────────
+  //
+  // Jalur TERPISAH dari `insights_token`, dan pemisahannya bukan kerapian:
+  // host, jenis token, dan model izinnya semuanya berbeda.
+  //
+  //   insights_token  → graph.facebook.com  · Page token   · instagram_manage_messages
+  //   ig_msg_token    → graph.instagram.com · Instagram User token · instagram_business_manage_messages
+  //
+  // Jalur lama tersandung Advanced Access karena aturan Messenger Platform.
+  // Jalur ini dinilai berdasarkan AKUN SIAPA yang dilayani — dan CRM hanya
+  // melayani akun RKZ sendiri, sehingga Standard Access semestinya cukup.
+  //
+  // ⚠️ Berbeda dari token lain di tabel ini, yang satu ini KEDALUWARSA:
+  // 60 hari, dan harus disegarkan. Karena itu `ig_msg_expires_at` wajib diisi
+  // dan dipantau — token yang mati diam-diam sudah pernah menelan sepuluh hari.
+  ig_msg_token       String?
+  ig_msg_user_id     String? // ID akun Instagram pada jalur graph.instagram.com
+  ig_msg_username    String? // ditampilkan agar salah akun cepat ketahuan
+  ig_msg_expires_at  DateTime?
+  ig_msg_refreshed_at DateTime?
+  /// Saklar tersendiri: jalur ini masih percobaan dan harus bisa dimatikan
+  /// tanpa menyentuh WhatsApp, Facebook, Insight, maupun Ads.
+  ig_msg_aktif       Boolean   @default(false)
+
   aktif           Boolean   @default(true)
   tested_at       DateTime?
   created_at      DateTime  @default(now())
