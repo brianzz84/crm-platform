@@ -148,6 +148,29 @@ export async function runScanner(job: Job) {
         job.log(`[scanner] Enqueue SIMRS_SYNC untuk ${tenant.slug} (jam ${simrsJam}:00 WIB)`)
       }
 
+      // PENYEGARAN TOKEN INSTAGRAM: sekali sehari, TIDAK menunggu jam snapshot
+      // dan tidak bergantung pada saklar snapshot. Token ini mati dalam 60 hari
+      // dan matinya diam-diam — sudah pernah menelan sepuluh hari. Fungsinya
+      // sendiri yang memutuskan apakah sudah waktunya; di sini cukup dipanggil.
+      const igCfg = await db.metaConfig.findUnique({
+        where:  { tenant_slug: tenant.slug },
+        select: { ig_msg_token: true },
+      })
+      if (igCfg?.ig_msg_token && hourWib === 3) {
+        await queue.add(
+          'instagram-token-refresh',
+          { type: 'IG_TOKEN_REFRESH', tenantSlug: tenant.slug },
+          {
+            jobId: `ig-token-refresh-${tenant.slug}-${nowWib.toISOString().slice(0, 10)}`,
+            attempts: 3,
+            backoff:  { type: 'exponential', delay: 300_000 },
+            removeOnComplete: 10,
+            removeOnFail:     30,
+          },
+        )
+        enqueued++
+      }
+
       // SNAPSHOT KANAL PUBLIK: hanya tenant yang mengaktifkannya sendiri —
       // menarik data Meta/Google untuk tenant yang tidak memakainya hanya
       // menghabiskan kuota API mereka.

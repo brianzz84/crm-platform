@@ -168,6 +168,16 @@ async function main() {
         return { status, hasil }
       }
 
+      if (job.name === 'instagram-token-refresh') {
+        const { segarkanTokenTenant } = await import('@/lib/instagram-messaging')
+        const hasil = await segarkanTokenTenant(job.data.tenantSlug)
+        job.log(`[IG_TOKEN_REFRESH] ${hasil.status} — ${hasil.pesan}`)
+        // Hanya kegagalan sungguhan yang dilempar. "belum-waktunya" dan
+        // "tidak-ada" adalah keadaan normal, bukan galat yang perlu dicoba ulang.
+        if (hasil.status === 'gagal') throw new Error(hasil.pesan)
+        return hasil
+      }
+
       if (job.name === 'google-snapshot') {
         const { jalankanSnapshotGoogle } = await import('@/lib/google-snapshot')
         const { catatSnapshotRun }       = await import('@/lib/snapshot-run')

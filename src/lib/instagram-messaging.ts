@@ -261,3 +261,48 @@ export function bacaArtiGalat(pesan: string): 'akses' | 'tidak-jelas' | 'konfigu
   if (p.includes('timeout') || p.includes('reduce the amount of data')) return 'tidak-jelas'
   return 'konfigurasi'
 }
+
+/**
+ * Segarkan token milik satu tenant, bila sudah waktunya.
+ *
+ * Dijalankan penjadwal harian. Ambangnya 30 hari — SETENGAH umur token, bukan
+ * menjelang habis. Alasannya bukan kehati-hatian berlebihan: menunggu sampai
+ * hari ke-59 berarti satu kali gangguan jaringan sudah cukup mematikan
+ * integrasi, sedangkan pada hari ke-30 masih tersisa sebulan untuk memperbaiki.
+ *
+ * Ini pengaman langsung terhadap insiden 18 Agustus 2026, ketika token mati
+ * diam-diam dan baru ketahuan sepuluh hari kemudian.
+ */
+export async function segarkanTokenTenant(
+  slug: string, ambangHari = 30,
+): Promise<{ status: 'disegarkan' | 'belum-waktunya' | 'tidak-ada' | 'gagal'; pesan: string }> {
+  const { getTenantDb } = await import('./tenant')
+  const db  = await getTenantDb(slug)
+  const cfg = await db.metaConfig.findUnique({ where: { tenant_slug: slug } })
+
+  if (!cfg?.ig_msg_token) return { status: 'tidak-ada', pesan: 'Instagram Messaging belum tersambung.' }
+
+  const usiaHari = cfg.ig_msg_refreshed_at
+    ? (Date.now() - cfg.ig_msg_refreshed_at.getTime()) / 86_400_000
+    : Infinity
+
+  // Meta menolak penyegaran token yang belum berumur 24 jam.
+  if (usiaHari < 1) return { status: 'belum-waktunya', pesan: 'Token baru saja disegarkan.' }
+  if (usiaHari < ambangHari) {
+    return { status: 'belum-waktunya', pesan: `Baru ${Math.floor(usiaHari)} hari sejak penyegaran terakhir.` }
+  }
+
+  const hasil = await segarkanToken(cfg.ig_msg_token)
+  if (!hasil.ok) return { status: 'gagal', pesan: hasil.pesan }
+
+  await db.metaConfig.update({
+    where: { tenant_slug: slug },
+    data: {
+      ig_msg_token:        hasil.token,
+      ig_msg_expires_at:   new Date(Date.now() + hasil.expiresIn * 1000),
+      ig_msg_refreshed_at: new Date(),
+    },
+  })
+  const sisa = Math.floor(hasil.expiresIn / 86_400)
+  return { status: 'disegarkan', pesan: `Token disegarkan, berlaku ${sisa} hari lagi.` }
+}
