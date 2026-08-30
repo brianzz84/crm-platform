@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import LaporanGoogle from './LaporanGoogle'
+import LaporanPercakapan from './LaporanPercakapan'
 
 interface Sel { jumlah: number; jangkauan: number; interaksi: number; suka: number }
 interface BarisAkun {
@@ -57,13 +58,13 @@ const gulir: React.CSSProperties = { overflowX: 'auto', padding: 'var(--sp-4) va
 
 export default function LaporanTab(
   { slug, mulai, selesai, kanalAwal }:
-  { slug: string; mulai: string; selesai: string; kanalAwal?: 'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE' },
+  { slug: string; mulai: string; selesai: string; kanalAwal?: 'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE' | 'PERCAKAPAN' },
 ) {
   // Dipakai saat pengguna datang dari tab Google Bisnis: ia sudah menyatakan
   // saluran mana yang dimaksud, jadi mendaratkannya di Instagram akan memaksa
   // satu klik yang tak ada gunanya. Komponen ini di-unmount tiap ganti tab,
   // sehingga nilai awal ini terbaca ulang tiap kali dibuka.
-  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE'>(kanalAwal ?? 'IG')
+  const [kanal, setKanal] = useState<'IG' | 'FB' | 'YOUTUBE' | 'GOOGLE' | 'PERCAKAPAN'>(kanalAwal ?? 'IG')
   const [data, setData]   = useState<Laporan | null>(null)
   const [muat, setMuat]   = useState(false)
   const [galat, setGalat] = useState('')
@@ -71,7 +72,7 @@ export default function LaporanTab(
   const ambil = useCallback(async () => {
     // Google dirender komponennya sendiri dengan bentuk data yang berbeda, jadi
     // permintaan ke endpoint medsos di sini justru akan salah sasaran.
-    if (kanal === 'GOOGLE') { setData(null); setGalat(''); return }
+    if (kanal === 'GOOGLE' || kanal === 'PERCAKAPAN') { setData(null); setGalat(''); return }
     setMuat(true); setGalat('')
     try {
       const q = new URLSearchParams({ kanal, mulai, selesai })
@@ -97,6 +98,7 @@ export default function LaporanTab(
     FB:      '#1877F2',
     YOUTUBE: '#FF0000',
     GOOGLE:  '#188038',
+    PERCAKAPAN: '#475569',
   }
 
   const KANAL: { k: typeof kanal; label: string }[] = [
@@ -104,6 +106,10 @@ export default function LaporanTab(
     { k: 'FB',      label: 'Facebook' },
     { k: 'YOUTUBE', label: 'YouTube' },
     { k: 'GOOGLE',  label: 'Google Bisnis' },
+    // Percakapan ditaruh terakhir dan sengaja dibedakan: keempat yang lain adalah
+    // SALURAN tempat konten terbit, sedangkan ini melintasi semuanya — isinya
+    // orang yang menghubungi, bukan konten yang diterbitkan.
+    { k: 'PERCAKAPAN', label: 'Percakapan' },
   ]
 
   return (
@@ -153,8 +159,9 @@ export default function LaporanTab(
       {muat && <div style={{ color: 'var(--c-text-muted)', fontSize: 13, marginBottom: 12 }}>Menghitung…</div>}
 
       {kanal === 'GOOGLE' && <LaporanGoogle slug={slug} mulai={mulai} selesai={selesai} />}
+      {kanal === 'PERCAKAPAN' && <LaporanPercakapan slug={slug} mulai={mulai} selesai={selesai} />}
 
-      {data && kanal !== 'GOOGLE' && (
+      {data && kanal !== 'GOOGLE' && kanal !== 'PERCAKAPAN' && (
         <>
           {data.belumDitandai > 0 && kanal !== 'YOUTUBE' && (
             <div style={{ background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: 'var(--sp-4)', borderRadius: 'var(--r-md)', fontSize: 13, lineHeight: 1.7, marginBottom: 'var(--sp-5)' }}>
