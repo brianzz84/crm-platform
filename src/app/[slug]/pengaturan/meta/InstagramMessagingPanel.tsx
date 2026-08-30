@@ -81,6 +81,33 @@ export default function InstagramMessagingPanel({ slug }: { slug: string }) {
     finally { setSibuk('') }
   }
 
+  async function alihAktif() {
+    if (!st) return
+    // Konfirmasi hanya saat MENYALAKAN: mulai saat itu percakapan Instagram masuk
+    // ke Inbox yang sama dengan percakapan pasien, dan balasan dari sana benar-benar
+    // terkirim. Mematikan tidak perlu ditanya — itu selalu tindakan yang aman.
+    if (!st.aktif && !window.confirm(
+      'Nyalakan Instagram Messaging?\n\n' +
+      'Percakapan Instagram akan masuk ke Inbox, dan balasan dari Inbox akan benar-benar ' +
+      'terkirim ke pengirimnya.'
+    )) return
+
+    setSibuk('aktif'); setGalat(''); setKabar('')
+    try {
+      const res  = await fetch(`/api/${slug}/instagram/token`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aktif: !st.aktif }),
+      })
+      const json = await res.json()
+      if (!json.success) { setGalat(json.error ?? 'Gagal mengubah status.'); return }
+      setSt(json.data)
+      setKabar(json.data.aktif
+        ? 'Instagram Messaging aktif — percakapan akan mulai masuk ke Inbox.'
+        : 'Instagram Messaging dimatikan.')
+    } catch { setGalat('Gagal menghubungi server.') }
+    finally { setSibuk('') }
+  }
+
   async function jalankanProbe() {
     setSibuk('probe'); setGalat(''); setKabar(''); setCek(null)
     try {
@@ -113,8 +140,15 @@ export default function InstagramMessagingPanel({ slug }: { slug: string }) {
               <button onClick={segarkan} disabled={!!sibuk} style={tombol(false, sibuk === 'segar')}>
                 {sibuk === 'segar' ? '⏳ Menyegarkan…' : '⟲ Segarkan token'}
               </button>
-              <button onClick={jalankanProbe} disabled={!!sibuk} style={tombol(true, sibuk === 'probe')}>
+              <button onClick={jalankanProbe} disabled={!!sibuk} style={tombol(false, sibuk === 'probe')}>
                 {sibuk === 'probe' ? '⏳ Menguji…' : '▶ Jalankan probe'}
+              </button>
+              <button onClick={alihAktif} disabled={!!sibuk}
+                style={{
+                  ...tombol(!st.aktif, sibuk === 'aktif'),
+                  ...(st.aktif ? { color: '#B91C1C', borderColor: '#FCA5A5' } : {}),
+                }}>
+                {sibuk === 'aktif' ? '⏳…' : st.aktif ? '⏸ Matikan' : '⏵ Aktifkan'}
               </button>
             </>
           )}
@@ -145,6 +179,8 @@ export default function InstagramMessagingPanel({ slug }: { slug: string }) {
             { l: 'Sisa umur token', v: st.sisaHari != null ? `${st.sisaHari} hari` : '—', w: warnaSisa(st.sisaHari) },
             { l: 'Kedaluwarsa', v: tanggal(st.kedaluwarsa), w: undefined },
             { l: 'Disegarkan', v: tanggal(st.disegarkanPada), w: undefined },
+            { l: 'Status', v: st.aktif ? 'Aktif' : 'Nonaktif',
+              w: st.aktif ? 'var(--c-success)' : 'var(--c-text-muted)' },
           ].map(s => (
             <div key={s.l} style={{ background: 'white', padding: '10px 14px' }}>
               <div style={{ fontSize: 10, color: 'var(--c-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.l}</div>

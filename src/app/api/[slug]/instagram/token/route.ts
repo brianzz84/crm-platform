@@ -46,6 +46,52 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   }
 }
 
+/**
+ * PATCH — nyalakan atau matikan jalur Instagram Messaging.
+ *
+ * Saklarnya nyata, bukan hiasan: saat mati, penarikan terjadwal dilewati,
+ * peristiwa webhook dibuang, dan balasan dari Inbox ditolak dengan pesan yang
+ * menjelaskan sebabnya. Jalur ini masih baru, dan harus bisa dihentikan tanpa
+ * menyentuh WhatsApp, Facebook, Insight, maupun Ads.
+ */
+export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const { error } = await requireTenantPermission(req, params.slug, 'configSystem')
+  if (error) return error
+
+  let body: Record<string, unknown>
+  try { body = await req.json() } catch {
+    return NextResponse.json({ success: false, error: 'Body bukan JSON.' }, { status: 400 })
+  }
+  if (typeof body.aktif !== 'boolean') {
+    return NextResponse.json({ success: false, error: 'Field `aktif` harus boolean.' }, { status: 400 })
+  }
+
+  try {
+    const db  = await getTenantDb(params.slug)
+    const cfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
+
+    // Menyalakan tanpa token akan membuat penarikan gagal tiap jam tanpa sebab
+    // yang terbaca di layar mana pun.
+    if (body.aktif && !cfg?.ig_msg_token) {
+      return NextResponse.json(
+        { success: false, error: 'Hubungkan Instagram terlebih dahulu sebelum mengaktifkan.' },
+        { status: 400 },
+      )
+    }
+
+    await db.metaConfig.update({
+      where: { tenant_slug: params.slug },
+      data:  { ig_msg_aktif: body.aktif },
+    })
+    return NextResponse.json({ success: true, data: await status(params.slug) })
+  } catch (e) {
+    return NextResponse.json(
+      { success: false, error: e instanceof Error ? e.message : 'Server error' },
+      { status: 500 },
+    )
+  }
+}
+
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'configSystem')
   if (error) return error
