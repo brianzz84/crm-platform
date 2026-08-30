@@ -68,7 +68,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       pesan:  sisaHari == null
         ? 'Tanggal kedaluwarsa tidak tercatat — sambungkan ulang agar terpantau.'
         : sisaHari > 14
-          ? `Berlaku ${sisaHari} hari lagi (kedaluwarsa ${cfg.ig_msg_expires_at!.toISOString().slice(0, 10)}).`
+          // Tanggalnya TIDAK diulang di sini: panel di atas sudah menampilkannya,
+          // dan dua sumber tanggal yang sama pernah berselisih sehari karena yang
+          // satu memakai zona waktu lokal dan yang lain UTC.
+          ? `Berlaku ${sisaHari} hari lagi.`
           : `Tersisa ${sisaHari} hari. Segarkan sekarang — jangan menunggu mendekati habis.`,
     })
 
@@ -115,13 +118,22 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       })
     } else {
       const isi = await isiPercakapan(cfg.ig_msg_token, percakapan.data[0].id)
+      // Pesan terbaru kerap justru balasan RKZ sendiri, sehingga mengambil
+      // pengirim pesan pertama akan menampilkan ID akun sendiri dan terbaca
+      // seolah lawan bicaranya adalah rumah sakit. Yang dicari adalah pihak
+      // LAIN — itulah ID yang diperlukan untuk membalas.
+      const lawan = isi.ok
+        ? isi.data.find(m => m.dari && m.dari !== cfg.ig_msg_user_id)?.dari
+        : undefined
       hasil.push(isi.ok
         ? {
             kunci: 'isi', label: 'Isi percakapan', status: 'ok',
             pesan: `${isi.data.length} pesan terbaca dari percakapan terbaru.`,
-            // ID pengirim diperlukan untuk Uji 6; isi pesannya sengaja tidak
-            // ikut dikembalikan agar percakapan tidak bocor ke layar diagnostik.
-            detail: isi.data[0] ? `ID pengirim terakhir: ${isi.data[0].dari}` : undefined,
+            // Isi pesannya sengaja tidak ikut dikembalikan agar percakapan pasien
+            // tidak bocor ke layar diagnostik.
+            detail: lawan
+              ? `ID lawan bicara: ${lawan}`
+              : 'Seluruh pesan pada percakapan ini berasal dari akun sendiri.',
           }
         : {
             kunci: 'isi', label: 'Isi percakapan', status: 'gagal',
