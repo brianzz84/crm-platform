@@ -108,6 +108,20 @@ export default function InstagramMessagingPanel({ slug }: { slug: string }) {
     finally { setSibuk('') }
   }
 
+  /** Menarik percakapan sekarang, tanpa menunggu penjadwal tiap jam. */
+  async function tarikSekarang() {
+    setSibuk('tarik'); setGalat(''); setKabar('')
+    try {
+      const res  = await fetch(`/api/${slug}/instagram/tarik`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hari: 7 }),
+      })
+      const json = await res.json()
+      if (json.success) setKabar(json.pesan); else setGalat(json.pesan ?? json.error ?? 'Penarikan gagal.')
+    } catch { setGalat('Gagal menghubungi server.') }
+    finally { setSibuk('') }
+  }
+
   async function jalankanProbe() {
     setSibuk('probe'); setGalat(''); setKabar(''); setCek(null)
     try {
@@ -143,6 +157,11 @@ export default function InstagramMessagingPanel({ slug }: { slug: string }) {
               <button onClick={jalankanProbe} disabled={!!sibuk} style={tombol(false, sibuk === 'probe')}>
                 {sibuk === 'probe' ? '⏳ Menguji…' : '▶ Jalankan probe'}
               </button>
+              {st.aktif && (
+                <button onClick={tarikSekarang} disabled={!!sibuk} style={tombol(false, sibuk === 'tarik')}>
+                  {sibuk === 'tarik' ? '⏳ Menarik…' : '⤓ Tarik percakapan'}
+                </button>
+              )}
               <button onClick={alihAktif} disabled={!!sibuk}
                 style={{
                   ...tombol(!st.aktif, sibuk === 'aktif'),
