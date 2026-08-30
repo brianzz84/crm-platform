@@ -154,8 +154,26 @@ export async function runScanner(job: Job) {
       // sendiri yang memutuskan apakah sudah waktunya; di sini cukup dipanggil.
       const igCfg = await db.metaConfig.findUnique({
         where:  { tenant_slug: tenant.slug },
-        select: { ig_msg_token: true },
+        select: { ig_msg_token: true, ig_msg_aktif: true },
       })
+
+      // DM INSTAGRAM: tiap jam, sebagai CADANGAN webhook — bukan jalur utama.
+      // Webhook bisa gagal atau terlewat, dan riwayat sebelum webhook dipasang
+      // tidak akan pernah dikirim ulang oleh Meta. Idempotensinya dijaga
+      // `external_id`, jadi tumpang tindih dengan webhook tidak menggandakan.
+      if (igCfg?.ig_msg_token && igCfg.ig_msg_aktif) {
+        await queue.add(
+          'instagram-dm',
+          { type: 'INSTAGRAM_DM', tenantSlug: tenant.slug },
+          {
+            jobId: `instagram-dm-${tenant.slug}-${nowWib.toISOString().slice(0, 13)}`,
+            attempts: 2,
+            removeOnComplete: 5,
+            removeOnFail: 10,
+          },
+        )
+        enqueued++
+      }
       if (igCfg?.ig_msg_token && hourWib === 3) {
         await queue.add(
           'instagram-token-refresh',

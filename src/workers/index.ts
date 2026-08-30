@@ -168,6 +168,13 @@ async function main() {
         return { status, hasil }
       }
 
+      if (job.name === 'instagram-dm') {
+        const { tarikDmInstagram } = await import('@/lib/instagram-dm')
+        const hasil = await tarikDmInstagram(job.data.tenantSlug, job.data.sejakHari ?? 7)
+        job.log(`[INSTAGRAM_DM] ${hasil.percakapan} percakapan, ${hasil.pesanBaru} pesan baru${hasil.galat ? ' — ' + hasil.galat : ''}`)
+        return hasil
+      }
+
       if (job.name === 'instagram-token-refresh') {
         const { segarkanTokenTenant } = await import('@/lib/instagram-messaging')
         const hasil = await segarkanTokenTenant(job.data.tenantSlug)

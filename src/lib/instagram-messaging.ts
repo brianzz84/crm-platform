@@ -162,7 +162,13 @@ export async function identitas(
   }
 }
 
-export interface PercakapanIg { id: string; diperbaruiPada: string | null }
+export interface PesertaIg { id: string; username: string | null }
+export interface PercakapanIg {
+  id: string
+  diperbaruiPada: string | null
+  /** Hanya terisi bila diminta lewat `denganPeserta`. */
+  peserta?: PesertaIg[]
+}
 
 /**
  * Daftar percakapan. INILAH pemutus apakah App Review bisa dihindari.
@@ -174,10 +180,12 @@ export interface PercakapanIg { id: string; diperbaruiPada: string | null }
  *   - galat izin biasa → konfigurasi, bukan tingkat akses
  */
 export async function daftarPercakapan(
-  token: string, batas = 25,
+  token: string, batas = 25, denganPeserta = false,
 ): Promise<{ ok: true; data: PercakapanIg[] } | { ok: false; pesan: string; status: number }> {
   const q = new URLSearchParams({
-    fields:       'id,updated_time',
+    // Peserta hanya diminta bila dibutuhkan: probe cukup tahu percakapannya
+    // terbaca, sedangkan penarik Inbox butuh tahu siapa lawan bicaranya.
+    fields:       denganPeserta ? 'id,updated_time,participants' : 'id,updated_time',
     limit:        String(batas),
     access_token: token,
   })
@@ -185,8 +193,16 @@ export async function daftarPercakapan(
   if (!r.ok) return { ok: false, pesan: pesanGalatIg(r), status: r.status }
   return {
     ok: true,
-    data: ((r.json?.data ?? []) as { id: string; updated_time?: string }[]).map(c => ({
-      id: c.id, diperbaruiPada: c.updated_time ?? null,
+    data: ((r.json?.data ?? []) as {
+      id: string
+      updated_time?: string
+      participants?: { data?: { id: string; username?: string }[] }
+    }[]).map(c => ({
+      id: c.id,
+      diperbaruiPada: c.updated_time ?? null,
+      peserta: c.participants?.data?.map(p => ({
+        id: String(p.id), username: p.username ?? null,
+      })),
     })),
   }
 }
@@ -201,6 +217,7 @@ interface PesanMentah {
 export interface PesanIg {
   id: string
   dari: string
+  dariNama: string | null
   teks: string
   dibuatPada: string | null
 }
@@ -220,6 +237,7 @@ export async function isiPercakapan(
     data: (((r.json?.messages as { data?: PesanMentah[] } | undefined)?.data) ?? []).map(m => ({
       id:         m.id,
       dari:       m.from?.id ?? m.from?.username ?? '-',
+      dariNama:   m.from?.username ?? null,
       teks:       m.message ?? '',
       dibuatPada: m.created_time ?? null,
     })),

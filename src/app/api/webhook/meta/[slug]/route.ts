@@ -43,7 +43,21 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const body: MetaWebhookPayload = await req.json()
 
-    // Hanya proses WhatsApp
+    // Instagram memakai BENTUK PAYLOAD YANG BERBEDA dari WhatsApp: pesannya ada
+    // di `entry[].messaging[]`, bukan `entry[].changes[]`. Karena itu ia ditangani
+    // di modul sendiri, bukan dengan melonggarkan syarat di bawah.
+    if (body.object === 'instagram') {
+      const { tanganiWebhookInstagram } = await import('@/lib/instagram-webhook')
+      const hasil = await tanganiWebhookInstagram(params.slug, body as unknown as Record<string, unknown>)
+      // Selalu 200. Meta mencoba ulang selama belum 200, dan pengulangan atas
+      // pesan yang sebenarnya sudah tersimpan hanya membebani tanpa memperbaiki
+      // apa pun — idempotensinya dijaga `external_id`.
+      if (hasil.pesanBaru) console.log(`[webhook/instagram/${params.slug}] ${hasil.pesanBaru} pesan baru`)
+      return NextResponse.json({ success: true })
+    }
+
+    // Selain itu hanya WhatsApp. Messenger (`object: "page"`) sengaja belum
+    // ditangani — DM Facebook masuk lewat penarikan terjadwal tiap jam.
     if (body.object !== 'whatsapp_business_account') {
       return NextResponse.json({ success: true })
     }

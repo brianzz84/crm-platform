@@ -128,17 +128,47 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     }
 
     // ── Kirim ke channel (best-effort, tidak gagalkan response) ──
-    if (!is_internal_note && (conv.channel === 'FB' || conv.channel === 'IG')) {
-      // Messenger DAN Instagram, keduanya. Send API-nya sama: POST ke
-      // {page-id}/messages dengan pengenal dari platform sebagai tujuan — PSID
-      // untuk Messenger, IGSID untuk Instagram.
+    // ── Instagram: jalur SENDIRI, bukan lewat Halaman ──
+    //
+    // Sebelumnya Instagram menumpang Send API Halaman bersama Messenger. Jalur itu
+    // tersandung Advanced Access dan tidak pernah benar-benar bekerja. Sejak
+    // 30 Agu 2026 Instagram punya sambungannya sendiri lewat graph.instagram.com,
+    // yang terbukti melayani baca dan balas pada Standard Access.
+    if (!is_internal_note && conv.channel === 'IG') {
+      const { kirimPesan } = await import('@/lib/instagram-messaging')
+      const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
+
+      if (metaCfg?.ig_msg_token && metaCfg.ig_msg_user_id && metaCfg.ig_msg_aktif) {
+        kirimPesan(metaCfg.ig_msg_token, metaCfg.ig_msg_user_id, conv.channel_user_id, content)
+          .then(async hasil => {
+            await db.message.update({
+              where: { id: msg.id },
+              data: hasil.ok
+                ? { status: 'SENT', sent_at: new Date() }
+                // Galat jendela 24 jam adalah yang paling sering ditemui dan paling
+                // mudah disalahpahami sebagai kerusakan. Disebutkan apa adanya agar
+                // petugas tahu ini aturan Meta, bukan sistem yang gagal.
+                : { status: 'FAILED', error_detail: hasil.pesan.slice(0, 300) },
+            }).catch(() => null)
+          })
+      } else {
+        await db.message.update({
+          where: { id: msg.id },
+          data:  {
+            status: 'FAILED',
+            error_detail: metaCfg?.ig_msg_token
+              ? 'Instagram Messaging belum diaktifkan di Pengaturan → Integrasi Meta.'
+              : 'Instagram belum tersambung. Buka Pengaturan → Integrasi Meta lalu tekan "Hubungkan Instagram".',
+          },
+        })
+        msg.status = 'FAILED'
+      }
+    } else if (!is_internal_note && conv.channel === 'FB') {
+      // Messenger saja. Instagram sudah pindah ke cabang di atas.
       //
-      // Sebelumnya syarat ini hanya 'FB', sehingga balasan Instagram jatuh ke
-      // cabang WhatsApp dan ditolak dengan "Pasien belum punya nomor WhatsApp di
-      // data." Pengguna Instagram tidak pernah punya nomor itu: platform hanya
-      // memberi ID acak, dan percakapannya kerap tidak tertaut ke Person sama
-      // sekali. Jadi galatnya bukan sekadar membingungkan — ia memblokir balasan
-      // yang sebenarnya sah, dan menyalahkan data pasien atas salah rute.
+      // Cabang ini TIDAK boleh dikembalikan menangani Instagram: pengguna
+      // Instagram tidak punya nomor WhatsApp, dan pernah jatuh ke cabang
+      // WhatsApp sehingga balasan yang sah ditolak dengan alasan data pasien.
       const { kirimPesanMessenger } = await import('@/lib/meta-dm')
       const metaCfg = await db.metaConfig.findUnique({ where: { tenant_slug: params.slug } })
       const token   = metaCfg?.insights_token || metaCfg?.access_token
