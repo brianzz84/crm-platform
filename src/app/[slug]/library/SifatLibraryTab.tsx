@@ -13,7 +13,32 @@ const inp: React.CSSProperties = {
   outline: 'none', background: 'var(--c-bg)', color: 'var(--c-text)', boxSizing: 'border-box',
 }
 
-export default function SifatLibraryTab({ slug }: { slug: string }) {
+/**
+ * Dipakai dua kali: sifat konten (apa yang KAMI terbitkan) dan topik percakapan
+ * (apa yang MEREKA tanyakan). Bentuk pengelolaannya identik sampai ke aturan
+ * "kode kekal, nama boleh diubah", jadi komponennya diparameterkan alih-alih
+ * disalin — dua salinan pasti akan berbeda perilaku setelah beberapa suntingan.
+ */
+interface Props {
+  slug: string
+  /** Nilai `?tab=` pada /api/[slug]/library. */
+  tab?: 'sifat' | 'topik'
+  /** Sebutan untuk pesan galat dan keadaan kosong, mis. "topik percakapan". */
+  istilah?: string
+  /** Sebutan singkat untuk tombol tambah, mis. "Topik". */
+  istilahSingkat?: string
+  contohKode?: string
+  contohNama?: string
+}
+
+export default function SifatLibraryTab({
+  slug,
+  tab            = 'sifat',
+  istilah        = 'sifat konten',
+  istilahSingkat = 'Sifat',
+  contohKode     = 'TESTIMONI_PASIEN',
+  contohNama     = 'Testimoni Pasien',
+}: Props) {
   const [rows, setRows]       = useState<SifatRow[]>([])
   const [q, setQ]             = useState('')
   const [loading, setLoading] = useState(true)
@@ -34,15 +59,15 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const p = new URLSearchParams({ tab: 'sifat' })
+      const p = new URLSearchParams({ tab })
       if (q.trim()) p.set('q', q.trim())
       const res  = await fetch(`/api/${slug}/library?${p}`)
       const json = await res.json()
-      if (!res.ok) { setError(json.error || 'Gagal memuat sifat konten'); return }
+      if (!res.ok) { setError(json.error || `Gagal memuat ${istilah}`); return }
       setRows(json.data ?? [])
-    } catch { setError('Gagal memuat sifat konten') }
+    } catch { setError(`Gagal memuat ${istilah}`) }
     finally { setLoading(false) }
-  }, [slug, q])
+  }, [slug, q, tab, istilah])
 
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
 
@@ -51,7 +76,7 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
     if (!fKode.trim() || !fNama.trim()) { setError('Kode dan nama wajib diisi'); return }
     setSaving(true); setError('')
     try {
-      const res  = await fetch(`/api/${slug}/library?tab=sifat`, {
+      const res  = await fetch(`/api/${slug}/library?tab=${tab}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kode: fKode, nama: fNama, deskripsi: fDesk, warna: fWarna }),
       })
@@ -65,7 +90,7 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
   async function simpanEdit(id: string) {
     setSaving(true); setError('')
     try {
-      const res  = await fetch(`/api/${slug}/library?tab=sifat`, {
+      const res  = await fetch(`/api/${slug}/library?tab=${tab}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, nama: eNama, deskripsi: eDesk, warna: eWarna }),
       })
@@ -79,7 +104,7 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
   async function ubahAktif(row: SifatRow) {
     setSaving(true); setError('')
     try {
-      await fetch(`/api/${slug}/library?tab=sifat`, {
+      await fetch(`/api/${slug}/library?tab=${tab}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: row.id, aktif: !row.aktif }),
       })
@@ -107,7 +132,7 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
           padding: '8px 16px', borderRadius: 'var(--r-md)', border: 'none',
           background: 'var(--c-secondary)', color: 'white', fontFamily: 'inherit',
           fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: 'pointer',
-        }}>{showAdd ? 'Batal' : '+ Sifat baru'}</button>
+        }}>{showAdd ? 'Batal' : `+ ${istilahSingkat} baru`}</button>
       </div>
 
       {error && (
@@ -119,11 +144,11 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
           <div style={{ display: 'flex', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 160 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)' }}>KODE (kekal)</label>
-              <input value={fKode} onChange={e => setFKode(e.target.value)} placeholder="TESTIMONI_PASIEN" style={{ ...inp, width: '100%' }} />
+              <input value={fKode} onChange={e => setFKode(e.target.value)} placeholder={contohKode} style={{ ...inp, width: '100%' }} />
             </div>
             <div style={{ flex: 1, minWidth: 160 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)' }}>NAMA TAMPILAN</label>
-              <input value={fNama} onChange={e => setFNama(e.target.value)} placeholder="Testimoni Pasien" style={{ ...inp, width: '100%' }} />
+              <input value={fNama} onChange={e => setFNama(e.target.value)} placeholder={contohNama} style={{ ...inp, width: '100%' }} />
             </div>
             <div style={{ width: 70 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)' }}>WARNA</label>
@@ -132,7 +157,7 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)' }}>URAIAN — dipakai AI saat mengusulkan sifat konten</label>
+            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)' }}>URAIAN — dipakai AI saat mengusulkan {istilah}</label>
             <input value={fDesk} onChange={e => setFDesk(e.target.value)} placeholder="Berisi…" style={{ ...inp, width: '100%' }} />
           </div>
           <button type="submit" disabled={saving} style={{
@@ -193,7 +218,7 @@ export default function SifatLibraryTab({ slug }: { slug: string }) {
             </div>
           ))}
           {!rows.length && (
-            <div style={{ padding: 'var(--sp-5)', color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)' }}>Belum ada sifat konten.</div>
+            <div style={{ padding: 'var(--sp-5)', color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)' }}>Belum ada {istilah}.</div>
           )}
         </div>
       )}

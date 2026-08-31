@@ -12,17 +12,25 @@
 import { useCallback, useEffect, useState } from 'react'
 
 type Kanal = 'WA' | 'FB' | 'IG'
+/** Urutannya tetap agar kolom tabel topik tidak berpindah antar-periode. */
+const KANAL: Kanal[] = ['WA', 'FB', 'IG']
 
 interface Sel {
   percakapan: number; pesanMasuk: number; pesanKeluar: number
   dijawab: number; tidakDijawab: number; medianMenit: number | null
 }
 interface BarisKanal { kanal: Kanal; perBulan: Record<string, Sel>; total: Sel }
+interface BarisTopik {
+  kode: string; nama: string; warna: string
+  perKanal: Record<string, number>; total: number
+}
 interface Laporan {
   bulan: string[]
   terekamSejak: Record<string, string | null>
   perKanal: BarisKanal[]
   jamSibuk: number[]
+  topik: BarisTopik[]
+  tanpaTopik: number
   ringkas: {
     pesanMasuk: number; pesanKeluar: number
     dijawab: number; tidakDijawab: number; medianMenit: number | null
@@ -105,6 +113,7 @@ export default function LaporanPercakapan(
   const totalGiliran = r.dijawab + r.tidakDijawab
   const persenJawab  = totalGiliran > 0 ? (r.dijawab / totalGiliran) * 100 : 0
   const puncakJam    = Math.max(...data.jamSibuk, 1)
+  const totalTopik   = data.topik.reduce((n, t) => n + t.total, 0)
 
   // Kanal yang riwayatnya belum menutupi awal periode. Tanpa keterangan ini,
   // laporan akan terbaca seolah kanal itu memang sepi — padahal datanya belum ada.
@@ -229,6 +238,67 @@ export default function LaporanPercakapan(
           </div>
         </div>
       )}
+
+      {/* ── Topik percakapan ── */}
+      <div style={kartu}>
+        <div style={judulKartu}>Keperluan yang Ditanyakan</div>
+        <div style={gulir}>
+          {data.topik.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--c-text-muted)', lineHeight: 1.7 }}>
+              Belum ada percakapan yang ditetapkan topiknya pada periode ini.
+              {data.tanpaTopik > 0 && <> Ada <strong>{angka(data.tanpaTopik)}</strong> percakapan
+              menunggu ditinjau di tab <strong>💬 Topik Percakapan</strong>.</>}
+            </div>
+          ) : (
+            <>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)', minWidth: 460 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...th, ...kiri }}>Keperluan</th>
+                    {KANAL.map(k => <th key={k} style={th}>{NAMA_KANAL[k]}</th>)}
+                    <th style={{ ...th, fontWeight: 800 }}>Total</th>
+                    <th style={th}>Porsi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.topik.map(t => (
+                    <tr key={t.kode}>
+                      <td style={{ ...td, ...kiri }}>
+                        <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: t.warna, marginRight: 7 }} />
+                        {t.nama}
+                      </td>
+                      {KANAL.map(k => (
+                        <td key={k} style={td}>{t.perKanal[k] ? angka(t.perKanal[k]) : '—'}</td>
+                      ))}
+                      <td style={{ ...td, fontWeight: 800 }}>{angka(t.total)}</td>
+                      <td style={{ ...td, color: 'var(--c-text-muted)' }}>
+                        {totalTopik ? `${Math.round((t.total / totalTopik) * 100)}%` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 10, lineHeight: 1.6 }}>
+                Satu percakapan dihitung sekali, menurut keperluan yang membuat orang itu
+                menghubungi — bukan sekali per pesan.
+              </div>
+            </>
+          )}
+
+          {/* Angka ini ditempel pada tabelnya, bukan disembunyikan di catatan kaki:
+              tabel topik yang mencakup separuh percakapan dan dibaca seolah mencakup
+              semuanya adalah cara paling mudah laporan ini menyesatkan. */}
+          {data.tanpaTopik > 0 && data.topik.length > 0 && (
+            <div style={{ marginTop: 10, background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12, lineHeight: 1.6 }}>
+              <strong>{angka(data.tanpaTopik)} percakapan pada periode ini belum ditetapkan
+              topiknya</strong> dan tidak ikut dihitung di tabel atas — dari total{' '}
+              {angka(totalTopik + data.tanpaTopik)}. Tinjau di tab 💬 Topik Percakapan
+              agar tabel ini utuh.
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ── Jam sibuk ── */}
       <div style={kartu}>

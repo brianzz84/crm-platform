@@ -5,6 +5,7 @@ import Link from 'next/link'
 import KontenTab from './KontenTab'
 import LaporanTab from './LaporanTab'
 import GoogleBisnisTab from './GoogleBisnisTab'
+import TopikPercakapanTab from './TopikPercakapanTab'
 
 /* ─── Tipe (cerminan bentuk dari src/lib/google-kanal.ts) ─── */
 interface TotalYouTube { tayangan: number; menitDitonton: number; retensiPersen: number; subscriberNaik: number; subscriberTurun: number }
@@ -76,7 +77,7 @@ interface RingkasFacebook {
   galat?: string
 }
 
-type Tab = 'website' | 'instagram' | 'facebook' | 'youtube' | 'google-bisnis' | 'konten' | 'laporan'
+type Tab = 'website' | 'instagram' | 'facebook' | 'youtube' | 'google-bisnis' | 'konten' | 'topik-percakapan' | 'laporan'
 type Kanal = 'ga4' | 'youtube' | 'instagram' | 'facebook'
 
 /* ─── Bantuan tanggal ─── */
@@ -672,6 +673,7 @@ export default function KanalPublikClient({
               { k: 'youtube', label: 'YouTube' },
               { k: 'google-bisnis', label: 'Google Bisnis' },
               { k: 'konten', label: '🏷️ Sifat Konten' },
+              { k: 'topik-percakapan', label: '💬 Topik Percakapan' },
               { k: 'laporan', label: '📑 Laporan' },
             ] as const).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)} style={{
@@ -684,7 +686,9 @@ export default function KanalPublikClient({
           </div>
 
           {/* Penyaring periode */}
-          {tab !== 'google-bisnis' && tab !== 'konten' && (
+          {/* Peninjauan topik tidak terikat periode: yang ditinjau adalah tumpukan
+              yang belum ditetapkan, bukan rentang tanggal. */}
+          {tab !== 'google-bisnis' && tab !== 'konten' && tab !== 'topik-percakapan' && (
             <div style={{ ...kartu, padding: 'var(--sp-4) var(--sp-5)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--c-text)', textTransform: 'uppercase', letterSpacing: '0.5px', minWidth: 70 }}>Periode</span>
@@ -1008,6 +1012,7 @@ export default function KanalPublikClient({
           ))}
 
           {tab === 'konten'  && <KontenTab slug={slug} />}
+          {tab === 'topik-percakapan' && <TopikPercakapanTab slug={slug} />}
           {tab === 'laporan' && <LaporanTab slug={slug} mulai={mulai} selesai={selesai} kanalAwal={laporanKanal} />}
 
           {/* ── Google Bisnis ──

@@ -853,6 +853,17 @@ model Conversation {
   unread_count    Int                @default(0)
   created_at      DateTime           @default(now())
 
+  /// Topik percakapan yang SUDAH disetujui manusia. Hanya kolom ini yang
+  /// dihitung laporan — pola yang sama dengan SocialContent.sifat.
+  topik           String?
+  /// Usulan AI. Sengaja terpisah: usulan yang belum ditinjau tidak boleh
+  /// mempengaruhi satu angka pun di laporan triwulan.
+  topik_usulan    String?
+  /// Alasan singkat dari AI — supaya peninjau bisa menilai tanpa membuka
+  /// percakapannya satu per satu.
+  topik_alasan    String?
+  topik_usul_pada DateTime?
+
   person        Person?      @relation(fields: [person_id], references: [id])
   assigned_user AppUser?     @relation("AssignedUser", fields: [assigned_to], references: [id])
   messages      Message[]
@@ -1626,6 +1637,32 @@ model SocialSifatLibrary {
   @@unique([tenant_slug, kode])
   @@index([tenant_slug, aktif])
   @@map("crm_social_sifat_library")
+}
+
+/// Topik percakapan masuk — kategori untuk "orang menghubungi RKZ soal apa".
+///
+/// Berdiri terpisah dari SocialSifatLibrary meski bentuknya kembar. Yang satu
+/// menggolongkan konten yang KAMI terbitkan, yang lain menggolongkan pertanyaan
+/// yang MEREKA ajukan; menyatukannya akan memaksa satu daftar melayani dua
+/// pertanyaan yang tidak berhubungan, dan tiap penambahan kategori di satu sisi
+/// akan mengotori laporan di sisi lain.
+///
+/// Aturan `kode` kekal berlaku sama: ia dirujuk Conversation.topik.
+model PercakapanTopikLibrary {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  kode        String // kekal — dipakai Conversation.topik
+  nama        String // boleh diubah; perubahan berlaku surut ke seluruh riwayat
+  deskripsi   String? // dibaca AI saat mengusulkan — makin jelas, makin sedikit salah
+  warna       String   @default("#0089A8")
+  urutan      Int      @default(0)
+  aktif       Boolean  @default(true) // TIDAK PERNAH DELETE — nonaktifkan saja
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, kode])
+  @@index([tenant_slug, aktif])
+  @@map("crm_percakapan_topik_library")
 }
 
 /// Angka triwulan lampau yang DIKETIK ULANG dari laporan manual.

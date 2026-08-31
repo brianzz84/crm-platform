@@ -39,12 +39,26 @@ export interface BarisKanal {
   total:    SelPercakapan
 }
 
+export interface BarisTopik {
+  kode:     string
+  nama:     string
+  warna:    string
+  perKanal: Record<string, number>
+  total:    number
+}
+
 export interface LaporanPercakapan {
   bulan:        string[]
   terekamSejak: Record<string, string | null>
   perKanal:     BarisKanal[]
   /** Sebaran pesan masuk per jam WIB — dasar penjadwalan staf. */
   jamSibuk:     number[]
+  /** Hanya topik yang SUDAH ditetapkan manusia; usulan AI tidak dihitung. */
+  topik:        BarisTopik[]
+  /** Percakapan dalam periode yang topiknya belum ditetapkan. Ditampilkan
+   *  berdampingan dengan tabel topik supaya tabel itu tidak pernah terbaca
+   *  seolah mencakup seluruh percakapan. */
+  tanpaTopik:   number
   ringkas: {
     pesanMasuk:   number
     pesanKeluar:  number
@@ -78,7 +92,7 @@ export async function rakitLaporanPercakapan(
   // Sampai akhir hari: tanpa ini pesan yang datang pada tanggal terakhir hilang.
   const sampai = new Date(`${selesai}T23:59:59.999Z`)
 
-  const [pesan, awalKanal] = await Promise.all([
+  const [pesan, awalKanal, pustakaTopik] = await Promise.all([
     db.message.findMany({
       where: {
         created_at:       { gte: dari, lte: sampai },
@@ -89,7 +103,7 @@ export async function rakitLaporanPercakapan(
         conversation_id: true,
         direction:       true,
         created_at:      true,
-        conversation:    { select: { channel: true } },
+        conversation:    { select: { channel: true, topik: true } },
       },
       orderBy: { created_at: 'asc' },
     }),
@@ -99,6 +113,13 @@ export async function rakitLaporanPercakapan(
       by:     ['channel'],
       where:  { tenant_slug: slug, channel: { in: KANAL_PERCAKAPAN } },
       _min:   { created_at: true },
+    }),
+    // Termasuk yang sudah dinonaktifkan: percakapan lama tetap menunjuk kode itu,
+    // dan menyembunyikan barisnya akan membuat jumlah tabel tidak pernah genap.
+    db.percakapanTopikLibrary.findMany({
+      where:   { tenant_slug: slug },
+      orderBy: [{ urutan: 'asc' }],
+      select:  { kode: true, nama: true, warna: true },
     }),
   ])
 
@@ -111,6 +132,7 @@ export async function rakitLaporanPercakapan(
   // ── Kelompokkan per percakapan, urut waktu ─────────────────────────────
   const perPercakapan = new Map<string, {
     kanal: KanalPercakapan
+    topik: string | null
     pesan: { masuk: boolean; pada: Date }[]
   }>()
 
@@ -123,7 +145,8 @@ export async function rakitLaporanPercakapan(
     if (masuk) jamSibuk[jamWib(p.created_at)]++
     bulanSet.add(bulanWib(p.created_at))
 
-    const g = perPercakapan.get(p.conversation_id) ?? { kanal, pesan: [] }
+    const g = perPercakapan.get(p.conversation_id)
+      ?? { kanal, topik: p.conversation.topik ?? null, pesan: [] }
     g.pesan.push({ masuk, pada: p.created_at })
     perPercakapan.set(p.conversation_id, g)
   }
@@ -206,6 +229,37 @@ export async function rakitLaporanPercakapan(
     return { kanal, perBulan, total }
   })
 
+  // ── Topik ──────────────────────────────────────────────────────────────
+  // Satu percakapan dihitung SEKALI, bukan sekali per pesan: yang ditanyakan
+  // adalah "berapa orang menghubungi soal ini", dan orang yang menulis sepuluh
+  // pesan tetap satu keperluan. Hanya percakapan yang punya pesan masuk yang
+  // ikut — sisanya bukan pertanyaan siapa pun.
+  const hitungTopik = new Map<string, Record<string, number>>()
+  let tanpaTopik = 0
+
+  for (const g of perPercakapan.values()) {
+    if (!g.pesan.some(p => p.masuk)) continue
+    if (!g.topik) { tanpaTopik++; continue }
+    if (!hitungTopik.has(g.topik)) hitungTopik.set(g.topik, {})
+    const baris = hitungTopik.get(g.topik)!
+    baris[g.kanal] = (baris[g.kanal] ?? 0) + 1
+  }
+
+  const topikTabel: BarisTopik[] = pustakaTopik
+    .map((t: { kode: string; nama: string; warna: string }) => {
+      const perKanalTopik = hitungTopik.get(t.kode) ?? {}
+      return {
+        kode: t.kode, nama: t.nama, warna: t.warna,
+        perKanal: perKanalTopik,
+        total: Object.values(perKanalTopik).reduce((a, b) => a + b, 0),
+      }
+    })
+    // Topik tanpa satu pun percakapan pada periode ini dibuang dari tabel:
+    // deretan nol hanya membuat yang berisi lebih sulit terbaca. Kategorinya
+    // sendiri tetap ada di Library.
+    .filter((t: BarisTopik) => t.total > 0)
+    .sort((a: BarisTopik, b: BarisTopik) => b.total - a.total)
+
   const seluruhJeda = [...jeda.values()].flat()
 
   return {
@@ -213,6 +267,8 @@ export async function rakitLaporanPercakapan(
     terekamSejak,
     perKanal,
     jamSibuk,
+    topik: topikTabel,
+    tanpaTopik,
     ringkas: {
       pesanMasuk:   perKanal.reduce((n, k) => n + k.total.pesanMasuk, 0),
       pesanKeluar:  perKanal.reduce((n, k) => n + k.total.pesanKeluar, 0),
