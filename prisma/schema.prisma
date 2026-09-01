@@ -853,21 +853,11 @@ model Conversation {
   unread_count    Int                @default(0)
   created_at      DateTime           @default(now())
 
-  /// Topik percakapan yang SUDAH disetujui manusia. Hanya kolom ini yang
-  /// dihitung laporan — pola yang sama dengan SocialContent.sifat.
-  topik           String?
-  /// Usulan AI. Sengaja terpisah: usulan yang belum ditinjau tidak boleh
-  /// mempengaruhi satu angka pun di laporan triwulan.
-  topik_usulan    String?
-  /// Alasan singkat dari AI — supaya peninjau bisa menilai tanpa membuka
-  /// percakapannya satu per satu.
-  topik_alasan    String?
-  topik_usul_pada DateTime?
-
   person        Person?      @relation(fields: [person_id], references: [id])
   assigned_user AppUser?     @relation("AssignedUser", fields: [assigned_to], references: [id])
   messages      Message[]
   ad_referrals  AdReferral[]
+  labels        ConversationLabel[]
 
   @@unique([tenant_slug, channel, channel_user_id])
   @@index([tenant_slug])
@@ -1663,6 +1653,71 @@ model PercakapanTopikLibrary {
   @@unique([tenant_slug, kode])
   @@index([tenant_slug, aktif])
   @@map("crm_percakapan_topik_library")
+}
+
+/// Poli / layanan yang ditanyakan dalam percakapan — dimensi KEDUA, terpisah
+/// dari topik.
+///
+/// Dipisah karena "orang mau apa" dan "soal bidang apa" adalah dua pertanyaan
+/// yang berdiri sendiri. Digabung jadi satu daftar, kategorinya meledak menjadi
+/// perkalian keduanya (11 keperluan x 15 poli) dan "Jadwal Dokter Jantung" akan
+/// bersaing dengan "Tarif Jantung".
+///
+/// Disemai dari SimrsUnitLibrary tetapi berdiri sendiri — keputusan pemilik
+/// sistem, 1 Sep 2026. Sebabnya: yang ditanyakan di media sosial tidak selalu
+/// unit yang ditagihkan SIMRS (mis. "Gizi" tidak ada sebagai unit di RKZ), dan
+/// menambah unit khusus medsos ke master SIMRS akan memunculkan baris kosong di
+/// laporan kunjungan yang memakai daftar yang sama.
+model PercakapanPoliLibrary {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  kode        String // kekal — dipakai ConversationLabel.kode saat dimensi POLI
+  nama        String
+  /// Asal pengelompokan saat disemai (Rawat Jalan, Penunjang, …). Hanya untuk
+  /// pengurutan tampilan; tidak mengikat apa pun.
+  kelompok    String?
+  warna       String   @default("#0089A8")
+  urutan      Int      @default(0)
+  aktif       Boolean  @default(true) // TIDAK PERNAH DELETE — nonaktifkan saja
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, kode])
+  @@index([tenant_slug, aktif])
+  @@map("crm_percakapan_poli_library")
+}
+
+/// Label percakapan — topik DAN poli dalam satu tabel, dibedakan `dimensi`.
+///
+/// Satu tabel, bukan dua yang kembar: keduanya berperilaku persis sama (boleh
+/// lebih dari satu, diusulkan AI, ditetapkan manusia), jadi dua tabel hanya
+/// akan menggandakan setiap kueri dan pasti berbeda perilaku setelah beberapa
+/// suntingan.
+///
+/// `disetujui` adalah pemisah yang menentukan: baris dari AI lahir dengan nilai
+/// false dan TIDAK dihitung laporan apa pun sampai manusia menyetujuinya. Ini
+/// pengganti pasangan kolom `topik` / `topik_usulan` yang lama, yang tidak bisa
+/// menampung lebih dari satu nilai.
+model ConversationLabel {
+  id              String   @id @default(uuid())
+  conversation_id String
+  /// 'TOPIK' (keperluan) atau 'POLI' (bidang layanan).
+  dimensi         String
+  /// Merujuk kode di PercakapanTopikLibrary atau PercakapanPoliLibrary.
+  kode            String
+  /// 'AI' atau 'MANUAL' — dipakai menilai seberapa sering usulan mesin diubah.
+  sumber          String   @default("AI")
+  disetujui       Boolean  @default(false)
+  /// Alasan singkat dari AI, hanya terisi untuk sumber 'AI'.
+  alasan          String?
+  created_at      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@unique([conversation_id, dimensi, kode])
+  @@index([conversation_id])
+  @@index([dimensi, kode, disetujui])
+  @@map("crm_conversation_labels")
 }
 
 /// Angka triwulan lampau yang DIKETIK ULANG dari laporan manual.

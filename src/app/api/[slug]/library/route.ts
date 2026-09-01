@@ -38,6 +38,22 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ data: rows, total: rows.length, page: 1, totalPages: 1 })
     }
 
+    if (tab === 'poli') {
+      // Disemai dari unit SIMRS hanya bila masih kosong — lihat semaiPoli().
+      const { semaiPoli } = await import('@/lib/percakapan-poli')
+      await semaiPoli(db, params.slug)
+
+      const where: any = { tenant_slug: params.slug }
+      if (q) where.OR = [
+        { nama: { contains: q, mode: 'insensitive' } },
+        { kode: { contains: q, mode: 'insensitive' } },
+      ]
+      const rows = await db.percakapanPoliLibrary.findMany({
+        where, orderBy: [{ urutan: 'asc' }, { nama: 'asc' }],
+      })
+      return NextResponse.json({ data: rows, total: rows.length, page: 1, totalPages: 1 })
+    }
+
     if (tab === 'topik') {
       // Semai bawaan hanya bila tenant belum punya satu pun — lihat semaiTopik().
       const { semaiTopik } = await import('@/lib/percakapan-topik')
@@ -151,7 +167,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
   const tab = new URL(req.url).searchParams.get('tab')
 
-  if (tab === 'sifat' || tab === 'topik') {
+  if (tab === 'sifat' || tab === 'topik' || tab === 'poli') {
     const { kode, nama, deskripsi, warna, urutan } = await req.json()
     if (!kode?.trim()) return NextResponse.json({ error: 'Kode wajib diisi' }, { status: 400 })
     if (!nama?.trim()) return NextResponse.json({ error: 'Nama wajib diisi' }, { status: 400 })
@@ -164,7 +180,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     try {
       const db = await getTenantDb(params.slug)
-      const model: any = tab === 'topik' ? db.percakapanTopikLibrary : db.socialSifatLibrary
+      const model: any = tab === 'poli' ? db.percakapanPoliLibrary
+        : tab === 'topik' ? db.percakapanTopikLibrary : db.socialSifatLibrary
       const row = await model.create({
         data: {
           tenant_slug: params.slug,
@@ -186,7 +203,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 
   if (tab !== 'unit') {
-    return NextResponse.json({ error: 'Hanya tab=unit, tab=sifat, atau tab=topik yang bisa ditambah manual' }, { status: 400 })
+    return NextResponse.json({ error: 'Hanya tab=unit, tab=sifat, tab=topik, atau tab=poli yang bisa ditambah manual' }, { status: 400 })
   }
 
   const { nama, kelompok, warna } = await req.json()
@@ -226,8 +243,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const db = await getTenantDb(params.slug)
 
-    if (tab === 'sifat' || tab === 'topik') {
-      const model: any = tab === 'topik' ? db.percakapanTopikLibrary : db.socialSifatLibrary
+    if (tab === 'sifat' || tab === 'topik' || tab === 'poli') {
+      const model: any = tab === 'poli' ? db.percakapanPoliLibrary
+        : tab === 'topik' ? db.percakapanTopikLibrary : db.socialSifatLibrary
       const existing = await model.findUnique({ where: { id: body.id } })
       if (!existing || existing.tenant_slug !== params.slug) {
         return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 404 })

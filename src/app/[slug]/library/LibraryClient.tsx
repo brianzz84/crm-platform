@@ -42,7 +42,7 @@ const JENIS_OPTIONS: Record<string, string[]> = {
 }
 
 export default function LibraryClient({ slug, stats }: { slug: string; stats: Stats }) {
-  const [tab, setTab] = useState<'icd' | 'layanan' | 'unit' | 'sifat' | 'topik'>('icd')
+  const [tab, setTab] = useState<'icd' | 'layanan' | 'unit' | 'sifat' | 'topik' | 'poli'>('icd')
 
   // ICD state
   const [icdQ,    setIcdQ]    = useState('')
@@ -162,7 +162,7 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--c-border)', marginBottom: 'var(--sp-4)' }}>
-        {(['icd', 'layanan', 'unit', 'sifat', 'topik'] as const).map(t => (
+        {(['icd', 'layanan', 'unit', 'sifat', 'topik', 'poli'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '10px 20px',
             fontWeight: tab === t ? 700 : 500,
@@ -172,7 +172,7 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
             background: 'none', border: 'none', cursor: 'pointer',
             fontSize: 'var(--font-size-sm)',
           }}>
-            {t === 'icd' ? '📋 Diagnosa ICD' : t === 'layanan' ? '🏥 Layanan / Tindakan' : t === 'unit' ? '🏬 Unit / Poli' : t === 'sifat' ? '🏷️ Sifat Konten' : '💬 Topik Percakapan'}
+            {t === 'icd' ? '📋 Diagnosa ICD' : t === 'layanan' ? '🏥 Layanan / Tindakan' : t === 'unit' ? '🏬 Unit / Poli' : t === 'sifat' ? '🏷️ Sifat Konten' : t === 'topik' ? '💬 Topik Percakapan' : '🩺 Poli Percakapan'}
           </button>
         ))}
       </div>
@@ -184,6 +184,12 @@ export default function LibraryClient({ slug, stats }: { slug: string; stats: St
           slug={slug} tab="topik"
           istilah="topik percakapan" istilahSingkat="Topik"
           contohKode="RUJUKAN_LUAR" contohNama="Rujukan dari Luar"
+        />
+      ) : tab === 'poli' ? (
+        <SifatLibraryTab
+          slug={slug} tab="poli"
+          istilah="poli percakapan" istilahSingkat="Poli"
+          contohKode="GIZI" contohNama="Gizi"
         />
       ) : tab === 'unit' ? (
         <UnitLibraryTab slug={slug} />

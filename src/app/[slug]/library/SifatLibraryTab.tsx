@@ -22,7 +22,7 @@ const inp: React.CSSProperties = {
 interface Props {
   slug: string
   /** Nilai `?tab=` pada /api/[slug]/library. */
-  tab?: 'sifat' | 'topik'
+  tab?: 'sifat' | 'topik' | 'poli'
   /** Sebutan untuk pesan galat dan keadaan kosong, mis. "topik percakapan". */
   istilah?: string
   /** Sebutan singkat untuk tombol tambah, mis. "Topik". */

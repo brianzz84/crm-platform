@@ -1,60 +1,67 @@
 /**
- * Daftar & penetapan topik percakapan.
+ * Daftar & penetapan label percakapan.
  *
- * GET   — percakapan beserta usulan AI-nya, untuk ditinjau manusia.
- * PATCH — menetapkan `topik`. Hanya lewat sini angka laporan berubah.
+ * GET   — percakapan BESERTA SELURUH ISINYA dan usulan AI-nya, untuk ditinjau.
+ * PATCH — menetapkan label. Hanya lewat sini angka laporan berubah.
  *
- * Cuplikan pesan ikut dikembalikan karena tanpa itu peninjauan mustahil: menilai
- * usulan tanpa melihat yang ditanyakan hanya akan jadi stempel. Yang dikirim
- * dibatasi pesan MASUK pertama — cukup untuk menilai, dan tidak menjadikan layar
- * ini salinan kedua dari Inbox.
+ * Seluruh percakapan dikirim, bukan satu baris pembuka. Menilai topik dari satu
+ * pesan pertama tidak layak disebut meninjau — apalagi ketika pesan pembuka
+ * rata-rata hanya berbunyi "halo". Biayanya kecil: rata-rata 4,5 pesan per
+ * percakapan.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { semaiTopik } from '@/lib/percakapan-topik'
+import { semaiPoli } from '@/lib/percakapan-poli'
 
 type Ctx = { params: { slug: string } }
 
-const MAKS_BARIS   = 100
-const MAKS_CUPLIKAN = 240
+const MAKS_BARIS       = 60
+const MAKS_PESAN       = 60
+const MAKS_HURUF_PESAN = 2000
 
-/** Bentuk baris apa adanya dari Prisma, sebelum diubah ke nama yang dipakai UI. */
+interface PesanMentah { direction: string; content: string | null; created_at: Date }
+interface LabelMentah { dimensi: string; kode: string; disetujui: boolean; sumber: string; alasan: string | null }
 interface BarisMentah {
   id: string
   channel: string
   channel_user_name: string | null
   last_message_at: Date
-  topik: string | null
-  topik_usulan: string | null
-  topik_alasan: string | null
-  messages: { content: string | null }[]
+  messages: PesanMentah[]
+  labels: LabelMentah[]
 }
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
-  // `saring`: 'perlu' = belum ditetapkan manusia (inilah pekerjaannya),
-  //           'selesai' = sudah ditetapkan, 'semua' = keduanya.
+  // 'perlu'   = belum ada label yang disetujui (inilah pekerjaannya)
+  // 'selesai' = sudah ada minimal satu label disetujui
   const saring = req.nextUrl.searchParams.get('saring') ?? 'perlu'
 
   try {
     const db = await getTenantDb(params.slug)
     await semaiTopik(db, params.slug)
+    await semaiPoli(db, params.slug)
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       tenant_slug: params.slug,
       messages: { some: { direction: 'incoming', is_internal_note: false } },
     }
-    if (saring === 'perlu')        where.topik = null
-    else if (saring === 'selesai') where.NOT   = { topik: null }
+    if (saring === 'perlu')        where.labels = { none: { disetujui: true } }
+    else if (saring === 'selesai') where.labels = { some: { disetujui: true } }
 
-    const [topik, rows, jumlahPerlu] = await Promise.all([
+    const [topik, poli, rows, jumlahPerlu] = await Promise.all([
       db.percakapanTopikLibrary.findMany({
         where:   { tenant_slug: params.slug, aktif: true },
         orderBy: [{ urutan: 'asc' }],
-        select:  { kode: true, nama: true, warna: true },
+        select:  { kode: true, nama: true, warna: true, deskripsi: true },
+      }),
+      db.percakapanPoliLibrary.findMany({
+        where:   { tenant_slug: params.slug, aktif: true },
+        orderBy: [{ urutan: 'asc' }],
+        select:  { kode: true, nama: true, warna: true, kelompok: true },
       }),
       db.conversation.findMany({
         where,
@@ -62,18 +69,21 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         take:    MAKS_BARIS,
         select: {
           id: true, channel: true, channel_user_name: true, last_message_at: true,
-          topik: true, topik_usulan: true, topik_alasan: true,
           messages: {
-            where:   { direction: 'incoming', is_internal_note: false },
+            where:   { is_internal_note: false },
             orderBy: { created_at: 'asc' },
-            take:    1,
-            select:  { content: true },
+            take:    MAKS_PESAN,
+            select:  { direction: true, content: true, created_at: true },
+          },
+          labels: {
+            select: { dimensi: true, kode: true, disetujui: true, sumber: true, alasan: true },
           },
         },
       }),
       db.conversation.count({
         where: {
-          tenant_slug: params.slug, topik: null,
+          tenant_slug: params.slug,
+          labels: { none: { disetujui: true } },
           messages: { some: { direction: 'incoming', is_internal_note: false } },
         },
       }),
@@ -82,17 +92,29 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({
       success: true,
       topik,
+      poli,
       jumlahPerlu,
-      data: rows.map((r: BarisMentah) => ({
-        id:            r.id,
-        kanal:         r.channel,
-        nama:          r.channel_user_name,
-        terakhirPada:  r.last_message_at,
-        topik:         r.topik,
-        topikUsulan:   r.topik_usulan,
-        topikAlasan:   r.topik_alasan,
-        cuplikan:      (r.messages[0]?.content ?? '').slice(0, MAKS_CUPLIKAN),
-      })),
+      data: rows.map((r: BarisMentah) => {
+        const label = (dimensi: string, disetujui: boolean) =>
+          r.labels.filter(l => l.dimensi === dimensi && l.disetujui === disetujui).map(l => l.kode)
+        return {
+          id:           r.id,
+          kanal:        r.channel,
+          nama:         r.channel_user_name,
+          terakhirPada: r.last_message_at,
+          // Alasan AI mana pun sudah cukup — satu percakapan hanya punya satu.
+          alasan:       r.labels.find(l => l.sumber === 'AI' && l.alasan)?.alasan ?? null,
+          topik:        label('TOPIK', true),
+          poli:         label('POLI',  true),
+          topikUsulan:  label('TOPIK', false),
+          poliUsulan:   label('POLI',  false),
+          pesan: r.messages.map(m => ({
+            masuk: m.direction === 'incoming',
+            teks:  (m.content ?? '').slice(0, MAKS_HURUF_PESAN),
+            pada:  m.created_at,
+          })),
+        }
+      }),
     })
   } catch (e) {
     return NextResponse.json(
@@ -111,38 +133,40 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
   try {
     const db = await getTenantDb(params.slug)
-    const sah = new Set(
-      (await db.percakapanTopikLibrary.findMany({
+    const [topikSah, poliSah] = await Promise.all([
+      db.percakapanTopikLibrary.findMany({
         where: { tenant_slug: params.slug, aktif: true }, select: { kode: true },
-      })).map((t: { kode: string }) => t.kode),
-    )
+      }),
+      db.percakapanPoliLibrary.findMany({
+        where: { tenant_slug: params.slug, aktif: true }, select: { kode: true },
+      }),
+    ])
+    const sah: Record<string, Set<string>> = {
+      TOPIK: new Set(topikSah.map((t: { kode: string }) => t.kode)),
+      POLI:  new Set(poliSah.map((p: { kode: string }) => p.kode)),
+    }
 
     // Terima semua usulan sekaligus. Ada karena riwayat pertama menumpuk puluhan
     // percakapan, dan memaksa satu per satu di situ hanya melahirkan klik tanpa
-    // membaca. Hanya menyentuh yang PUNYA usulan dan BELUM ditetapkan — usulan
-    // yang sudah ditolak manusia tidak pernah dihidupkan kembali dari sini.
+    // membaca. Hanya menyentuh percakapan yang BELUM punya label disetujui —
+    // keputusan manusia yang sudah ada tidak pernah ditimpa dari sini.
     if (body.setujuiSemua === true) {
       const kandidat = await db.conversation.findMany({
-        where: { tenant_slug: params.slug, topik: null, NOT: { topik_usulan: null } },
-        select: { id: true, topik_usulan: true },
+        where: {
+          tenant_slug: params.slug,
+          labels: { none: { disetujui: true }, some: { disetujui: false } },
+        },
+        select: { id: true },
       })
-      let n = 0
-      for (const k of kandidat) {
-        if (!k.topik_usulan || !sah.has(k.topik_usulan)) continue
-        await db.conversation.update({ where: { id: k.id }, data: { topik: k.topik_usulan } })
-        n++
-      }
-      return NextResponse.json({ success: true, disetujui: n })
+      const r = await db.conversationLabel.updateMany({
+        where: { conversation_id: { in: kandidat.map((k: { id: string }) => k.id) }, disetujui: false },
+        data:  { disetujui: true },
+      })
+      return NextResponse.json({ success: true, disetujui: kandidat.length, label: r.count })
     }
 
     const id = typeof body.id === 'string' ? body.id : ''
     if (!id) return NextResponse.json({ success: false, error: 'id wajib diisi.' }, { status: 400 })
-
-    // null = batalkan penetapan, kembalikan ke daftar yang perlu ditinjau.
-    const topik = body.topik === null ? null : String(body.topik ?? '')
-    if (topik !== null && !sah.has(topik)) {
-      return NextResponse.json({ success: false, error: 'Topik tidak dikenal.' }, { status: 400 })
-    }
 
     // Jangan percaya id dari klien — pastikan percakapannya milik tenant ini.
     const ada = await db.conversation.findFirst({
@@ -150,7 +174,30 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     })
     if (!ada) return NextResponse.json({ success: false, error: 'Percakapan tidak ditemukan.' }, { status: 404 })
 
-    await db.conversation.update({ where: { id }, data: { topik } })
+    // Penetapan MENGGANTI seluruh isi dimensi yang dikirim, bukan menambahi:
+    // hanya dengan begitu mencabut satu label bisa dinyatakan dari UI. Dimensi
+    // yang tidak dikirim tidak disentuh sama sekali.
+    for (const dimensi of ['TOPIK', 'POLI'] as const) {
+      const kunci = dimensi === 'TOPIK' ? 'topik' : 'poli'
+      const nilai = body[kunci]
+      if (!Array.isArray(nilai)) continue
+
+      const kode  = [...new Set(nilai.filter((k): k is string => typeof k === 'string'))]
+      const asing = kode.filter(k => !sah[dimensi].has(k))
+      if (asing.length) {
+        return NextResponse.json(
+          { success: false, error: `Kode tidak dikenal pada ${kunci}: ${asing.join(', ')}` },
+          { status: 400 })
+      }
+
+      await db.conversationLabel.deleteMany({ where: { conversation_id: id, dimensi } })
+      for (const k of kode) {
+        await db.conversationLabel.create({
+          data: { conversation_id: id, dimensi, kode: k, sumber: 'MANUAL', disetujui: true },
+        })
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (e) {
     return NextResponse.json(

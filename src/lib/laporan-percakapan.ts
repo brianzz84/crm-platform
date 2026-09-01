@@ -39,11 +39,12 @@ export interface BarisKanal {
   total:    SelPercakapan
 }
 
-export interface BarisTopik {
+export interface BarisLabel {
   kode:     string
   nama:     string
   warna:    string
   perKanal: Record<string, number>
+  /** Jumlah PERCAKAPAN yang menyandang label ini — bukan jumlah label. */
   total:    number
 }
 
@@ -53,11 +54,18 @@ export interface LaporanPercakapan {
   perKanal:     BarisKanal[]
   /** Sebaran pesan masuk per jam WIB — dasar penjadwalan staf. */
   jamSibuk:     number[]
-  /** Hanya topik yang SUDAH ditetapkan manusia; usulan AI tidak dihitung. */
-  topik:        BarisTopik[]
-  /** Percakapan dalam periode yang topiknya belum ditetapkan. Ditampilkan
-   *  berdampingan dengan tabel topik supaya tabel itu tidak pernah terbaca
-   *  seolah mencakup seluruh percakapan. */
+  /** Keperluan. Hanya label yang SUDAH disetujui manusia; usulan AI tidak dihitung. */
+  topik:        BarisLabel[]
+  /** Bidang layanan yang disinggung. Kosong itu wajar — lamaran kerja dan spam
+   *  memang tidak menyangkut poli mana pun. */
+  poli:         BarisLabel[]
+  /** Percakapan berpesan-masuk dalam periode ini. INILAH pembagi kedua tabel di
+   *  atas. Wajib ditampilkan: satu percakapan boleh punya beberapa label, jadi
+   *  kolom total menjumlah lebih besar dari angka ini dan persentasenya bisa
+   *  melampaui 100% — wajar untuk pelabelan ganda, menyesatkan bila basisnya
+   *  tidak dinyatakan. */
+  basisPercakapan: number
+  /** Percakapan dalam periode yang belum ditetapkan labelnya. */
   tanpaTopik:   number
   ringkas: {
     pesanMasuk:   number
@@ -92,7 +100,7 @@ export async function rakitLaporanPercakapan(
   // Sampai akhir hari: tanpa ini pesan yang datang pada tanggal terakhir hilang.
   const sampai = new Date(`${selesai}T23:59:59.999Z`)
 
-  const [pesan, awalKanal, pustakaTopik] = await Promise.all([
+  const [pesan, awalKanal, pustakaTopik, pustakaPoli] = await Promise.all([
     db.message.findMany({
       where: {
         created_at:       { gte: dari, lte: sampai },
@@ -103,7 +111,7 @@ export async function rakitLaporanPercakapan(
         conversation_id: true,
         direction:       true,
         created_at:      true,
-        conversation:    { select: { channel: true, topik: true } },
+        conversation:    { select: { channel: true } },
       },
       orderBy: { created_at: 'asc' },
     }),
@@ -121,6 +129,11 @@ export async function rakitLaporanPercakapan(
       orderBy: [{ urutan: 'asc' }],
       select:  { kode: true, nama: true, warna: true },
     }),
+    db.percakapanPoliLibrary.findMany({
+      where:   { tenant_slug: slug },
+      orderBy: [{ urutan: 'asc' }],
+      select:  { kode: true, nama: true, warna: true },
+    }),
   ])
 
   const terekamSejak: Record<string, string | null> = {}
@@ -132,7 +145,6 @@ export async function rakitLaporanPercakapan(
   // ── Kelompokkan per percakapan, urut waktu ─────────────────────────────
   const perPercakapan = new Map<string, {
     kanal: KanalPercakapan
-    topik: string | null
     pesan: { masuk: boolean; pada: Date }[]
   }>()
 
@@ -145,8 +157,7 @@ export async function rakitLaporanPercakapan(
     if (masuk) jamSibuk[jamWib(p.created_at)]++
     bulanSet.add(bulanWib(p.created_at))
 
-    const g = perPercakapan.get(p.conversation_id)
-      ?? { kanal, topik: p.conversation.topik ?? null, pesan: [] }
+    const g = perPercakapan.get(p.conversation_id) ?? { kanal, pesan: [] }
     g.pesan.push({ masuk, pada: p.created_at })
     perPercakapan.set(p.conversation_id, g)
   }
@@ -229,36 +240,66 @@ export async function rakitLaporanPercakapan(
     return { kanal, perBulan, total }
   })
 
-  // ── Topik ──────────────────────────────────────────────────────────────
-  // Satu percakapan dihitung SEKALI, bukan sekali per pesan: yang ditanyakan
-  // adalah "berapa orang menghubungi soal ini", dan orang yang menulis sepuluh
-  // pesan tetap satu keperluan. Hanya percakapan yang punya pesan masuk yang
-  // ikut — sisanya bukan pertanyaan siapa pun.
-  const hitungTopik = new Map<string, Record<string, number>>()
-  let tanpaTopik = 0
+  // ── Label: keperluan & poli ────────────────────────────────────────────
+  // Satu percakapan dihitung SEKALI PER LABEL, bukan sekali per pesan: yang
+  // ditanyakan adalah "berapa orang menghubungi soal ini", dan orang yang
+  // menulis sepuluh pesan tetap satu keperluan. Hanya percakapan yang punya
+  // pesan masuk yang ikut — sisanya bukan pertanyaan siapa pun.
+  const berpesanMasuk = [...perPercakapan.entries()]
+    .filter(([, g]) => g.pesan.some(p => p.masuk))
+  const basisPercakapan = berpesanMasuk.length
 
-  for (const g of perPercakapan.values()) {
-    if (!g.pesan.some(p => p.masuk)) continue
-    if (!g.topik) { tanpaTopik++; continue }
-    if (!hitungTopik.has(g.topik)) hitungTopik.set(g.topik, {})
-    const baris = hitungTopik.get(g.topik)!
-    baris[g.kanal] = (baris[g.kanal] ?? 0) + 1
+  // Hanya label yang SUDAH disetujui. Usulan AI yang belum ditinjau tidak boleh
+  // menyentuh satu angka pun di laporan triwulan.
+  const label = basisPercakapan === 0 ? [] : await db.conversationLabel.findMany({
+    where: {
+      disetujui:       true,
+      conversation_id: { in: berpesanMasuk.map(([id]) => id) },
+    },
+    select: { conversation_id: true, dimensi: true, kode: true },
+  })
+
+  const kanalPercakapan = new Map(berpesanMasuk.map(([id, g]) => [id, g.kanal]))
+  const hitung: Record<string, Map<string, Record<string, number>>> = {
+    TOPIK: new Map(), POLI: new Map(),
+  }
+  const berlabel = new Set<string>()
+
+  for (const l of label) {
+    const kanal = kanalPercakapan.get(l.conversation_id)
+    const peta  = hitung[l.dimensi]
+    if (!kanal || !peta) continue
+    if (l.dimensi === 'TOPIK') berlabel.add(l.conversation_id)
+    if (!peta.has(l.kode)) peta.set(l.kode, {})
+    const baris = peta.get(l.kode)!
+    baris[kanal] = (baris[kanal] ?? 0) + 1
   }
 
-  const topikTabel: BarisTopik[] = pustakaTopik
-    .map((t: { kode: string; nama: string; warna: string }) => {
-      const perKanalTopik = hitungTopik.get(t.kode) ?? {}
+  // "Belum ditetapkan" diukur dari dimensi KEPERLUAN saja. Poli yang kosong
+  // bukan pekerjaan yang tertinggal — lamaran kerja dan spam memang tidak
+  // menyangkut bidang layanan mana pun.
+  const tanpaTopik = basisPercakapan - berlabel.size
+
+  const rakitLabel = (
+    pustaka: { kode: string; nama: string; warna: string }[],
+    peta: Map<string, Record<string, number>>,
+  ): BarisLabel[] => pustaka
+    .map(t => {
+      const perKanalLabel = peta.get(t.kode) ?? {}
       return {
         kode: t.kode, nama: t.nama, warna: t.warna,
-        perKanal: perKanalTopik,
-        total: Object.values(perKanalTopik).reduce((a, b) => a + b, 0),
+        perKanal: perKanalLabel,
+        total: Object.values(perKanalLabel).reduce((a, b) => a + b, 0),
       }
     })
-    // Topik tanpa satu pun percakapan pada periode ini dibuang dari tabel:
+    // Label tanpa satu pun percakapan pada periode ini dibuang dari tabel:
     // deretan nol hanya membuat yang berisi lebih sulit terbaca. Kategorinya
     // sendiri tetap ada di Library.
-    .filter((t: BarisTopik) => t.total > 0)
-    .sort((a: BarisTopik, b: BarisTopik) => b.total - a.total)
+    .filter(t => t.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const topikTabel = rakitLabel(pustakaTopik, hitung.TOPIK)
+  const poliTabel  = rakitLabel(pustakaPoli,  hitung.POLI)
 
   const seluruhJeda = [...jeda.values()].flat()
 
@@ -268,6 +309,8 @@ export async function rakitLaporanPercakapan(
     perKanal,
     jamSibuk,
     topik: topikTabel,
+    poli:  poliTabel,
+    basisPercakapan,
     tanpaTopik,
     ringkas: {
       pesanMasuk:   perKanal.reduce((n, k) => n + k.total.pesanMasuk, 0),

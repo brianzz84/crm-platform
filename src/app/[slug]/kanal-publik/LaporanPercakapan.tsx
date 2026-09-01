@@ -20,7 +20,7 @@ interface Sel {
   dijawab: number; tidakDijawab: number; medianMenit: number | null
 }
 interface BarisKanal { kanal: Kanal; perBulan: Record<string, Sel>; total: Sel }
-interface BarisTopik {
+interface BarisLabel {
   kode: string; nama: string; warna: string
   perKanal: Record<string, number>; total: number
 }
@@ -29,7 +29,9 @@ interface Laporan {
   terekamSejak: Record<string, string | null>
   perKanal: BarisKanal[]
   jamSibuk: number[]
-  topik: BarisTopik[]
+  topik: BarisLabel[]
+  poli: BarisLabel[]
+  basisPercakapan: number
   tanpaTopik: number
   ringkas: {
     pesanMasuk: number; pesanKeluar: number
@@ -113,7 +115,11 @@ export default function LaporanPercakapan(
   const totalGiliran = r.dijawab + r.tidakDijawab
   const persenJawab  = totalGiliran > 0 ? (r.dijawab / totalGiliran) * 100 : 0
   const puncakJam    = Math.max(...data.jamSibuk, 1)
-  const totalTopik   = data.topik.reduce((n, t) => n + t.total, 0)
+  // Pembagi persentase adalah JUMLAH PERCAKAPAN, bukan jumlah label. Satu
+  // percakapan boleh punya beberapa label, jadi kolom Total menjumlah lebih
+  // besar dari basis dan persennya bisa melampaui 100% — wajar untuk pelabelan
+  // ganda, menyesatkan bila basisnya tidak dinyatakan di layar.
+  const basis        = data.basisPercakapan
 
   // Kanal yang riwayatnya belum menutupi awal periode. Tanpa keterangan ini,
   // laporan akan terbaca seolah kanal itu memang sepi — padahal datanya belum ada.
@@ -239,66 +245,24 @@ export default function LaporanPercakapan(
         </div>
       )}
 
-      {/* ── Topik percakapan ── */}
-      <div style={kartu}>
-        <div style={judulKartu}>Keperluan yang Ditanyakan</div>
-        <div style={gulir}>
-          {data.topik.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--c-text-muted)', lineHeight: 1.7 }}>
-              Belum ada percakapan yang ditetapkan topiknya pada periode ini.
-              {data.tanpaTopik > 0 && <> Ada <strong>{angka(data.tanpaTopik)}</strong> percakapan
-              menunggu ditinjau di tab <strong>💬 Topik Percakapan</strong>.</>}
-            </div>
-          ) : (
-            <>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)', minWidth: 460 }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...th, ...kiri }}>Keperluan</th>
-                    {KANAL.map(k => <th key={k} style={th}>{NAMA_KANAL[k]}</th>)}
-                    <th style={{ ...th, fontWeight: 800 }}>Total</th>
-                    <th style={th}>Porsi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topik.map(t => (
-                    <tr key={t.kode}>
-                      <td style={{ ...td, ...kiri }}>
-                        <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: t.warna, marginRight: 7 }} />
-                        {t.nama}
-                      </td>
-                      {KANAL.map(k => (
-                        <td key={k} style={td}>{t.perKanal[k] ? angka(t.perKanal[k]) : '—'}</td>
-                      ))}
-                      <td style={{ ...td, fontWeight: 800 }}>{angka(t.total)}</td>
-                      <td style={{ ...td, color: 'var(--c-text-muted)' }}>
-                        {totalTopik ? `${Math.round((t.total / totalTopik) * 100)}%` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* ── Keperluan & poli ── */}
+      <TabelLabel
+        judul="Keperluan yang Ditanyakan" kolom="Keperluan"
+        baris={data.topik} basis={basis} tanpaLabel={data.tanpaTopik}
+        catatan="Satu percakapan dihitung sekali per keperluan. Karena satu percakapan boleh
+                 punya beberapa keperluan, kolom Total menjumlah lebih besar dari jumlah
+                 percakapan dan porsinya bisa melampaui 100%."
+        kosong="Belum ada percakapan yang ditetapkan keperluannya pada periode ini."
+      />
 
-              <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 10, lineHeight: 1.6 }}>
-                Satu percakapan dihitung sekali, menurut keperluan yang membuat orang itu
-                menghubungi — bukan sekali per pesan.
-              </div>
-            </>
-          )}
-
-          {/* Angka ini ditempel pada tabelnya, bukan disembunyikan di catatan kaki:
-              tabel topik yang mencakup separuh percakapan dan dibaca seolah mencakup
-              semuanya adalah cara paling mudah laporan ini menyesatkan. */}
-          {data.tanpaTopik > 0 && data.topik.length > 0 && (
-            <div style={{ marginTop: 10, background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12, lineHeight: 1.6 }}>
-              <strong>{angka(data.tanpaTopik)} percakapan pada periode ini belum ditetapkan
-              topiknya</strong> dan tidak ikut dihitung di tabel atas — dari total{' '}
-              {angka(totalTopik + data.tanpaTopik)}. Tinjau di tab 💬 Topik Percakapan
-              agar tabel ini utuh.
-            </div>
-          )}
-        </div>
-      </div>
+      <TabelLabel
+        judul="Bidang Layanan yang Ditanyakan" kolom="Poli / Layanan"
+        baris={data.poli} basis={basis}
+        catatan="Porsi dihitung terhadap seluruh percakapan pada periode ini, termasuk yang
+                 tidak menyangkut bidang layanan mana pun — lamaran kerja, penawaran vendor,
+                 dan spam memang tidak punya poli."
+        kosong="Belum ada percakapan yang ditetapkan bidang layanannya pada periode ini."
+      />
 
       {/* ── Jam sibuk ── */}
       <div style={kartu}>
@@ -328,6 +292,86 @@ export default function LaporanPercakapan(
             perkiraan — bukan berapa banyak pesan, melainkan kapan orang benar-benar menghubungi.
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Tabel silang label × kanal. Dipakai dua kali — keperluan dan poli — karena
+ * bentuk keduanya identik dan menyalinnya akan melahirkan dua tabel yang
+ * perlahan berbeda perilaku.
+ *
+ * `basis` selalu ditampilkan di judul kolom Porsi. Itu bukan hiasan: dengan
+ * pelabelan ganda, jumlah persen bisa melampaui 100%, dan tanpa pembagi yang
+ * dinyatakan pembaca akan menganggap angkanya salah — atau lebih buruk,
+ * menganggapnya benar dengan pengertian yang keliru.
+ */
+function TabelLabel({ judul, kolom, baris, basis, tanpaLabel, catatan, kosong }: {
+  judul: string
+  kolom: string
+  baris: { kode: string; nama: string; warna: string; perKanal: Record<string, number>; total: number }[]
+  basis: number
+  tanpaLabel?: number
+  catatan: string
+  kosong: string
+}) {
+  return (
+    <div style={kartu}>
+      <div style={judulKartu}>{judul}</div>
+      <div style={gulir}>
+        {baris.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--c-text-muted)', lineHeight: 1.7 }}>
+            {kosong}
+            {!!tanpaLabel && <> Ada <strong>{angka(tanpaLabel)}</strong> percakapan menunggu
+            ditinjau di tab <strong>💬 Topik Percakapan</strong>.</>}
+          </div>
+        ) : (
+          <>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)', minWidth: 480 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...th, ...kiri }}>{kolom}</th>
+                  {KANAL.map(k => <th key={k} style={th}>{NAMA_KANAL[k]}</th>)}
+                  <th style={{ ...th, fontWeight: 800 }}>Total</th>
+                  <th style={th}>% dari {angka(basis)} percakapan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {baris.map(t => (
+                  <tr key={t.kode}>
+                    <td style={{ ...td, ...kiri }}>
+                      <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: t.warna, marginRight: 7 }} />
+                      {t.nama}
+                    </td>
+                    {KANAL.map(k => (
+                      <td key={k} style={td}>{t.perKanal[k] ? angka(t.perKanal[k]) : '—'}</td>
+                    ))}
+                    <td style={{ ...td, fontWeight: 800 }}>{angka(t.total)}</td>
+                    <td style={{ ...td, color: 'var(--c-text-muted)' }}>
+                      {basis ? `${Math.round((t.total / basis) * 100)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 10, lineHeight: 1.6 }}>
+              {catatan}
+            </div>
+          </>
+        )}
+
+        {/* Ditempel pada tabelnya, bukan disembunyikan di catatan kaki: tabel yang
+            mencakup separuh percakapan dan dibaca seolah mencakup semuanya adalah
+            cara paling mudah laporan ini menyesatkan. */}
+        {!!tanpaLabel && baris.length > 0 && (
+          <div style={{ marginTop: 10, background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12, lineHeight: 1.6 }}>
+            <strong>{angka(tanpaLabel)} dari {angka(basis)} percakapan pada periode ini belum
+            ditetapkan</strong> dan tidak ikut dihitung di tabel atas. Tinjau di tab
+            💬 Topik Percakapan agar tabel ini utuh.
+          </div>
+        )}
       </div>
     </div>
   )
