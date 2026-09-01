@@ -49,6 +49,9 @@ interface RingkasInstagram {
   periode: TotalIg
   banding: TotalIg | null
   bandingSeriKosong: boolean
+  /** Metrik deret harian yang tidak punya data pada pembanding — batas riwayat
+   *  tiap metrik berbeda, jadi disebut satu per satu. */
+  bandingMetrikKosong: string[]
   harian: { tanggal: string; jangkauan: number }[]
   bandingHarian: { tanggal: string; jangkauan: number }[]
   followerHarian: { tanggal: string; naik: number }[]
@@ -178,14 +181,25 @@ function Delta({ kini, dulu, terbalik, cakupan }: {
  * pembaca tahu angkanya boleh dipercaya sebagai batas bawah, bukan sebagai
  * angka pasti.
  */
-function CatatanTambal({ tambal, banding, kanal = 'Instagram' }: {
+const NAMA_METRIK_IG: Record<string, string> = {
+  reach: 'Jangkauan', follower_count: 'Follower Baru',
+}
+
+function CatatanTambal({ tambal, banding, kanal = 'Instagram', metrikKosong }: {
   tambal: Tambal | null; banding: string | null; kanal?: 'Instagram' | 'Facebook'
+  /** Instagram menyebut metriknya satu per satu; Facebook belum diukur per metrik. */
+  metrikKosong?: string[]
 }) {
-  // Metrik yang berasal dari deret harian — hanya inilah yang bisa hilang, dan
-  // hanya inilah yang bisa ditambal. Sisanya datang dari metric total_value yang
-  // riwayatnya jauh lebih panjang.
+  // Hanya metrik yang BENAR-BENAR hilang yang disebut. Sebelum ini keduanya
+  // selalu disebut bersama, sehingga Jangkauan ikut dinyatakan "tidak disediakan
+  // Instagram" padahal Instagram menyediakannya — permintaan kita yang cacat.
   const metrik = kanal === 'Instagram'
-    ? <><strong>Jangkauan</strong> dan <strong>Follower Baru</strong></>
+    ? <>{(metrikKosong ?? []).map((m, i, a) => (
+        <span key={m}>
+          {i > 0 && (i === a.length - 1 ? ' dan ' : ', ')}
+          <strong>{NAMA_METRIK_IG[m] ?? m}</strong>
+        </span>
+      ))}</>
     : <><strong>Interaksi</strong>, <strong>Kunjungan Profil</strong>, <strong>Follower Baru</strong>,
         dan <strong>Tayangan Video</strong></>
 
@@ -744,6 +758,8 @@ export default function KanalPublikClient({
   }, [tab, status.tersambung, status.punyaIg, status.punyaFb, ambil])
 
   const labelBanding = pakaiBanding ? `${bMulai} → ${bSelesai}` : null
+  /** Apakah satu metrik deret harian Instagram tidak punya data pada pembanding. */
+  const kosongIg = (metrik: string) => !!ig?.bandingMetrikKosong?.includes(metrik)
 
   return (
     <div style={{ padding: 'var(--sp-6)', flex: 1 }}>
@@ -953,8 +969,8 @@ export default function KanalPublikClient({
                   // lihat catatan di bawah kartu.
                   { label: 'Jangkauan', nilai: angka(ig.periode.jangkauan), warna: 'var(--c-primary)',
                     delta: <Delta kini={ig.periode.jangkauan}
-                      dulu={ig.bandingSeriKosong && !tambal ? null : ig.banding?.jangkauan}
-                      cakupan={ig.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} />,
+                      dulu={kosongIg('reach') && !tambal ? null : ig.banding?.jangkauan}
+                      cakupan={kosongIg('reach') && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} />,
                     catatan: 'penjumlahan jangkauan harian' },
                   { label: 'Tayangan', nilai: angka(ig.periode.tayangan), warna: 'var(--c-secondary)', delta: <Delta kini={ig.periode.tayangan} dulu={ig.banding?.tayangan} /> },
                   { label: 'Interaksi', nilai: angka(ig.periode.interaksi), warna: 'var(--c-success)',
@@ -962,13 +978,16 @@ export default function KanalPublikClient({
                     catatan: `${persen(ig.periode.jangkauan ? (ig.periode.interaksi / ig.periode.jangkauan) * 100 : 0)} dari jangkauan · ${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
                   { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED',
                     delta: <Delta kini={ig.periode.followerBaru}
-                      dulu={ig.bandingSeriKosong && !tambal ? null : ig.banding?.followerBaru}
-                      cakupan={ig.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                      dulu={kosongIg('follower_count') && !tambal ? null : ig.banding?.followerBaru}
+                      cakupan={kosongIg('follower_count') && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
                 ]} />
                 {labelBanding && (
                   <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
                     Dibandingkan dengan {labelBanding}
-                    {ig.bandingSeriKosong && <CatatanTambal tambal={tambal} banding={labelBanding} />}
+                    {ig.bandingMetrikKosong?.length > 0 && (
+                      <CatatanTambal tambal={tambal} banding={labelBanding}
+                        metrikKosong={ig.bandingMetrikKosong} />
+                    )}
                   </div>
                 )}
                 <TrenBatang label={`Jangkauan per hari — ${mulai} s/d ${selesai}`}

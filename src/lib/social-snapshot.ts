@@ -24,8 +24,24 @@ import {
 } from './meta-kanal'
 import { ringkasGa4, ringkasYouTube } from './google-kanal'
 
-/** Hari ke belakang yang ditarik ulang tiap malam. */
+/** Hari ke belakang yang ditarik ulang tiap malam dalam keadaan normal. */
 const HARI_TARIK_ULANG = 7
+
+/**
+ * Sejauh mana penarikan boleh dilebarkan untuk MENAMBAL hari yang bolong.
+ *
+ * Tiga puluh, karena itulah batas keras `follower_count` di Graph — lebih jauh
+ * dari itu Meta menolak, dan hanya `reach` yang masih bisa dipulihkan (itu
+ * pekerjaan lain, bukan tugas cron malam).
+ *
+ * Sebelum ini penarikan selalu tepat tujuh hari, apa pun keadaannya. Akibatnya
+ * terukur: token Insights mati 19–28 Agu 2026, dan ketika pulih, jendela tujuh
+ * hari hanya menjangkau mundur sampai ~22 Agu — 18–21 Agu tidak pernah diminta
+ * lagi dan tampak hilang selamanya. Padahal 1 Sep 2026 keempat hari itu masih
+ * dilayani Meta saat diminta langsung. Biaya kegagalan senyap bukan lamanya
+ * gangguan, melainkan lama gangguan DIKURANGI jendela penambalan.
+ */
+const HARI_TAMBAL_MAKS = 30
 
 /**
  * Baris berjalan yang ditimpa tiap malam — bukan umur tetap.
@@ -127,14 +143,69 @@ export async function tangkapStory(slug: string): Promise<{ jumlah: number; gala
   }
 }
 
+/**
+ * Menentukan dari kapan penarikan malam ini dimulai.
+ *
+ * Biasanya tujuh hari ke belakang. Tetapi bila ada hari yang BELUM PERNAH
+ * tercatat dalam 30 hari terakhir, jendelanya dilebarkan sampai menjangkau hari
+ * terlama itu — dengan begitu gangguan yang lebih panjang dari seminggu sembuh
+ * sendiri, alih-alih meninggalkan lubang permanen di deret harian.
+ *
+ * Diperiksa PER KANAL, bukan gabungan: Instagram bisa bolong sementara Facebook
+ * utuh pada tanggal yang sama, dan pemeriksaan gabungan akan melewatkannya.
+ *
+ * Hari sebelum kanal itu mulai direkam TIDAK dihitung bolong. Tanpa penjagaan
+ * ini, kanal yang baru diaktifkan seminggu lalu akan selamanya menganggap 30
+ * hari penuh sebagai lubang, dan tiap malam menarik ulang sebulan tanpa guna.
+ */
+async function awalPenarikan(
+  db: Awaited<ReturnType<typeof getTenantDb>>,
+  slug: string, sekarang: Date, selesai: string,
+): Promise<string> {
+  const biasa = iso(sekarang.getTime() - HARI_TARIK_ULANG * HARI_MS)
+  const batas = iso(sekarang.getTime() - HARI_TAMBAL_MAKS * HARI_MS)
+
+  try {
+    const baris = await db.socialAccountDaily.findMany({
+      where: {
+        tenant_slug: slug,
+        tanggal: { gte: new Date(batas), lte: new Date(selesai) },
+      },
+      select: { kanal: true, tanggal: true },
+    })
+    if (!baris.length) return biasa
+
+    let paling = biasa
+    for (const kanal of new Set(baris.map((b: { kanal: string }) => b.kanal))) {
+      const punya = new Set(
+        baris.filter((b: { kanal: string }) => b.kanal === kanal)
+             .map((b: { tanggal: Date }) => iso(b.tanggal.getTime())),
+      )
+      // Mulai menyisir dari rekaman pertama kanal ini, bukan dari batas 30 hari.
+      const awalKanal = [...punya].sort()[0]
+      for (let t = Date.parse(`${awalKanal}T00:00:00Z`); t <= Date.parse(`${selesai}T00:00:00Z`); t += HARI_MS) {
+        const hari = iso(t)
+        if (punya.has(hari)) continue
+        if (hari < paling) paling = hari
+        break   // cukup yang terlama; sisanya ikut tercakup rentangnya
+      }
+    }
+    return paling
+  } catch {
+    // Gagal memeriksa bukan alasan melewatkan penarikan malam ini.
+    return biasa
+  }
+}
+
 export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
   const db    = await getTenantDb(slug)
   const hasil: HasilSnapshot[] = []
 
   const sekarang = new Date()
+  const selesai  = iso(sekarang.getTime() - HARI_MS)   // s/d kemarin; hari ini belum lengkap
   const periode: Rentang = {
-    mulai:   iso(sekarang.getTime() - HARI_TARIK_ULANG * HARI_MS),
-    selesai: iso(sekarang.getTime() - HARI_MS),   // s/d kemarin; hari ini belum lengkap
+    mulai: await awalPenarikan(db, slug, sekarang, selesai),
+    selesai,
   }
 
   const [meta, google] = await Promise.all([
@@ -160,8 +231,10 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
       const naikPerTgl = new Map(ig.followerHarian.map(f => [f.tanggal, f.naik]))
 
       // Tayangan & interaksi hanya ada sebagai agregat, jadi ditarik satu hari per
-      // panggilan. Tujuh panggilan tambahan per malam — murah, dan menjadikan
-      // kolom yang selama ini kosong terisi angka yang benar-benar terjadi.
+      // panggilan — satu panggilan per hari dalam `periode`. Biasanya tujuh; ikut
+      // melebar sampai 30 pada malam yang sedang menambal hari bolong, lalu turun
+      // sendiri begitu lubangnya tertutup. Murah, dan menjadikan kolom yang selama
+      // ini kosong terisi angka yang benar-benar terjadi.
       const totalHarian = await tarikTotalHarianIg(
         meta.ig_business_id!, meta.insights_token || meta.access_token || '', periode,
       )

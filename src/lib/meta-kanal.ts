@@ -68,18 +68,16 @@ async function tarikSeri(
   objId: string, metrics: string[], token: string, periode: Rentang, extra = '',
 ): Promise<{ seri: SeriHarian; galat?: string; titik: number }> {
   const seri: SeriHarian = {}
-  let galat: string | undefined
   // Dihitung supaya "tidak ada datanya" bisa dibedakan dari "datanya nol".
   let titik = 0
+  /** Pesan galat terakhir per metrik — dipakai memutuskan apakah ini benar-benar galat. */
+  const gagal = new Map<string, string>()
 
-  for (const jendela of pecahJendela(periode)) {
-    const r = await graphGet(
-      `${objId}/insights?metric=${metrics.join(',')}&period=day&${kueriRentang(jendela)}${extra}`,
-      token,
-    )
-    if (!r.ok) { galat ??= pesanErrorGraph(r); continue }
-
-    for (const d of r.json?.data ?? []) {
+  type BalasanSeri = {
+    data?: { name?: unknown; values?: { end_time?: string; value?: unknown }[] }[]
+  }
+  const serap = (json: BalasanSeri) => {
+    for (const d of json?.data ?? []) {
       const nama = String(d.name ?? '')
       for (const v of d.values ?? []) {
         if (!v?.end_time) continue
@@ -90,7 +88,37 @@ async function tarikSeri(
       }
     }
   }
-  return { seri, galat, titik }
+
+  const url = (m: string, j: Rentang) =>
+    `${objId}/insights?metric=${m}&period=day&${kueriRentang(j)}${extra}`
+
+  for (const jendela of pecahJendela(periode)) {
+    // Digabung dulu: satu permintaan untuk semua metrik, dan itulah jalur normal.
+    const gabung = await graphGet(url(metrics.join(','), jendela), token)
+    if (gabung.ok) { serap(gabung.json); continue }
+
+    // SATU metrik yang melampaui batas riwayatnya sendiri menjatuhkan SELURUH
+    // permintaan gabungan. Terbukti 1 Sep 2026: `follower_count` hanya melayani
+    // 30 hari terakhir, sedangkan `reach` masih melayani setidaknya 73 hari —
+    // tetapi diminta bersama, Graph menolak keduanya dengan galat #100 yang
+    // hanya menyebut follower_count. Akibatnya jangkauan periode lampau tampak
+    // "tidak disediakan Instagram" padahal Instagram menyediakannya.
+    //
+    // Karena itu diulang satu per satu: yang masih dilayani tetap terambil.
+    if (metrics.length === 1) { gagal.set(metrics[0], pesanErrorGraph(gabung)); continue }
+    for (const m of metrics) {
+      const r = await graphGet(url(m, jendela), token)
+      if (!r.ok) { gagal.set(m, pesanErrorGraph(r)); continue }
+      serap(r.json)
+    }
+  }
+
+  // Hanya dianggap GALAT bila tidak ada satu metrik pun yang berhasil. Kalau
+  // sebagian berhasil, itu batas riwayat — bukan kerusakan, dan menaikkannya
+  // jadi galat akan mengosongkan seluruh tab karena UI menyembunyikan segalanya
+  // begitu `galat` terisi.
+  const semuaGagal = metrics.length > 0 && metrics.every(m => gagal.has(m))
+  return { seri, titik, galat: semuaGagal ? [...gagal.values()][0] : undefined }
 }
 
 /** Jumlahkan satu metric sepanjang seri. */
@@ -130,11 +158,17 @@ export interface RingkasInstagram {
   periode: TotalIg
   banding: TotalIg | null
   /**
-   * Deret harian periode pembanding pulang KOSONG, bukan nol. Jangkauan dan
-   * follower baru pada `banding` karena itu tidak boleh dipakai menghitung
-   * selisih — nilainya 0 hanya karena datanya tidak ada.
+   * Deret harian periode pembanding pulang KOSONG SELURUHNYA, bukan nol.
+   * Dipertahankan untuk grafik tren yang memang butuh seluruh deret.
    */
   bandingSeriKosong: boolean
+  /**
+   * Metrik deret harian yang TIDAK ADA datanya pada periode pembanding, disebut
+   * satu per satu. Wajib per metrik: batas riwayat tiap metrik berbeda jauh —
+   * `follower_count` hanya 30 hari, `reach` setidaknya 73 — sehingga satu
+   * bendera untuk keduanya akan menyembunyikan jangkauan yang sebenarnya ada.
+   */
+  bandingMetrikKosong: string[]
   harian: { tanggal: string; jangkauan: number }[]
   /** Deret pembanding, dicocokkan berdasarkan URUTAN hari — bukan tanggal. */
   bandingHarian: { tanggal: string; jangkauan: number }[]
@@ -360,6 +394,7 @@ export async function ringkasInstagram(
 ): Promise<RingkasInstagram> {
   const kosong: RingkasInstagram = {
     akun: null, periode: IG_KOSONG, banding: null, bandingSeriKosong: false,
+    bandingMetrikKosong: [],
     harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [],
     rincianPeriode: { perJenis: {}, perFollow: {} }, teratas: [], engagementTeratas: [],
     jenisKonten: [], hariFollower: [], catatanUnik: null,
@@ -398,6 +433,11 @@ export async function ringkasInstagram(
     periode: utama.total,
     banding: bandingHasil?.total ?? null,
     bandingSeriKosong: !!bandingHasil?.seriKosong,
+    // Dihitung dari deret itu sendiri, bukan dari status permintaan: satu sumber
+    // kebenaran yang sekaligus mencakup "ditolak Graph" dan "dijawab tapi kosong".
+    bandingMetrikKosong: bandingHasil
+      ? IG_SERI.filter(m => !Object.values(bandingHasil.seri).some(h => m in h))
+      : [],
     harian:         tanggal.map(t => ({ tanggal: t, jangkauan: seri[t].reach ?? 0 })),
     bandingHarian:  bandingHasil
       ? Object.keys(bandingHasil.seri).sort().map(t => ({ tanggal: t, jangkauan: bandingHasil.seri[t].reach ?? 0 }))

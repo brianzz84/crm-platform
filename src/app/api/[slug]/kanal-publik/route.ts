@@ -74,22 +74,34 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         : await ringkasFacebook(konfigMeta, cekUtama.rentang, banding)
 
       // Menambal periode pembanding dari catatan cron ketika Meta sudah tidak
-      // menyediakan deret hariannya. Hanya saat deret pulang BENAR-BENAR kosong
-      // (`bandingSeriKosong`), bukan saat nilainya nol — membedakan keduanya
-      // adalah alasan penanda itu dibuat.
+      // menyediakan deret hariannya.
+      //
+      // PER METRIK untuk Instagram, bukan satu bendera untuk semuanya. Batas
+      // riwayat tiap metrik berbeda jauh: `follower_count` hanya 30 hari,
+      // sedangkan `reach` masih dilayani setidaknya 73 hari. Memakai bendera
+      // gabungan akan membiarkan follower baru terbaca NOL — dan nol yang salah
+      // melahirkan "▲ tumbuh" yang sepenuhnya palsu, persis kekeliruan yang
+      // dulu memunculkan penanda ini.
+      //
+      // Facebook masih memakai bendera gabungan: batas per metriknya belum
+      // pernah diukur, dan menebaknya hanya akan mengulang kesalahan yang sama.
       let tambal: Awaited<ReturnType<typeof tambalDariSnapshot>> = null
-      if (banding && data.bandingSeriKosong && data.banding) {
+      const kosongIg = kanal === 'instagram' ? (data as { bandingMetrikKosong?: string[] }).bandingMetrikKosong ?? [] : []
+      const perluTambal = kanal === 'instagram' ? kosongIg.length > 0 : data.bandingSeriKosong
+
+      if (banding && perluTambal && data.banding) {
         tambal = await tambalDariSnapshot(params.slug, kanal === 'instagram' ? 'IG' : 'FB', banding)
         if (tambal) {
-          data.banding.followerBaru = tambal.followerBaru
           if (kanal === 'instagram') {
-            // Jangkauan hanya ada pada Instagram; TotalFb tidak punya padanannya,
-            // dan Meta memang tidak lagi menyediakan jangkauan tingkat Halaman.
-            (data.banding as { jangkauan: number }).jangkauan = tambal.jangkauan
+            if (kosongIg.includes('reach')) {
+              (data.banding as { jangkauan: number }).jangkauan = tambal.jangkauan
+            }
+            if (kosongIg.includes('follower_count')) data.banding.followerBaru = tambal.followerBaru
           } else {
             const fb = data.banding as {
               interaksi: number; kunjunganProfil: number; tayanganVideo: number
             }
+            data.banding.followerBaru = tambal.followerBaru
             fb.interaksi       = tambal.interaksi
             fb.kunjunganProfil = tambal.kunjunganProfil
             fb.tayanganVideo   = tambal.tayanganVideo
