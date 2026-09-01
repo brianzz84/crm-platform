@@ -40,8 +40,31 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
   if (error) return error
 
+  // `ulangi` membuang usulan AI yang BELUM ditinjau lalu mengusulkannya kembali.
+  // Ada karena memperbaiki daftar kategori tidak ada gunanya bila usulan lama —
+  // yang dibuat ketika kategori itu belum ada — tetap menempel selamanya.
+  // Label yang sudah DISETUJUI manusia tidak pernah disentuh.
+  const body   = await req.json().catch(() => ({})) as { ulangi?: unknown }
+  const ulangi = body.ulangi === true
+
   try {
     const db = await getTenantDb(params.slug)
+
+    if (ulangi) {
+      const perlu = await db.conversation.findMany({
+        where: {
+          tenant_slug: params.slug,
+          labels: { none: { disetujui: true }, some: { disetujui: false } },
+        },
+        select: { id: true },
+      })
+      await db.conversationLabel.deleteMany({
+        where: {
+          conversation_id: { in: perlu.map((k: { id: string }) => k.id) },
+          disetujui: false,
+        },
+      })
+    }
     await semaiTopik(db, params.slug)
     await semaiPoli(db, params.slug)
 
@@ -121,6 +144,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       '   lamaran kerja, penawaran vendor, dan spam hampir selalu begitu.',
       '6. Yang digolongkan adalah KEPERLUAN PENGIRIM, bukan isi jawaban petugas.',
       '   Baris "PETUGAS" hanya konteks untuk memahami maksud pertanyaan.',
+      '6b. INFO_UMUM adalah KATEGORI SISA. Sebelum memakainya, telusuri ulang seluruh',
+      '   daftar dari atas. Pemeriksaan atas hasil sebelumnya menemukan INFO_UMUM dipakai',
+      '   tiga kali lebih sering daripada seharusnya — itu kekeliruan yang paling perlu',
+      '   dihindari di sini. Bila percakapan menyebut keluhan, gejala, tindakan medis,',
+      '   nama layanan, nama spesialisasi, pelatihan, ibadah, atau berisi pujian —',
+      '   kategorinya BUKAN INFO_UMUM.',
+      '6c. Beberapa perbandingan yang sudah terbukti membingungkan:',
+      '   - "konsultasi diet ke dokter spesialis apa?" -> KONSULTASI_KESEHATAN (+ poli terkait)',
+      '   - "apakah bisa pembersihan telinga anak 1,5 tahun?" -> LAYANAN_KLINIK (+ poli terkait)',
+      '   - "apakah RS mengadakan pelatihan NICU bagi perawat?" -> PELATIHAN, bukan LOWONGAN',
+      '   - "terima kasih atas segala bantuan, Tuhan memberkati" -> APRESIASI, bukan INFO_UMUM',
+      '   - "hari Minggu ada misa pagi?" -> PELAYANAN_ROHANI',
+      '   - "jam besuk sampai jam berapa?" -> INFO_UMUM (inilah pemakaian yang benar)',
       '7. Kosongkan "topik" ([]) bila percakapan terlalu singkat atau kabur untuk dipastikan —',
       '   misalnya hanya sapaan tanpa kelanjutan. Ketidakpastian yang jujur lebih berguna',
       '   daripada tebakan yang percaya diri, karena hasilnya akan diperiksa manusia dan',

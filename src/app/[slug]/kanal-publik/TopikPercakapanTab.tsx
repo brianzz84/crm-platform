@@ -96,10 +96,18 @@ export default function TopikPercakapanTab({ slug }: { slug: string }) {
   const petaTopik = useMemo(() => new Map(topik.map(t => [t.kode, t])), [topik])
   const petaPoli  = useMemo(() => new Map(poli.map(p => [p.kode, p])), [poli])
 
-  async function usulkan() {
-    setSibuk('ai'); setGalat(''); setKabar('')
+  async function usulkan(ulangi = false) {
+    if (ulangi && !window.confirm(
+      'Usulkan ulang seluruh usulan AI yang belum ditinjau?\n\n' +
+      'Usulan lama dibuang lalu dibaca ulang memakai daftar kategori terbaru. ' +
+      'Label yang sudah Anda setujui tidak disentuh.'
+    )) return
+    setSibuk(ulangi ? 'ulang' : 'ai'); setGalat(''); setKabar('')
     try {
-      const res  = await fetch(`/api/${slug}/kanal-publik/percakapan/usulan`, { method: 'POST' })
+      const res  = await fetch(`/api/${slug}/kanal-publik/percakapan/usulan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ulangi }),
+      })
       const json = await res.json()
       if (!json.success) { setGalat(json.error ?? 'Gagal meminta usulan.'); return }
       setKabar(json.pesan ?? [
@@ -162,12 +170,16 @@ export default function TopikPercakapanTab({ slug }: { slug: string }) {
               menghubungi RKZ untuk apa</strong>, dan <strong>soal bidang layanan apa</strong>. AI
               membaca satu percakapan utuh lalu mengusulkan keduanya — <strong>usulan itu tidak
               masuk laporan sampai Anda tetapkan di sini</strong>. Satu percakapan boleh punya
-              lebih dari satu keperluan maupun poli. Daftar kategorinya disunting di Library.
+              lebih dari satu keperluan maupun poli. Kategori bisa ditambah atau disunting langsung dari modal pemilihan.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-            <button onClick={usulkan} disabled={!!sibuk} style={tombol(true, sibuk === 'ai')}>
+            <button onClick={() => usulkan(false)} disabled={!!sibuk} style={tombol(true, sibuk === 'ai')}>
               {sibuk === 'ai' ? '⏳ Membaca…' : '✨ Minta usulan AI'}
+            </button>
+            <button onClick={() => usulkan(true)} disabled={!!sibuk} style={tombol(false, sibuk === 'ulang')}
+              title="Buang usulan AI yang belum ditinjau, lalu baca ulang memakai daftar kategori terbaru">
+              {sibuk === 'ulang' ? '⏳ Mengulang…' : '↻ Usulkan ulang'}
             </button>
             {adaUsulan && (
               <button onClick={setujuiSemua} disabled={!!sibuk} style={tombol(false, sibuk === 'semua')}>
@@ -296,7 +308,8 @@ export default function TopikPercakapanTab({ slug }: { slug: string }) {
 
       {modal && (
         <ModalLabel
-          baris={modal} topik={topik} poli={poli} sibuk={!!sibuk}
+          slug={slug} baris={modal} topik={topik} poli={poli} sibuk={!!sibuk}
+          onKategoriBerubah={ambil}
           onBatal={() => setModal(null)}
           onSimpan={(t, p) => simpan(modal.id, { topik: t, poli: p })}
         />
@@ -310,45 +323,160 @@ export default function TopikPercakapanTab({ slug }: { slug: string }) {
  * percakapan yang sama — memisahkannya jadi dua dialog memaksa peninjau membaca
  * percakapan itu dua kali.
  */
-function ModalLabel({ baris, topik, poli, sibuk, onBatal, onSimpan }: {
+function ModalLabel({ slug, baris, topik, poli, sibuk, onBatal, onSimpan, onKategoriBerubah }: {
+  slug: string
   baris: Baris
   topik: Kategori[]
   poli: Kategori[]
   sibuk: boolean
   onBatal: () => void
   onSimpan: (topik: string[], poli: string[]) => void
+  onKategoriBerubah: () => void
 }) {
   // Nilai awal: yang sudah ditetapkan; kalau belum ada, usulan AI dipakai sebagai
   // titik mula supaya peninjau menyunting alih-alih mengetik ulang dari nol.
   const [pilihT, setPilihT] = useState<string[]>(baris.topik.length ? baris.topik : baris.topikUsulan)
   const [pilihP, setPilihP] = useState<string[]>(baris.poli.length ? baris.poli : baris.poliUsulan)
 
+  // Penyuntingan kategori dari DALAM modal ini. Sebelumnya hanya bisa lewat
+  // Library, yang dijaga izin `icdLibrary` — artinya admin medsos, satu-satunya
+  // orang yang benar-benar meninjau tiap hari, justru harus menunggu admin IT
+  // untuk menambah satu baris. Dan di sinilah kebutuhan itu muncul: saat menatap
+  // percakapan yang tidak cocok dengan kategori mana pun.
+  const [sunting, setSunting] = useState<{ dimensi: 'TOPIK' | 'POLI'; kode: string | null } | null>(null)
+  const [fNama, setFNama]   = useState('')
+  const [fWarna, setFWarna] = useState('#0089A8')
+  const [fDesk, setFDesk]   = useState('')
+  const [fSibuk, setFSibuk] = useState(false)
+  const [fGalat, setFGalat] = useState('')
+
   const alih = (arr: string[], set: (v: string[]) => void, kode: string) =>
     set(arr.includes(kode) ? arr.filter(k => k !== kode) : [...arr, kode])
 
-  const Kotak = ({ daftar, dipilih, set, kosong }: {
-    daftar: Kategori[]; dipilih: string[]; set: (v: string[]) => void; kosong: string
+  function bukaForm(dimensi: 'TOPIK' | 'POLI', k?: Kategori) {
+    setSunting({ dimensi, kode: k?.kode ?? null })
+    setFNama(k?.nama ?? ''); setFWarna(k?.warna ?? '#0089A8'); setFDesk(k?.deskripsi ?? '')
+    setFGalat('')
+  }
+
+  async function simpanKategori(aktif?: boolean) {
+    if (!sunting) return
+    const baru = sunting.kode === null
+    if (baru && !fNama.trim()) { setFGalat('Nama wajib diisi.'); return }
+    setFSibuk(true); setFGalat('')
+    try {
+      const res = await fetch(`/api/${slug}/kanal-publik/kategori`, {
+        method:  baru ? 'POST' : 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baru
+          ? { dimensi: sunting.dimensi, nama: fNama, warna: fWarna, deskripsi: fDesk }
+          : { dimensi: sunting.dimensi, kode: sunting.kode, nama: fNama, warna: fWarna,
+              deskripsi: fDesk, ...(aktif === undefined ? {} : { aktif }) }),
+      })
+      const json = await res.json()
+      if (!json.success) { setFGalat(json.error ?? 'Gagal menyimpan kategori.'); return }
+      setSunting(null)
+      onKategoriBerubah()
+    } catch { setFGalat('Gagal menghubungi server.') }
+    finally { setFSibuk(false) }
+  }
+
+  const Kotak = ({ daftar, dipilih, set, kosong, dimensi }: {
+    daftar: Kategori[]; dipilih: string[]; set: (v: string[]) => void
+    kosong: string; dimensi: 'TOPIK' | 'POLI'
   }) => (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
       {daftar.length === 0 && <span style={{ fontSize: 12, color: 'var(--c-text-faint)' }}>{kosong}</span>}
       {daftar.map(k => {
         const aktif = dipilih.includes(k.kode)
         return (
-          <button key={k.kode} onClick={() => alih(dipilih, set, k.kode)}
-            title={k.deskripsi ?? undefined}
-            style={{
-              padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', fontSize: 12,
-              fontWeight: aktif ? 700 : 500, cursor: 'pointer', textAlign: 'left',
-              border: `1.5px solid ${aktif ? k.warna : 'var(--c-border)'}`,
-              background: aktif ? k.warna : 'white',
-              color: aktif ? 'white' : 'var(--c-text-muted)',
-            }}>
-            {aktif ? '✓ ' : ''}{k.nama}
-          </button>
+          <span key={k.kode} style={{ display: 'inline-flex', alignItems: 'stretch' }}>
+            <button onClick={() => alih(dipilih, set, k.kode)}
+              title={k.deskripsi ?? undefined}
+              style={{
+                padding: '6px 10px', borderRadius: '999px 0 0 999px', fontFamily: 'inherit',
+                fontSize: 12, fontWeight: aktif ? 700 : 500, cursor: 'pointer', textAlign: 'left',
+                border: `1.5px solid ${aktif ? k.warna : 'var(--c-border)'}`, borderRight: 'none',
+                background: aktif ? k.warna : 'white',
+                color: aktif ? 'white' : 'var(--c-text-muted)',
+              }}>
+              {aktif ? '✓ ' : ''}{k.nama}
+            </button>
+            {/* Sunting menempel pada kategorinya, bukan disembunyikan di menu:
+                yang paling sering diperbaiki adalah URAIAN, dan uraian itulah
+                yang dibaca AI saat mengusulkan. */}
+            <button onClick={() => bukaForm(dimensi, k)} title="Sunting kategori ini"
+              style={{
+                padding: '6px 8px', borderRadius: '0 999px 999px 0', fontFamily: 'inherit',
+                fontSize: 11, cursor: 'pointer',
+                border: `1.5px solid ${aktif ? k.warna : 'var(--c-border)'}`,
+                background: aktif ? k.warna : 'white',
+                color: aktif ? 'white' : 'var(--c-text-faint)',
+              }}>✎</button>
+          </span>
         )
       })}
+      <button onClick={() => bukaForm(dimensi)}
+        style={{
+          padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', fontSize: 12,
+          fontWeight: 700, cursor: 'pointer', border: '1.5px dashed var(--c-secondary)',
+          background: 'white', color: 'var(--c-secondary)',
+        }}>+ Kategori baru</button>
     </div>
   )
+
+  function formKategori() {
+    if (!sunting) return null
+    const baru = sunting.kode === null
+    return (
+      <div style={{
+        border: '1.5px solid var(--c-secondary)', borderRadius: 'var(--r-md)',
+        padding: 'var(--sp-3)', marginTop: 'var(--sp-3)', display: 'grid', gap: 8,
+        background: 'var(--c-bg)',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--c-primary)' }}>
+          {baru ? 'Kategori baru' : `Sunting: ${sunting.kode}`}
+          <span style={{ fontWeight: 500, color: 'var(--c-text-faint)' }}>
+            {' '}· {sunting.dimensi === 'TOPIK' ? 'Keperluan' : 'Poli / Layanan'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input value={fNama} onChange={e => setFNama(e.target.value)} placeholder="Nama tampilan"
+            style={{ flex: 1, minWidth: 160, padding: '7px 10px', borderRadius: 'var(--r-sm)', border: '1.5px solid var(--c-border)', fontFamily: 'inherit', fontSize: 12, background: 'white' }} />
+          <input type="color" value={fWarna} onChange={e => setFWarna(e.target.value)}
+            style={{ width: 46, height: 34, padding: 2, borderRadius: 'var(--r-sm)', border: '1.5px solid var(--c-border)', background: 'white' }} />
+        </div>
+        <textarea value={fDesk} onChange={e => setFDesk(e.target.value)} rows={2}
+          placeholder="Uraian — DIBACA AI saat mengusulkan. Makin jelas batasnya, makin sedikit salah."
+          style={{ padding: '7px 10px', borderRadius: 'var(--r-sm)', border: '1.5px solid var(--c-border)', fontFamily: 'inherit', fontSize: 12, resize: 'vertical', background: 'white' }} />
+        {!baru && (
+          <div style={{ fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.5 }}>
+            Kode <code>{sunting.kode}</code> bersifat kekal. Mengubah nama berlaku surut ke
+            seluruh riwayat — pakai untuk memperbaiki penyebutan, bukan untuk mengganti maksud.
+          </div>
+        )}
+        {fGalat && <div style={{ fontSize: 12, color: '#B91C1C' }}>{fGalat}</div>}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button onClick={() => simpanKategori()} disabled={fSibuk}
+            style={{ padding: '6px 14px', borderRadius: 'var(--r-sm)', border: 'none', background: fSibuk ? '#94A3B8' : 'var(--c-primary)', color: 'white', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            {fSibuk ? 'Menyimpan…' : 'Simpan'}
+          </button>
+          <button onClick={() => setSunting(null)}
+            style={{ padding: '6px 14px', borderRadius: 'var(--r-sm)', border: '1.5px solid var(--c-border)', background: 'white', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer' }}>
+            Batal
+          </button>
+          {!baru && (
+            // Nonaktifkan, bukan hapus — laporan periode lampau harus tetap
+            // bisa membaca kategori yang sudah tidak dipakai.
+            <button onClick={() => simpanKategori(false)} disabled={fSibuk}
+              style={{ padding: '6px 14px', borderRadius: 'var(--r-sm)', border: '1.5px solid #FCA5A5', background: 'white', color: '#B91C1C', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer' }}>
+              Nonaktifkan
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // Poli dikelompokkan seperti asalnya di pustaka: 27 tombol tanpa pengelompokan
   // membuat mata harus menyisir seluruhnya untuk menemukan satu poli.
@@ -378,7 +506,9 @@ function ModalLabel({ baris, topik, poli, sibuk, onBatal, onSimpan }: {
         <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--c-text)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
           Keperluan
         </div>
-        <Kotak daftar={topik} dipilih={pilihT} set={setPilihT} kosong="Belum ada kategori di Library." />
+        <Kotak daftar={topik} dipilih={pilihT} set={setPilihT} dimensi="TOPIK"
+          kosong="Belum ada kategori. Tekan + Kategori baru." />
+        {sunting?.dimensi === 'TOPIK' && formKategori()}
 
         <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--c-text)', textTransform: 'uppercase', letterSpacing: '.5px', margin: 'var(--sp-4) 0 4px' }}>
           Poli / Layanan
@@ -390,9 +520,18 @@ function ModalLabel({ baris, topik, poli, sibuk, onBatal, onSimpan }: {
         {Object.entries(poliPerKelompok).map(([grup, daftar]) => (
           <div key={grup} style={{ marginBottom: 'var(--sp-3)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-faint)', marginBottom: 5 }}>{grup}</div>
-            <Kotak daftar={daftar} dipilih={pilihP} set={setPilihP} kosong="" />
+            <Kotak daftar={daftar} dipilih={pilihP} set={setPilihP} dimensi="POLI" kosong="" />
           </div>
         ))}
+        {sunting?.dimensi === 'POLI' && formKategori()}
+
+        {/* Tetap bisa menambah poli meski daftarnya kosong. */}
+        {!poli.length && !sunting && (
+          <button onClick={() => bukaForm('POLI')}
+            style={{ padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1.5px dashed var(--c-secondary)', background: 'white', color: 'var(--c-secondary)', marginBottom: 8 }}>
+            + Kategori baru
+          </button>
+        )}
         {!poli.length && (
           <div style={{ fontSize: 12, color: 'var(--c-text-faint)' }}>
             Belum ada poli di Library. Daftar ini disemai dari Unit/Poli SIMRS saat pertama dibuka.
