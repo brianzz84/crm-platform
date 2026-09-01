@@ -91,6 +91,13 @@ function setahunLalu(tgl: string) {
 
 const angka = (n: number) => Math.round(n).toLocaleString('id-ID')
 
+/** "2026-07-27" → "27 Jul 2026". Ditambah UTC eksplisit: tanpa itu tanggal
+ *  polos ditafsirkan sebagai tengah malam UTC lalu digeser ke zona pembaca,
+ *  dan tanggalnya mundur sehari di WIB. */
+const tgl = (t: string) => new Date(`${t}T00:00:00Z`).toLocaleDateString('id-ID', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+})
+
 /* ─── Gaya bersama ─── */
 const kartu: React.CSSProperties = {
   background: 'var(--c-surface)', border: '1px solid var(--c-border)',
@@ -112,19 +119,105 @@ const tombolKecil = (aktif: boolean): React.CSSProperties => ({
   color: aktif ? 'white' : 'var(--c-text-muted)',
 })
 
-/** Selisih terhadap pembanding — inti dari fitur perbandingan. */
-function Delta({ kini, dulu, terbalik }: { kini: number; dulu: number | null | undefined; terbalik?: boolean }) {
+/** Asal-usul angka pembanding ketika ditambal dari catatan cron. */
+interface Tambal {
+  cronMulai: string | null
+  hariDiminta: number
+  hariTerisi: number
+  bolong: string[]
+  jangkauan: number
+  followerBaru: number
+}
+
+/**
+ * Selisih terhadap pembanding — inti dari fitur perbandingan.
+ *
+ * `cakupan` diisi hanya ketika pembandingnya ditambal dari catatan cron dan
+ * catatan itu tidak menutupi seluruh hari. Pecahannya menempel PERSIS di sebelah
+ * panah, bukan diserahkan ke narasi di bawah kartu: orang membaca badge dan
+ * melewati paragraf, jadi persentase tanpa penyebutnya tetap berbahaya seberapa
+ * pun jujur keterangan di bawahnya.
+ *
+ * Arah ketidakpastiannya diketahui, bukan sekadar "hati-hati". Jangkauan dan
+ * follower baru adalah cacahan tak-negatif, jadi hari yang bolong hanya bisa
+ * membuat pembanding TERLALU KECIL — karenanya pertumbuhan yang ditampilkan
+ * adalah BATAS ATAS, ditandai dengan "≤".
+ */
+function Delta({ kini, dulu, terbalik, cakupan }: {
+  kini: number; dulu: number | null | undefined; terbalik?: boolean
+  cakupan?: { terisi: number; diminta: number } | null
+}) {
   if (dulu === null || dulu === undefined) return null
   const beda = kini - dulu
   if (beda === 0) return <span style={{ fontSize: 11, color: 'var(--c-text-faint)' }}>= sama</span>
   // `terbalik` untuk metrik yang naiknya justru buruk (mis. subscriber hilang).
   const baik = terbalik ? beda < 0 : beda > 0
   const persen = dulu === 0 ? null : Math.abs((beda / dulu) * 100)
+  const kurang = !!cakupan && cakupan.terisi < cakupan.diminta
   return (
     <span style={{ fontSize: 11, fontWeight: 700, color: baik ? '#15803D' : '#B91C1C' }}>
-      {beda > 0 ? '▲' : '▼'} {angka(Math.abs(beda))}
+      {beda > 0 ? '▲' : '▼'} {kurang && beda > 0 ? '≤ ' : ''}{angka(Math.abs(beda))}
       {persen !== null && ` (${persen.toFixed(persen < 10 ? 1 : 0)}%)`}
+      {kurang && (
+        <span style={{ fontWeight: 500, color: '#B45309' }}>
+          {' '}· pembanding {cakupan!.terisi}/{cakupan!.diminta} hari
+        </span>
+      )}
     </span>
+  )
+}
+
+/**
+ * Menjelaskan dari mana angka pembanding berasal saat Meta sudah tidak
+ * menyediakan deret hariannya.
+ *
+ * Menggantikan pesan lama yang hanya menyarankan "pilih periode yang lebih dekat"
+ * tanpa memberi tahu SEBERAPA dekat — padahal sistem tahu persis jawabannya.
+ * Ada dua keterangan yang berbeda tugasnya: yang pertama menyebut sumbernya,
+ * yang kedua menyebut hari yang tidak tercatat. Keduanya bersama-sama membuat
+ * pembaca tahu angkanya boleh dipercaya sebagai batas bawah, bukan sebagai
+ * angka pasti.
+ */
+function CatatanTambal({ tambal, banding, kanal = 'Instagram' }: {
+  tambal: Tambal | null; banding: string | null; kanal?: 'Instagram' | 'Facebook'
+}) {
+  // Metrik yang berasal dari deret harian — hanya inilah yang bisa hilang, dan
+  // hanya inilah yang bisa ditambal. Sisanya datang dari metric total_value yang
+  // riwayatnya jauh lebih panjang.
+  const metrik = kanal === 'Instagram'
+    ? <><strong>Jangkauan</strong> dan <strong>Follower Baru</strong></>
+    : <><strong>Interaksi</strong>, <strong>Kunjungan Profil</strong>, <strong>Follower Baru</strong>,
+        dan <strong>Tayangan Video</strong></>
+
+  // Tidak ada satu hari pun tercatat: tidak ada yang bisa ditambal, dan
+  // menampilkan nol akan berbohong jauh lebih parah daripada diam.
+  if (!tambal) {
+    return (
+      <span style={{ color: '#B45309', fontWeight: 600 }}>
+        {' '}— kecuali {metrik}: {kanal} tidak menyediakan data harian sejauh itu, dan catatan
+        harian CRM juga belum mencakup periode tersebut, jadi selisihnya tidak ditampilkan.
+      </span>
+    )
+  }
+
+  const kurang = tambal.hariTerisi < tambal.hariDiminta
+  return (
+    <>
+      <span style={{ color: '#B45309', fontWeight: 600 }}>
+        {' '}— {metrik} periode pembanding tidak lagi disediakan {kanal}, jadi diambil dari
+        catatan harian CRM
+        {tambal.cronMulai && <> (tersedia sejak {tgl(tambal.cronMulai)})</>}.
+      </span>
+      {kurang && (
+        <span style={{ color: '#B45309' }}>
+          {' '}Catatan itu belum lengkap untuk {banding}: <strong>{tambal.hariTerisi} dari{' '}
+          {tambal.hariDiminta} hari</strong> tercatat, kosong pada {tambal.bolong.join(', ')}.
+          Karena metrik ini tidak pernah negatif, hari yang kosong hanya bisa menambah — jadi
+          angka pembanding di atas adalah <strong>batas bawah</strong>, dan persentase
+          pertumbuhannya <strong>batas atas</strong>.
+        </span>
+      )}
+    </>
   )
 }
 
@@ -587,6 +680,8 @@ export default function KanalPublikClient({
   const [fb,  setFb]  = useState<RingkasFacebook | null>(null)
   const [muat, setMuat] = useState(false)
   const [galat, setGalat] = useState('')
+  /** Asal-usul angka pembanding saat Meta sudah tidak menyediakan deret hariannya. */
+  const [tambal, setTambal] = useState<Tambal | null>(null)
 
   const panjangUtama  = panjangHari(mulai, selesai)
   const panjangBandin = panjangHari(bMulai, bSelesai)
@@ -630,6 +725,7 @@ export default function KanalPublikClient({
       const res  = await fetch(`/api/${slug}/kanal-publik?${q.toString()}`)
       const json = await res.json()
       if (!json.success) { setGalat(json.error || 'Gagal memuat data'); return }
+      setTambal(json.tambal ?? null)
       if      (kanal === 'ga4')       setGa4(json.data)
       else if (kanal === 'youtube')   setYt(json.data)
       else if (kanal === 'instagram') setIg(json.data)
@@ -856,26 +952,23 @@ export default function KanalPublikClient({
                   // pembandingnya kosong, selisihnya SENGAJA tidak ditampilkan —
                   // lihat catatan di bawah kartu.
                   { label: 'Jangkauan', nilai: angka(ig.periode.jangkauan), warna: 'var(--c-primary)',
-                    delta: <Delta kini={ig.periode.jangkauan} dulu={ig.bandingSeriKosong ? null : ig.banding?.jangkauan} />,
+                    delta: <Delta kini={ig.periode.jangkauan}
+                      dulu={ig.bandingSeriKosong && !tambal ? null : ig.banding?.jangkauan}
+                      cakupan={ig.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} />,
                     catatan: 'penjumlahan jangkauan harian' },
                   { label: 'Tayangan', nilai: angka(ig.periode.tayangan), warna: 'var(--c-secondary)', delta: <Delta kini={ig.periode.tayangan} dulu={ig.banding?.tayangan} /> },
                   { label: 'Interaksi', nilai: angka(ig.periode.interaksi), warna: 'var(--c-success)',
                     delta: <Delta kini={ig.periode.interaksi} dulu={ig.banding?.interaksi} />,
                     catatan: `${persen(ig.periode.jangkauan ? (ig.periode.interaksi / ig.periode.jangkauan) * 100 : 0)} dari jangkauan · ${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
                   { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED',
-                    delta: <Delta kini={ig.periode.followerBaru} dulu={ig.bandingSeriKosong ? null : ig.banding?.followerBaru} /> },
+                    delta: <Delta kini={ig.periode.followerBaru}
+                      dulu={ig.bandingSeriKosong && !tambal ? null : ig.banding?.followerBaru}
+                      cakupan={ig.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
                 ]} />
                 {labelBanding && (
                   <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
                     Dibandingkan dengan {labelBanding}
-                    {ig.bandingSeriKosong && (
-                      <span style={{ color: '#B45309', fontWeight: 600 }}>
-                        {' '}— kecuali <strong>Jangkauan</strong> dan <strong>Follower Baru</strong>: Instagram tidak
-                        mengembalikan data harian untuk periode pembanding itu, jadi selisihnya tidak ditampilkan.
-                        Riwayat kedua metrik ini disimpan Instagram jauh lebih pendek daripada tayangan dan interaksi.
-                        Pilih periode pembanding yang lebih dekat ke hari ini agar bisa dibandingkan.
-                      </span>
-                    )}
+                    {ig.bandingSeriKosong && <CatatanTambal tambal={tambal} banding={labelBanding} />}
                   </div>
                 )}
                 <TrenBatang label={`Jangkauan per hari — ${mulai} s/d ${selesai}`}
@@ -958,20 +1051,19 @@ export default function KanalPublikClient({
                 {/* Seluruh angka Facebook berasal dari deret harian, jadi kalau deret
                     pembandingnya kosong TIDAK ADA selisih yang boleh ditampilkan. */}
                 <Statistik items={[
-                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-primary)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.bandingSeriKosong ? null : fb.banding?.interaksi} /> },
-                  { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.bandingSeriKosong ? null : fb.banding?.kunjunganProfil} /> },
-                  { label: 'Follower Baru', nilai: angka(fb.periode.followerBaru), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.followerBaru} dulu={fb.bandingSeriKosong ? null : fb.banding?.followerBaru} /> },
-                  { label: 'Tayangan Video', nilai: angka(fb.periode.tayanganVideo), warna: '#7C3AED', delta: <Delta kini={fb.periode.tayanganVideo} dulu={fb.bandingSeriKosong ? null : fb.banding?.tayanganVideo} /> },
+                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-primary)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.interaksi}
+                    cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                  { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.kunjunganProfil}
+                    cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                  { label: 'Follower Baru', nilai: angka(fb.periode.followerBaru), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.followerBaru} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.followerBaru}
+                    cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                  { label: 'Tayangan Video', nilai: angka(fb.periode.tayanganVideo), warna: '#7C3AED', delta: <Delta kini={fb.periode.tayanganVideo} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.tayanganVideo}
+                    cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
                 ]} />
                 {labelBanding && (
                   <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
                     Dibandingkan dengan {labelBanding}
-                    {fb.bandingSeriKosong && (
-                      <span style={{ color: '#B45309', fontWeight: 600 }}>
-                        {' '}— Facebook tidak mengembalikan data harian untuk periode itu, jadi selisihnya tidak
-                        ditampilkan. Pilih periode pembanding yang lebih dekat ke hari ini.
-                      </span>
-                    )}
+                    {fb.bandingSeriKosong && <CatatanTambal tambal={tambal} banding={labelBanding} kanal="Facebook" />}
                   </div>
                 )}
                 <TrenBatang label={`Interaksi per hari — ${mulai} s/d ${selesai}`}

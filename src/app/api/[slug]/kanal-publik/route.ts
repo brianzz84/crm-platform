@@ -19,6 +19,7 @@ import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { periksaRentang, ringkasGa4, ringkasYouTube, type Rentang } from '@/lib/google-kanal'
 import { ringkasFacebook, ringkasInstagram } from '@/lib/meta-kanal'
+import { tambalDariSnapshot } from '@/lib/kanal-tambal'
 
 type Ctx = { params: { slug: string } }
 
@@ -72,7 +73,33 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         ? await ringkasInstagram(konfigMeta, cekUtama.rentang, banding)
         : await ringkasFacebook(konfigMeta, cekUtama.rentang, banding)
 
-      return NextResponse.json({ success: true, kanal, periode: cekUtama.rentang, banding, data })
+      // Menambal periode pembanding dari catatan cron ketika Meta sudah tidak
+      // menyediakan deret hariannya. Hanya saat deret pulang BENAR-BENAR kosong
+      // (`bandingSeriKosong`), bukan saat nilainya nol — membedakan keduanya
+      // adalah alasan penanda itu dibuat.
+      let tambal: Awaited<ReturnType<typeof tambalDariSnapshot>> = null
+      if (banding && data.bandingSeriKosong && data.banding) {
+        tambal = await tambalDariSnapshot(params.slug, kanal === 'instagram' ? 'IG' : 'FB', banding)
+        if (tambal) {
+          data.banding.followerBaru = tambal.followerBaru
+          if (kanal === 'instagram') {
+            // Jangkauan hanya ada pada Instagram; TotalFb tidak punya padanannya,
+            // dan Meta memang tidak lagi menyediakan jangkauan tingkat Halaman.
+            (data.banding as { jangkauan: number }).jangkauan = tambal.jangkauan
+          } else {
+            const fb = data.banding as {
+              interaksi: number; kunjunganProfil: number; tayanganVideo: number
+            }
+            fb.interaksi       = tambal.interaksi
+            fb.kunjunganProfil = tambal.kunjunganProfil
+            fb.tayanganVideo   = tambal.tayanganVideo
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true, kanal, periode: cekUtama.rentang, banding, data, tambal,
+      })
     }
 
     const cfg = await db.googleConfig.findUnique({ where: { tenant_slug: params.slug } })
