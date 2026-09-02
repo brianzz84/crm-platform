@@ -60,15 +60,42 @@ const judulKartu: React.CSSProperties = {
   fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--c-primary)',
 }
 const th: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)',
+  padding: '8px 9px', fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)',
   textTransform: 'uppercase', letterSpacing: '0.4px', textAlign: 'right',
   borderBottom: '1.5px solid var(--c-border)', whiteSpace: 'nowrap',
 }
+
+/**
+ * Baris kepala pengelompok — "Tayangan" di atas Search/Maps, "Klik" di atas
+ * Telepon/Website.
+ *
+ * Bukan hiasan: mengulang kata "Tayangan" dan "Klik" di tiap kolom adalah sebab
+ * utama tabel ini melebar sampai terpotong di layar desktop. Dikelompokkan, kata
+ * itu ditulis sekali dan judul daunnya tinggal satu kata.
+ */
+const thGrup: React.CSSProperties = {
+  padding: '6px 9px 2px', fontSize: 10, fontWeight: 700, color: 'var(--c-text-faint)',
+  textTransform: 'uppercase', letterSpacing: '0.4px', textAlign: 'center',
+  whiteSpace: 'nowrap',
+}
+const thDaun: React.CSSProperties = { ...th, textTransform: 'none', letterSpacing: 0, fontSize: 11 }
+
 const td: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 13, textAlign: 'right',
+  padding: '8px 9px', fontSize: 13, textAlign: 'right',
   borderBottom: '1px solid var(--c-border)', whiteSpace: 'nowrap',
 }
 const kiri: React.CSSProperties = { textAlign: 'left' }
+
+/**
+ * Sel nama profil. BOLEH melipat — nama seperti "Rumah Sakit Katolik St.
+ * Vincentius a Paulo (RKZ)" dengan `nowrap` sendirian memakan sepertiga lebar
+ * tabel dan mendorong kolom terakhir keluar layar.
+ */
+const selProfil: React.CSSProperties = {
+  ...td, ...kiri, whiteSpace: 'normal', lineHeight: 1.35,
+  minWidth: 150, maxWidth: 260,
+}
+
 const gulir: React.CSSProperties = { overflowX: 'auto', padding: 'var(--sp-4) var(--sp-5)' }
 
 export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; mulai: string; selesai: string }) {
@@ -231,15 +258,19 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
             </button>
           </div>
           <div style={gulir}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, ...kiri }}>Bulan</th>
-                  <th style={th}>Tayangan Search</th>
-                  <th style={th}>Tayangan Maps</th>
-                  <th style={th}>Permintaan Rute</th>
-                  <th style={th}>Klik Telepon</th>
-                  <th style={th}>Klik Website</th>
+                  <th style={{ ...th, ...kiri }} rowSpan={2}>Bulan</th>
+                  <th style={thGrup} colSpan={2}>Tayangan</th>
+                  <th style={th} rowSpan={2}>Rute</th>
+                  <th style={thGrup} colSpan={2}>Klik</th>
+                </tr>
+                <tr>
+                  <th style={thDaun}>Search</th>
+                  <th style={thDaun}>Maps</th>
+                  <th style={thDaun}>Telepon</th>
+                  <th style={thDaun}>Website</th>
                 </tr>
               </thead>
               <tbody>
@@ -265,7 +296,7 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
 
                       {terbuka && b.perLokasi.map(l => (
                         <tr key={`${b.bulan}-${l.lokasi}`} style={{ background: '#F8FAFC' }}>
-                          <td style={{ ...td, ...kiri, paddingLeft: 30, fontSize: 12, color: 'var(--c-text-muted)' }}>
+                          <td style={{ ...selProfil, paddingLeft: 30, fontSize: 12, color: 'var(--c-text-muted)' }}>
                             {l.judul}
                           </td>
                           <td style={{ ...td, fontSize: 12 }}>{angka(l.tayanganSearch)}</td>
@@ -294,23 +325,27 @@ export default function LaporanGoogle({ slug, mulai, selesai }: { slug: string; 
         <div style={kartu}>
           <div style={judulKartu}>Performa per Profil Bisnis</div>
           <div style={gulir}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, ...kiri }}>Profil</th>
-                  <th style={th}>Tayangan Search</th>
-                  <th style={th}>Tayangan Maps</th>
-                  <th style={th}>Permintaan Rute</th>
-                  <th style={th}>Klik Telepon</th>
-                  <th style={th}>Klik Website</th>
-                  <th style={th}>Ulasan Baru</th>
-                  <th style={th}>Rata-rata</th>
+                  <th style={{ ...th, ...kiri }} rowSpan={2}>Profil</th>
+                  <th style={thGrup} colSpan={2}>Tayangan</th>
+                  <th style={th} rowSpan={2}>Rute</th>
+                  <th style={thGrup} colSpan={2}>Klik</th>
+                  <th style={th} rowSpan={2}>Ulasan</th>
+                  <th style={th} rowSpan={2}>Rating</th>
+                </tr>
+                <tr>
+                  <th style={thDaun}>Search</th>
+                  <th style={thDaun}>Maps</th>
+                  <th style={thDaun}>Telepon</th>
+                  <th style={thDaun}>Website</th>
                 </tr>
               </thead>
               <tbody>
                 {data.perLokasi.map(l => (
                   <tr key={l.lokasi}>
-                    <td style={{ ...td, ...kiri, fontWeight: 700 }}>{l.judul}</td>
+                    <td style={{ ...selProfil, fontWeight: 700 }}>{l.judul}</td>
                     <td style={td}>{angka(l.tayanganSearch)}</td>
                     <td style={td}>{angka(l.tayanganMaps)}</td>
                     <td style={td}>{angka(l.permintaanRute)}</td>
