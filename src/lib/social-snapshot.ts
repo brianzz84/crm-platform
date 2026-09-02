@@ -273,9 +273,12 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
       if (fb.galat) throw new Error(fb.galat)
 
       const naikPerTgl = new Map(fb.followerHarian.map(f => [f.tanggal, f.naik]))
-      // `jangkauan` SENGAJA dibiarkan nol untuk Facebook: Meta menghapus seluruh
-      // metric jangkauan tingkat Page maupun postingan. Bukan data yang belum
-      // diambil — memang tidak ada lagi yang bisa diambil.
+      // `jangkauan` tetap nol untuk Facebook — DAN ITU BUKAN LAGI karena tidak
+      // ada penggantinya. Keluarga Media View menggantikannya (lihat FB_SERI di
+      // meta-kanal.ts) dan disimpan pada kolomnya SENDIRI. Sengaja tidak
+      // ditumpangkan ke `jangkauan`: metodologinya berbeda, dan menaruhnya di
+      // kolom yang sama akan menyambung dua deret yang tidak sebanding tanpa ada
+      // yang menyadarinya.
       for (const h of fb.harian) {
         await simpanHarian('FB', h.tanggal, {
           interaksi:        h.interaksi,
@@ -283,6 +286,8 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
           kunjungan_profil: fb.kunjunganHarian?.[h.tanggal] ?? 0,
           follower_baru:    naikPerTgl.get(h.tanggal) ?? 0,
           follower_total:   fb.page?.follower ?? 0,
+          tayangan_media:   fb.tayanganMediaHarian?.[h.tanggal] ?? 0,
+          penonton_unik:    fb.penontonUnikHarian?.[h.tanggal] ?? 0,
         })
       }
 

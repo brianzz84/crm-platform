@@ -64,7 +64,13 @@ interface RingkasInstagram {
   catatanUnik: string | null
   galat?: string
 }
-interface TotalFb { interaksi: number; followerBaru: number; kunjunganProfil: number; tayanganVideo: number; totalAksi: number }
+interface TotalFb {
+  interaksi: number; followerBaru: number; kunjunganProfil: number
+  tayanganVideo: number; totalAksi: number
+  /** Keluarga Media View — pengganti Reach/Impressions yang dihapus Meta.
+   *  Metodologinya berbeda; jangan disebut "Jangkauan" di layar mana pun. */
+  tayanganMedia: number; penontonUnik: number
+}
 interface RingkasFacebook {
   page: { id: string; nama: string; follower: number } | null
   periode: TotalFb
@@ -1051,11 +1057,12 @@ export default function KanalPublikClient({
           {tab === 'facebook' && fb && (fb.galat ? <Pesan nada="galat">{fb.galat}</Pesan> : (
             <>
               <Pesan nada="info">
-                <strong>Facebook tidak lagi menyediakan angka jangkauan.</strong> Meta sudah menghapus seluruh
-                metric jangkauan Page maupun per postingan, jadi pertanyaan “berapa orang melihat konten kami”
-                tidak bisa dijawab dari Facebook — bukan karena izin kurang, melainkan API-nya memang tidak
-                menyediakannya lagi. Yang tersisa adalah metric <strong>aksi</strong>: interaksi, klik, kunjungan
-                profil, dan follower baru. Untuk mengukur jangkauan, gunakan tab Instagram.
+                <strong>Facebook memakai Tayangan Media, bukan Jangkauan.</strong> Meta menghapus seluruh metric
+                jangkauan lama (Reach/Impressions) dan menggantinya dengan keluarga <em>Media View</em>. Keduanya
+                mengukur hal yang mirip tetapi dengan cara berbeda, jadi <strong>angka ini tidak boleh
+                disambung dengan riwayat jangkauan Facebook sebelum Juni 2026</strong> seolah satu deret — dan
+                tidak setara dengan Jangkauan Instagram. <strong>Penonton Unik</strong> adalah yang paling dekat
+                dengan “berapa orang melihat”.
               </Pesan>
 
               <div style={kartu}>
@@ -1070,7 +1077,14 @@ export default function KanalPublikClient({
                 {/* Seluruh angka Facebook berasal dari deret harian, jadi kalau deret
                     pembandingnya kosong TIDAK ADA selisih yang boleh ditampilkan. */}
                 <Statistik items={[
-                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-primary)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.interaksi}
+                  { label: 'Penonton Unik', nilai: angka(fb.periode.penontonUnik), warna: 'var(--c-primary)',
+                    delta: <Delta kini={fb.periode.penontonUnik} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.penontonUnik}
+                      cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} />,
+                    catatan: 'penjumlahan harian — orang yang sama pada dua hari terhitung dua kali' },
+                  { label: 'Tayangan Media', nilai: angka(fb.periode.tayanganMedia), warna: '#0EA5E9',
+                    delta: <Delta kini={fb.periode.tayanganMedia} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.tayanganMedia}
+                      cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                  { label: 'Interaksi Postingan', nilai: angka(fb.periode.interaksi), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.interaksi} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.interaksi}
                     cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
                   { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.kunjunganProfil}
                     cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },

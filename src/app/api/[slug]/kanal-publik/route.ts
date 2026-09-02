@@ -100,11 +100,14 @@ export async function GET(req: NextRequest, { params }: Ctx) {
           } else {
             const fb = data.banding as {
               interaksi: number; kunjunganProfil: number; tayanganVideo: number
+              tayanganMedia: number; penontonUnik: number
             }
             data.banding.followerBaru = tambal.followerBaru
             fb.interaksi       = tambal.interaksi
             fb.kunjunganProfil = tambal.kunjunganProfil
             fb.tayanganVideo   = tambal.tayanganVideo
+            fb.tayanganMedia   = tambal.tayanganMedia
+            fb.penontonUnik    = tambal.penontonUnik
           }
         }
       }

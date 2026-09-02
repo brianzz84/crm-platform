@@ -1409,6 +1409,14 @@ model SocialAccountDaily {
   follower_baru    Int         @default(0)
   follower_total   Int         @default(0) // nilai saat diambil — bukan nilai historis
   kunjungan_profil Int         @default(0)
+
+  /// Keluarga Media View Facebook — pengganti Reach/Impressions yang dihapus
+  /// Meta, terbukti hidup lewat probe 2 Sep 2026. Kolom SENDIRI, bukan
+  /// menumpang `jangkauan`: metodologinya berbeda, dan menyatukannya akan
+  /// menyambung dua deret yang tidak sebanding tanpa ada yang menyadarinya.
+  /// Nol untuk Instagram — kanal itu memakai `jangkauan`.
+  tayangan_media   Int         @default(0)
+  penonton_unik    Int         @default(0)
   diambil_pada     DateTime    @default(now())
 
   // TIDAK BOLEH memuat kolom nullable: Postgres menganggap tiap NULL berbeda,

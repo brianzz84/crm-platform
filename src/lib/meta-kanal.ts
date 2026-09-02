@@ -571,20 +571,41 @@ export async function ambilMediaIg(
 // ──────────────────────────────────────────────
 
 /**
- * Metric Page yang TERBUKTI hidup. Perlu diketahui saat membaca dashboard ini:
- * seluruh metric jangkauan tingkat Page (`page_impressions`,
- * `page_impressions_unique`) sudah DIHAPUS Meta, dan tingkat postingan pun
- * (`post_impressions*`, `post_engaged_users`) ikut hilang. Karena itu Facebook
- * hanya bisa dilaporkan lewat metric AKSI — bukan berapa orang melihat.
+ * Metric Page yang TERBUKTI hidup lewat probe akun RKZ.
+ *
+ * KOREKSI 2 Sep 2026 — komentar di sini sebelumnya menyatakan Facebook "hanya
+ * bisa dilaporkan lewat metric AKSI, bukan berapa orang melihat". Itu KELIRU.
+ * Benar bahwa keluarga lama dihapus (`page_impressions`,
+ * `page_impressions_unique`, `post_impressions*`, `post_engaged_users`), tetapi
+ * Meta menggantinya dengan keluarga Media View — dan keluarga itu hidup:
+ *
+ *   page_media_view               30 titik harian
+ *   page_total_media_view_unique  30 titik harian
+ *   post_media_view               per postingan
+ *   post_total_media_view_unique  per postingan
+ *
+ * JANGAN MENAMAINYA "JANGKAUAN". Metodologi Meta berubah, jadi angka baru tidak
+ * boleh disambungkan dengan riwayat Reach/Impressions lama seolah satu deret.
+ * Sebutannya di seluruh sistem: **Tayangan Media** dan **Penonton Unik**.
+ *
+ * Kandidat pecahan paid/organic dan follower/non-follower SUDAH diuji dan tidak
+ * ada: sepuluh nama dicoba (`page_media_view_paid`, `_organic`, `_by_follower_status`,
+ * dan varian post-nya) — seluruhnya dijawab "The value must be a valid insights
+ * metric". Jangan dipasang tanpa probe ulang.
  */
 const FB_SERI = [
   'page_post_engagements', 'page_daily_follows_unique', 'page_views_total',
   'page_follows', 'page_video_views', 'page_total_actions',
+  'page_media_view', 'page_total_media_view_unique',
 ]
 
 export interface TotalFb {
   interaksi: number; followerBaru: number; kunjunganProfil: number
   tayanganVideo: number; totalAksi: number
+  /** Keluarga Media View — pengganti Reach/Impressions yang dihapus Meta.
+   *  Metodologinya BERBEDA; jangan disambung dengan riwayat jangkauan lama. */
+  tayanganMedia: number
+  penontonUnik:  number
 }
 export interface RingkasFacebook {
   page: { id: string; nama: string; follower: number } | null
@@ -596,6 +617,9 @@ export interface RingkasFacebook {
   /** Tayangan video & kunjungan profil per hari — dipakai tabel laporan. */
   tayanganVideoHarian: Record<string, number>
   kunjunganHarian: Record<string, number>
+  /** Keluarga Media View per hari — dipakai grafik dan snapshot harian. */
+  tayanganMediaHarian: Record<string, number>
+  penontonUnikHarian:  Record<string, number>
   bandingHarian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   semuaKonten: {
@@ -605,6 +629,8 @@ export interface RingkasFacebook {
   teratas: {
     id: string; tanggal: string; permalink: string; teks: string; gambar: string
     reaksi: number; komentar: number; dibagikan: number; klik: number
+    /** Keluarga Media View per postingan — BUKAN jangkauan lama. */
+    tayanganMedia: number; penontonUnik: number
   }[]
   /**
    * Jumlah komentar tidak bisa ditarik karena izin `pages_read_user_content`
@@ -619,6 +645,7 @@ export interface RingkasFacebook {
 
 const FB_KOSONG: TotalFb = {
   interaksi: 0, followerBaru: 0, kunjunganProfil: 0, tayanganVideo: 0, totalAksi: 0,
+  tayanganMedia: 0, penontonUnik: 0,
 }
 
 const totalDariSeri = (seri: SeriHarian): TotalFb => ({
@@ -627,6 +654,11 @@ const totalDariSeri = (seri: SeriHarian): TotalFb => ({
   kunjunganProfil: jumlah(seri, 'page_views_total'),
   tayanganVideo:   jumlah(seri, 'page_video_views'),
   totalAksi:       jumlah(seri, 'page_total_actions'),
+  tayanganMedia:   jumlah(seri, 'page_media_view'),
+  // Penonton unik dijumlahkan lintas hari, jadi orang yang sama pada dua hari
+  // berbeda terhitung dua kali — sama persis dengan sifat jangkauan Instagram,
+  // dan sama-sama diperingatkan lewat `catatanUnik`.
+  penontonUnik:    jumlah(seri, 'page_total_media_view_unique'),
 })
 
 export async function ringkasFacebook(
@@ -635,6 +667,7 @@ export async function ringkasFacebook(
   const kosong: RingkasFacebook = {
     page: null, periode: FB_KOSONG, banding: null, bandingSeriKosong: false,
     harian: [], tayanganVideoHarian: {}, kunjunganHarian: {},
+    tayanganMediaHarian: {}, penontonUnikHarian: {},
     bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], komentarTersedia: false,
   }
 
@@ -666,13 +699,18 @@ export async function ringkasFacebook(
     harian:         tanggal.map(t => ({ tanggal: t, interaksi: utama.seri[t].page_post_engagements ?? 0 })),
     tayanganVideoHarian: Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_video_views ?? 0])),
     kunjunganHarian:     Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_views_total ?? 0])),
+    tayanganMediaHarian: Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_media_view ?? 0])),
+    penontonUnikHarian:  Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_total_media_view_unique ?? 0])),
     bandingHarian:  seriBanding
       ? Object.keys(seriBanding.seri).sort().map(t => ({ tanggal: t, interaksi: seriBanding.seri[t].page_post_engagements ?? 0 }))
       : [],
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: utama.seri[t].page_daily_follows_unique ?? 0 })),
     semuaKonten: post.semua.map((p: any) => ({
       id: p.id, jenis: 'Postingan', tanggal: p.tanggal, permalink: p.permalink,
-      teks: p.teks, gambar: p.gambar, jangkauan: 0,
+      // `jangkauan` diisi PENONTON UNIK: itulah padanan terdekatnya pada
+      // paradigma baru, dan grafik hover memakai field ini. Namanya di layar
+      // tetap "Penonton Unik", tidak pernah "Jangkauan".
+      teks: p.teks, gambar: p.gambar, jangkauan: p.penontonUnik ?? 0,
       interaksi: p.reaksi + p.komentar + p.dibagikan,
     })),
     teratas: post.items,
@@ -700,7 +738,11 @@ export async function ambilPostFb(
   const inti    = 'id,message,created_time,permalink_url,shares,full_picture'
   // Insights per postingan hanya butuh izin yang SUDAH dipunyai. Terbukti dari
   // probe: post_clicks & post_reactions_by_type_total hidup.
-  const wawasan = 'insights.metric(post_clicks,post_reactions_by_type_total)'
+  // KOREKSI 2 Sep 2026: `post_media_view` dan `post_total_media_view_unique`
+  // terbukti hidup lewat probe akun RKZ (119 dan 76 pada postingan terakhir).
+  // Inilah pengganti `post_impressions` yang dihapus Meta — bukan padanannya,
+  // karena metodologinya berbeda dan tidak boleh disambung sebagai satu deret.
+  const wawasan = 'insights.metric(post_clicks,post_reactions_by_type_total,post_media_view,post_total_media_view_unique)'
   // Komentar & reaksi lewat summary menuntut `pages_read_user_content` yang belum
   // ditambahkan. Diminta di lapis terluar supaya ketiadaannya hanya menghilangkan
   // jumlah komentar, bukan menggugurkan seluruh angka seperti sebelumnya.
@@ -760,6 +802,8 @@ export async function ambilPostFb(
       komentar:  Number(p?.comments?.summary?.total_count ?? 0),
       dibagikan: Number(p?.shares?.count ?? 0),
       klik:      Number(wawasanNilai(p, 'post_clicks') ?? 0),
+      tayanganMedia: Number(wawasanNilai(p, 'post_media_view') ?? 0),
+      penontonUnik:  Number(wawasanNilai(p, 'post_total_media_view_unique') ?? 0),
     }
   })
 

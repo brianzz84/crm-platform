@@ -40,6 +40,8 @@ export interface HasilTambal {
   interaksi:        number
   kunjunganProfil:  number
   tayanganVideo:    number
+  tayanganMedia:    number
+  penontonUnik:     number
   harian:       { tanggal: string; jangkauan: number }[]
 }
 
@@ -111,6 +113,7 @@ export async function tambalDariSnapshot(
       select: {
         tanggal: true, jangkauan: true, follower_baru: true,
         interaksi: true, kunjungan_profil: true, tayangan: true,
+        tayangan_media: true, penonton_unik: true,
       },
     }),
     db.socialAccountDaily.findFirst({
@@ -136,6 +139,8 @@ export async function tambalDariSnapshot(
     interaksi:       jum('interaksi'),
     kunjunganProfil: jum('kunjungan_profil'),
     tayanganVideo:   jum('tayangan'),
+    tayanganMedia:   jum('tayangan_media'),
+    penontonUnik:    jum('penonton_unik'),
     harian: baris.map((b: { tanggal: Date; jangkauan: number }) => ({
       tanggal: iso(b.tanggal), jangkauan: b.jangkauan,
     })),
