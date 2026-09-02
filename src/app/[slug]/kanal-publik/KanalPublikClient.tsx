@@ -37,12 +37,23 @@ interface RingkasGa4 {
 }
 
 /* ─── Tipe Meta (cerminan bentuk dari src/lib/meta-kanal.ts) ─── */
-interface TotalIg { jangkauan: number; tayangan: number; interaksi: number; akunTerlibat: number; suka: number; disimpan: number; followerBaru: number }
+interface TotalIg {
+  jangkauan: number; tayangan: number; interaksi: number; akunTerlibat: number
+  suka: number; disimpan: number; followerBaru: number
+  /** Ketukan tautan/kontak di profil — metrik niat. */
+  tautanProfil: number
+}
+/** Satu baris pecahan demografi. */
+interface L { label: string; jumlah: number }
+
 interface KontenIg {
   id: string; jenis: string; tanggal: string; permalink: string; teks: string; gambar: string
   tayangan: number
   jangkauan: number; suka: number; komentar: number; dibagikan: number
   disimpan: number; interaksi: number; rasioInteraksi: number
+  // null = tidak berlaku untuk jenis media ini; 0 = berlaku tapi nilainya nol.
+  rerataTontonMs: number | null; totalTontonMs: number | null; lajuLewat: number | null
+  kunjunganProfil: number | null; aktivitasProfil: number | null; followDariSini: number | null
 }
 interface RingkasInstagram {
   akun: { id: string; username: string; follower: number; media: number; nama: string } | null
@@ -59,6 +70,7 @@ interface RingkasInstagram {
   rincianPeriode: { perJenis: Record<string, number>; perFollow: Record<string, number> }
   teratas: KontenIg[]
   engagementTeratas: KontenIg[]
+  demografi: { kota: L[]; usia: L[]; gender: L[] }
   jenisKonten: { jenis: string; jumlah: number; jangkauan: number; rasioInteraksi: number }[]
   hariFollower: { tanggal: string; naik: number; konten: string[] }[]
   catatanUnik: string | null
@@ -152,6 +164,51 @@ interface Tambal {
  * membuat pembanding TERLALU KECIL — karenanya pertumbuhan yang ditampilkan
  * adalah BATAS ATAS, ditandai dengan "≤".
  */
+/**
+ * Rincian yang HANYA berlaku untuk jenis media tertentu.
+ *
+ * Kedua kelompok saling eksklusif menurut Meta: Reels punya waktu tonton dan
+ * laju lewat, konten statis punya kunjungan profil dan follow. `null` berarti
+ * tidak berlaku untuk jenis ini — sengaja dibedakan dari 0 yang berarti berlaku
+ * tetapi memang nol.
+ *
+ * Milidetik dikonversi ke detik HANYA di sini. Nilai mentahnya tetap milidetik
+ * di seluruh lapisan lain, supaya konversi tidak pernah terjadi dua kali.
+ */
+function rincianJenis(k: KontenIg): string {
+  const bagian: string[] = []
+  if (k.rerataTontonMs != null) bagian.push(`${(k.rerataTontonMs / 1000).toFixed(1)} dtk rerata tonton`)
+  if (k.lajuLewat      != null) bagian.push(`${k.lajuLewat.toFixed(1)}% dilewati`)
+  if (k.totalTontonMs  != null) bagian.push(`${Math.round(k.totalTontonMs / 60000)} mnt total tonton`)
+  if (k.kunjunganProfil != null) bagian.push(`${angka(k.kunjunganProfil)} kunjungan profil`)
+  if (k.followDariSini  != null) bagian.push(`${angka(k.followDariSini)} follow`)
+  return bagian.length ? ' · ' + bagian.join(' · ') : ''
+}
+
+/** Satu dimensi demografi sebagai batang proporsi — tanpa mengklaim total populasi. */
+function Pecahan({ judul, data }: { judul: string; data: L[] }) {
+  if (!data?.length) return null
+  const puncak = Math.max(...data.map(d => d.jumlah), 1)
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>{judul}</div>
+      <div style={{ display: 'grid', gap: 5 }}>
+        {data.slice(0, 8).map(d => (
+          <div key={d.label} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</div>
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--c-border)', marginTop: 3 }}>
+                <div style={{ height: '100%', width: `${(d.jumlah / puncak) * 100}%`, background: 'var(--c-secondary)', borderRadius: 2 }} />
+              </div>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)' }}>{angka(d.jumlah)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Delta({ kini, dulu, terbalik, cakupan }: {
   kini: number; dulu: number | null | undefined; terbalik?: boolean
   cakupan?: { terisi: number; diminta: number } | null
@@ -982,6 +1039,9 @@ export default function KanalPublikClient({
                   { label: 'Interaksi', nilai: angka(ig.periode.interaksi), warna: 'var(--c-success)',
                     delta: <Delta kini={ig.periode.interaksi} dulu={ig.banding?.interaksi} />,
                     catatan: `${persen(ig.periode.jangkauan ? (ig.periode.interaksi / ig.periode.jangkauan) * 100 : 0)} dari jangkauan · ${angka(ig.periode.suka)} suka · ${angka(ig.periode.disimpan)} disimpan` },
+                  { label: 'Ketukan Tautan Profil', nilai: angka(ig.periode.tautanProfil), warna: '#DB2777',
+                    delta: <Delta kini={ig.periode.tautanProfil} dulu={ig.banding?.tautanProfil} />,
+                    catatan: 'menekan tautan/kontak di profil — lebih dekat ke niat menghubungi daripada suka' },
                   { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED',
                     delta: <Delta kini={ig.periode.followerBaru}
                       dulu={kosongIg('follower_count') && !tambal ? null : ig.banding?.followerBaru}
@@ -1017,12 +1077,30 @@ export default function KanalPublikClient({
                 </p>
               </div>
 
+              {(ig.demografi?.kota?.length || ig.demografi?.usia?.length) ? (
+                <div style={kartu}>
+                  <div style={judulKartu}>Demografi Follower Instagram</div>
+                  <div style={{ padding: 'var(--sp-4) var(--sp-5)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--sp-5)' }}>
+                      <Pecahan judul="Kota Teratas" data={ig.demografi.kota} />
+                      <Pecahan judul="Usia"         data={ig.demografi.usia} />
+                      <Pecahan judul="Gender"       data={ig.demografi.gender} />
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--c-text-faint)', marginTop: 12, lineHeight: 1.6 }}>
+                      Ini sebaran <strong>follower Instagram</strong> — bukan asal pasien, bukan wilayah rujukan,
+                      dan bukan catchment area rumah sakit. Meta hanya mengembalikan sejumlah entri teratas
+                      per dimensi, jadi daftar kota ini bukan seluruh kota follower.
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <Peringkat judul="Konten dengan Jangkauan Terbesar"
                 catatan="Seberapa jauh konten tersebar. Berguna untuk melihat apa yang menembus keluar dari lingkaran follower — tapi jangkauan besar belum tentu berarti tanggapannya bagus."
                 baris={ig.teratas.map(k => ({
                   kiri: labelKonten(k),
                   gambar: k.gambar,
-                  sub: `${k.jenis} · ${k.tanggal} · ${angka(k.tayangan)} tayangan · ${persen(k.rasioInteraksi)} interaksi · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan`,
+                  sub: `${k.jenis} · ${k.tanggal} · ${angka(k.tayangan)} tayangan · ${persen(k.rasioInteraksi)} interaksi · ${angka(k.suka)} suka · ${angka(k.komentar)} komentar · ${angka(k.dibagikan)} dibagikan · ${angka(k.disimpan)} disimpan${rincianJenis(k)}`,
                   kanan: angka(k.jangkauan),
                 }))} />
 

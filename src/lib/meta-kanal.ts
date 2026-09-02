@@ -135,12 +135,18 @@ const jumlah = (seri: SeriHarian, metric: string) =>
  * membuktikannya lewat probe lebih dulu.
  */
 const IG_SERI   = ['reach', 'follower_count']
-const IG_TOTAL  = ['views', 'accounts_engaged', 'total_interactions', 'likes', 'saves']
+// `profile_links_taps` ditambahkan 2 Sep 2026 setelah terbukti hidup lewat probe
+// (24 pada Agustus, riwayat sampai Jun 2025). Ini metrik NIAT: menekan tautan di
+// profil jauh lebih dekat ke maksud menghubungi rumah sakit daripada menyukai
+// unggahan.
+const IG_TOTAL  = ['views', 'accounts_engaged', 'total_interactions', 'likes', 'saves', 'profile_links_taps']
 const IG_KONTEN = 'reach,saved,likes,comments,shares,total_interactions,views'
 
 export interface TotalIg {
   jangkauan: number; tayangan: number; interaksi: number
   akunTerlibat: number; suka: number; disimpan: number; followerBaru: number
+  /** Ketukan pada tautan/kontak di profil — metrik NIAT, bukan sekadar tanggapan. */
+  tautanProfil: number
 }
 export interface KontenIg {
   id: string; jenis: string; tanggal: string; permalink: string; teks: string
@@ -152,6 +158,19 @@ export interface KontenIg {
   disimpan: number; interaksi: number
   /** Interaksi per 100 jangkauan — membandingkan konten besar dan kecil secara adil. */
   rasioInteraksi: number
+
+  // ── Metrik khusus jenis media. `null` = tidak berlaku untuk jenis ini,
+  //    DIBEDAKAN dari 0 yang berarti berlaku tetapi nilainya nol. ──
+  /** Reels saja. MILIDETIK mentah — konversi ke detik hanya di lapis tampilan. */
+  rerataTontonMs: number | null
+  /** Reels saja. MILIDETIK mentah. */
+  totalTontonMs:  number | null
+  /** Reels saja. Persen, bukan pecahan: 50,8 berarti 50,8%. */
+  lajuLewat:      number | null
+  /** Foto & Carousel saja — Reels tidak mendukungnya. */
+  kunjunganProfil: number | null
+  aktivitasProfil: number | null
+  followDariSini:  number | null
 }
 export interface RingkasInstagram {
   akun: { id: string; username: string; follower: number; media: number; nama: string } | null
@@ -191,13 +210,16 @@ export interface RingkasInstagram {
    * mana yang membuat seseorang menekan Ikuti.
    */
   hariFollower: { tanggal: string; naik: number; konten: string[] }[]
+  /** Sebaran follower — kota teratas, usia, gender. Lihat catatan di tarikDemografiIg. */
+  demografi: DemografiIg
   /** Peringatan kejujuran angka saat rentang melewati satu jendela. */
   catatanUnik: string | null
   galat?: string
 }
 
 const IG_KOSONG: TotalIg = {
-  jangkauan: 0, tayangan: 0, interaksi: 0, akunTerlibat: 0, suka: 0, disimpan: 0, followerBaru: 0,
+  jangkauan: 0, tayangan: 0, interaksi: 0, akunTerlibat: 0, suka: 0, disimpan: 0,
+  followerBaru: 0, tautanProfil: 0,
 }
 
 /**
@@ -227,13 +249,8 @@ async function ringkasPeriodeIg(
   hasil.jangkauan    = jumlah(seri, 'reach')
   hasil.followerBaru = jumlah(seri, 'follower_count')
 
-  for (const jendela of pecahJendela(periode)) {
-    const r = await graphGet(
-      `${igId}/insights?metric=${IG_TOTAL.join(',')}&metric_type=total_value&period=day&${kueriRentang(jendela)}`,
-      token,
-    )
-    if (!r.ok) continue
-    for (const d of r.json?.data ?? []) {
+  const serapTotal = (json: { data?: { name?: unknown; total_value?: { value?: unknown } }[] }) => {
+    for (const d of json?.data ?? []) {
       const n = Number(d?.total_value?.value ?? 0)
       switch (d.name) {
         case 'views':              hasil.tayangan     += n; break
@@ -241,7 +258,25 @@ async function ringkasPeriodeIg(
         case 'total_interactions': hasil.interaksi    += n; break
         case 'likes':              hasil.suka         += n; break
         case 'saves':              hasil.disimpan     += n; break
+        case 'profile_links_taps': hasil.tautanProfil += n; break
       }
+    }
+  }
+
+  const urlTotal = (m: string, j: Rentang) =>
+    `${igId}/insights?metric=${m}&metric_type=total_value&period=day&${kueriRentang(j)}`
+
+  for (const jendela of pecahJendela(periode)) {
+    const gabung = await graphGet(urlTotal(IG_TOTAL.join(','), jendela), token)
+    if (gabung.ok) { serapTotal(gabung.json); continue }
+
+    // Penjagaan yang sama seperti pada tarikSeri: sebelumnya kegagalan gabungan
+    // hanya di-`continue`, sehingga SATU metrik yang bermasalah membuat seluruh
+    // metrik total periode itu senyap menjadi nol. Diulang satu per satu supaya
+    // yang masih dilayani tetap terambil.
+    for (const m of IG_TOTAL) {
+      const r = await graphGet(urlTotal(m, jendela), token)
+      if (r.ok) serapTotal(r.json)
     }
   }
   return { total: hasil, seri, seriKosong: titik === 0, galat }
@@ -398,6 +433,7 @@ export async function ringkasInstagram(
     harian: [], bandingHarian: [], followerHarian: [], semuaKonten: [],
     rincianPeriode: { perJenis: {}, perFollow: {} }, teratas: [], engagementTeratas: [],
     jenisKonten: [], hariFollower: [], catatanUnik: null,
+    demografi: { kota: [], usia: [], gender: [] },
   }
 
   const token = cfg.insights_token || cfg.access_token || ''
@@ -417,6 +453,7 @@ export async function ringkasInstagram(
     tarikRincian(igId, token, periode, 'media_product_type'),
     tarikRincian(igId, token, periode, 'follow_type'),
   ])
+  const demografi = await tarikDemografiIg(igId, token)
   const { seri, galat } = utama
 
   const tanggal = Object.keys(seri).sort()
@@ -445,6 +482,7 @@ export async function ringkasInstagram(
     followerHarian: tanggal.map(t => ({ tanggal: t, naik: seri[t].follower_count ?? 0 })),
     semuaKonten:       rMedia.semua,
     rincianPeriode: { perJenis: rJenis, perFollow: rFollow },
+    demografi,
     teratas:           rMedia.teratas,
     engagementTeratas: rMedia.engagementTeratas,
     jenisKonten:       rMedia.jenisKonten,
@@ -466,6 +504,50 @@ export async function ringkasInstagram(
   }
 }
 
+/**
+ * Demografi FOLLOWER — bukan demografi pasien.
+ *
+ * Penamaan ini dijaga ketat di seluruh sistem. Yang diukur adalah sebaran
+ * geografis dan usia orang yang MENGIKUTI akun Instagram; itu tidak membuktikan
+ * asal pasien, wilayah rujukan, maupun catchment area rumah sakit. Menyebutnya
+ * "wilayah rujukan" adalah klaim yang melampaui apa yang benar-benar diukur.
+ *
+ * Dua kerabatnya — `reached_audience_demographics` dan
+ * `engaged_audience_demographics` — SUDAH DIUJI dan tidak tersedia untuk akun
+ * ini: seluruh timeframe lama ditolak ("no longer supported"), sedangkan
+ * `this_week` dan `this_month` menjawab tanpa satu pecahan pun. Jangan dipasang
+ * tanpa probe ulang.
+ *
+ * Meta hanya mengembalikan sejumlah entri teratas per dimensi, jadi hasilnya
+ * disebut "kota teratas" — bukan seluruh kota follower.
+ */
+export interface DemografiIg {
+  kota:   { label: string; jumlah: number }[]
+  usia:   { label: string; jumlah: number }[]
+  gender: { label: string; jumlah: number }[]
+}
+
+async function tarikDemografiIg(igId: string, token: string): Promise<DemografiIg> {
+  const ambil = async (breakdown: string) => {
+    const r = await graphGet(
+      `${igId}/insights?metric=follower_demographics&period=lifetime` +
+      `&metric_type=total_value&breakdown=${breakdown}&timeframe=this_month`,
+      token,
+    )
+    if (!r.ok) return []
+    const hasil = r.json?.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? []
+    return (hasil as { dimension_values?: string[]; value?: unknown }[])
+      .map(x => ({ label: String(x.dimension_values?.[0] ?? '-'), jumlah: Number(x.value ?? 0) }))
+      .filter(x => x.jumlah > 0)
+      .sort((a, b) => b.jumlah - a.jumlah)
+  }
+
+  // Tiga dimensi saja. `country` sengaja dilewati: untuk rumah sakit yang
+  // melayani satu kota, 45 negara hanya derau yang menutupi yang berguna.
+  const [kota, usia, gender] = await Promise.all([ambil('city'), ambil('age'), ambil('gender')])
+  return { kota: kota.slice(0, 15), usia, gender }
+}
+
 const LABEL_JENIS_IG: Record<string, string> = {
   IMAGE: 'Foto', VIDEO: 'Video', CAROUSEL_ALBUM: 'Carousel', REELS: 'Reels',
 }
@@ -478,6 +560,56 @@ const LABEL_JENIS_IG: Record<string, string> = {
  * gambar — bukan angka insights yang jauh lebih berharga. Pelajaran dari postingan
  * Facebook: satu field bersarang yang ditolak menggugurkan seluruh permintaan.
  */
+/**
+ * Metrik yang KETERSEDIAANNYA BERGANTUNG JENIS MEDIA.
+ *
+ * Diuji langsung 2 Sep 2026, dan hasilnya berlawanan dengan dugaan wajar: kedua
+ * kelompok ini SALING EKSKLUSIF, bukan sekadar "sebagian tersedia".
+ *
+ *   Reels/Video   : watch time & skip rate ADA — profile_visits/follows DITOLAK
+ *   Foto/Carousel : profile_visits/follows ADA — watch time & skip rate DITOLAK
+ *
+ * Galatnya berbunyi persis: "The Media Insights API does not support the
+ * <metric> metric for this media product type."
+ *
+ * Karena satu metrik yang tidak didukung menggugurkan SELURUH permintaan, kedua
+ * kelompok tidak boleh pernah diminta bersama. Itu sebabnya fungsi ini memilih
+ * bundel berdasarkan jenis, bukan meminta gabungan lalu berharap.
+ */
+const BUNDEL_REELS  = ['ig_reels_avg_watch_time', 'ig_reels_video_view_total_time', 'reels_skip_rate']
+const BUNDEL_STATIS = ['profile_visits', 'profile_activity', 'follows']
+
+/** Jenis yang memakai bundel Reels — sisanya dianggap statis. */
+const JENIS_REELS = new Set(['Reels', 'Video'])
+
+async function perkayaMediaIg(items: KontenIg[], token: string): Promise<void> {
+  // Hanya konten yang benar-benar ditampilkan yang diperkaya. Satu panggilan per
+  // konten, jadi memperkaya seluruh periode akan menambah puluhan panggilan pada
+  // tiap pembukaan halaman — biaya yang tidak sebanding dengan manfaatnya untuk
+  // konten yang tidak dilihat siapa pun.
+  await Promise.all(items.map(async it => {
+    const reels  = JENIS_REELS.has(it.jenis)
+    const bundel = reels ? BUNDEL_REELS : BUNDEL_STATIS
+    const r = await graphGet(`${it.id}/insights?metric=${bundel.join(',')}`, token)
+    if (!r.ok) return
+
+    const nilai = (nama: string) => {
+      const d = (r.json?.data ?? []).find((x: { name?: string }) => x.name === nama)
+      const v = d?.values?.[0]?.value
+      return v === undefined || v === null ? null : Number(v)
+    }
+    if (reels) {
+      it.rerataTontonMs = nilai('ig_reels_avg_watch_time')
+      it.totalTontonMs  = nilai('ig_reels_video_view_total_time')
+      it.lajuLewat      = nilai('reels_skip_rate')
+    } else {
+      it.kunjunganProfil = nilai('profile_visits')
+      it.aktivitasProfil = nilai('profile_activity')
+      it.followDariSini  = nilai('follows')
+    }
+  }))
+}
+
 export async function ambilMediaIg(
   igId: string, token: string, periode: Rentang, maksHalaman = 1,
 ) {
@@ -540,6 +672,8 @@ export async function ambilMediaIg(
       disimpan:  nilai(m, 'saved'),
       interaksi,
       rasioInteraksi: jangkauan > 0 ? (interaksi / jangkauan) * 100 : 0,
+      rerataTontonMs: null, totalTontonMs: null, lajuLewat: null,
+      kunjunganProfil: null, aktivitasProfil: null, followDariSini: null,
     }
   })
 
@@ -550,13 +684,21 @@ export async function ambilMediaIg(
     per.set(it.jenis, p)
   }
 
+  const teratas = [...items].sort((a, b) => b.jangkauan - a.jangkauan || b.interaksi - a.interaksi).slice(0, 15)
+  const engagementTeratas = items
+    .filter(i => i.jangkauan >= AMBANG_JANGKAUAN_RASIO)
+    .sort((a, b) => b.rasioInteraksi - a.rasioInteraksi)
+    .slice(0, 10)
+
+  // Objek yang sama dipakai di kedua daftar, jadi memperkaya sekali per objek
+  // sudah cukup — dedup lewat Set mencegah panggilan ganda untuk konten yang
+  // muncul di keduanya.
+  await perkayaMediaIg([...new Set([...teratas, ...engagementTeratas])], token)
+
   return {
     semua: items,
-    teratas: [...items].sort((a, b) => b.jangkauan - a.jangkauan || b.interaksi - a.interaksi).slice(0, 15),
-    engagementTeratas: items
-      .filter(i => i.jangkauan >= AMBANG_JANGKAUAN_RASIO)
-      .sort((a, b) => b.rasioInteraksi - a.rasioInteraksi)
-      .slice(0, 10),
+    teratas,
+    engagementTeratas,
     jenisKonten: [...per.values()]
       .map(p => ({
         jenis: p.jenis, jumlah: p.jumlah, jangkauan: p.jangkauan,
