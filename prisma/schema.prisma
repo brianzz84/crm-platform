@@ -1414,6 +1414,10 @@ model SocialAccountDaily {
   unfollow         Int         @default(0)
   follower_total   Int         @default(0) // nilai saat diambil — bukan nilai historis
   kunjungan_profil Int         @default(0)
+  /// `profile_links_taps` — ketukan tautan/kontak di profil. Metrik NIAT, dan
+  /// satu-satunya di tabel ini yang mendekati "orang ini ingin menghubungi".
+  /// Instagram saja; Facebook tidak punya padanannya.
+  tautan_profil    Int         @default(0)
 
   /// Keluarga Media View Facebook — pengganti Reach/Impressions yang dihapus
   /// Meta, terbukti hidup lewat probe 2 Sep 2026. Kolom SENDIRI, bukan

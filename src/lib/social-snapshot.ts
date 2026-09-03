@@ -249,6 +249,7 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
           disimpan:       t?.disimpan  ?? 0,
           follower_baru:  naikPerTgl.get(h.tanggal) ?? 0,
           unfollow:       t?.unfollow ?? 0,
+          tautan_profil:  t?.tautanProfil ?? 0,
           follower_total: followerTotal,
         })
       }

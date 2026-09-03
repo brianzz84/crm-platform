@@ -8,10 +8,18 @@ interface Sel { jumlah: number; jangkauan: number; interaksi: number; suka: numb
 interface BarisAkun {
   bulan: string; jumlahKonten: number; jangkauan: number; tayangan: number
   interaksi: number; followerBaru: number; followerAkhir: number
+  unfollow: number; pertumbuhanBersih: number; tautanProfil: number
+  tayanganMedia: number; penontonUnik: number
+}
+interface BarisPerhatian {
+  bulan: string; jumlahReels: number
+  medianTontonMs: number | null; medianLajuLewat: number | null
 }
 interface Laporan {
   periode: { mulai: string; selesai: string }
   ringkasAkun: BarisAkun[]
+  perhatianReels: BarisPerhatian[]
+  metrikBaruSejak: string | null
   riwayatManual: {
     periode: string; urutan: number; sumber: string
     jumlahKonten: number; jangkauan: number; interaksi: number; follower: number
@@ -186,6 +194,11 @@ export default function LaporanTab(
                     <th style={th}>Tayangan</th>
                     <th style={th}>Interaksi</th>
                     <th style={th}>Pengikut Baru</th>
+                    <th style={th}>Berhenti</th>
+                    <th style={th}>Bersih</th>
+                    {kanal === 'IG' && <th style={th}>Ketuk Tautan</th>}
+                    {kanal === 'FB' && <th style={th}>Tayangan Media</th>}
+                    {kanal === 'FB' && <th style={th}>Penonton Unik</th>}
                     <th style={th}>Pengikut Akhir</th>
                   </tr></thead>
                   <tbody>
@@ -201,6 +214,15 @@ export default function LaporanTab(
                           <td style={gaya}>{angka(r.tayangan)}</td>
                           <td style={gaya}>{angka(r.interaksi)}</td>
                           <td style={gaya}>{angka(r.followerBaru)}</td>
+                          <td style={{ ...gaya, color: r.unfollow ? '#B91C1C' : 'var(--c-text-faint)' }}>
+                            {r.unfollow ? angka(r.unfollow) : '–'}
+                          </td>
+                          <td style={{ ...gaya, fontWeight: 800, color: r.pertumbuhanBersih < 0 ? '#B91C1C' : 'var(--c-text)' }}>
+                            {angka(r.pertumbuhanBersih)}
+                          </td>
+                          {kanal === 'IG' && <td style={gaya}>{r.tautanProfil ? angka(r.tautanProfil) : '–'}</td>}
+                          {kanal === 'FB' && <td style={gaya}>{r.tayanganMedia ? angka(r.tayanganMedia) : '–'}</td>}
+                          {kanal === 'FB' && <td style={gaya}>{r.penontonUnik ? angka(r.penontonUnik) : '–'}</td>}
                           <td style={{ ...gaya, color: 'var(--c-text-muted)' }}>{angka(r.followerAkhir)}</td>
                         </tr>
                       )
@@ -208,6 +230,19 @@ export default function LaporanTab(
                   </tbody>
                 </table>
               </div>
+              {/* Kolom baru kosong untuk periode lampau karena kolomnya memang belum
+                  ada saat itu — bukan karena tidak ada kejadiannya. Perbedaan itu
+                  harus dinyatakan, bukan disimpulkan sendiri oleh pembaca. */}
+              {data.metrikBaruSejak && (
+                <div style={{ margin: '0 var(--sp-5) var(--sp-4)', background: '#FFFBEB', borderLeft: '3px solid #F59E0B', color: '#92400E', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12, lineHeight: 1.6 }}>
+                  Kolom <strong>Berhenti</strong>, <strong>Bersih</strong>
+                  {kanal === 'IG' && <>, <strong>Ketuk Tautan</strong></>}
+                  {kanal === 'FB' && <>, <strong>Tayangan Media</strong>, <strong>Penonton Unik</strong></>}
+                  {' '}baru mulai direkam <strong>{data.metrikBaruSejak}</strong>. Bulan sebelum itu
+                  tampil kosong karena datanya memang belum pernah diambil — bukan karena angkanya nol.
+                </div>
+              )}
+
               <p style={{ margin: 0, padding: '0 var(--sp-5) var(--sp-5)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
                 <strong>Pengikut Akhir tidak dijumlahkan</strong> — ia keadaan pada hari terakhir tiap
                 bulan, bukan sesuatu yang bertambah tiap hari. Baris TOTAL karena itu menampilkan
@@ -222,6 +257,43 @@ export default function LaporanTab(
               YouTube dilaporkan di <strong>tingkat akun saja</strong>. Performa tiap video sengaja
               tidak disalin ke sini karena YouTube Analytics bisa ditanya per rentang tanggal kapan pun —
               menyalinnya hanya menduplikasi tanpa menambah kemampuan. Untuk konten per video, gunakan tab YouTube.
+            </div>
+          )}
+
+          {data.perhatianReels?.length > 0 && (
+            <div style={kartu}>
+              <div style={judulKartu}>Perhatian pada Reels</div>
+              <div style={gulir}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420 }}>
+                  <thead><tr>
+                    <th style={{ ...th, ...kiri }}>Bulan</th>
+                    <th style={th}>Reels</th>
+                    <th style={th}>Median Tonton</th>
+                    <th style={th}>Median Dilewati</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.perhatianReels.map(r => (
+                      <tr key={r.bulan}>
+                        <td style={{ ...td, ...kiri }}>{labelBulan(r.bulan)}</td>
+                        <td style={td}>{r.jumlahReels}</td>
+                        <td style={td}>
+                          {r.medianTontonMs != null ? `${(r.medianTontonMs / 1000).toFixed(1)} dtk` : '–'}
+                        </td>
+                        <td style={{ ...td, color: (r.medianLajuLewat ?? 0) > 60 ? '#B91C1C' : 'var(--c-text)' }}>
+                          {r.medianLajuLewat != null ? `${r.medianLajuLewat.toFixed(1)}%` : '–'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: 0, padding: '0 var(--sp-5) var(--sp-5)', fontSize: 11, color: 'var(--c-text-faint)', lineHeight: 1.6 }}>
+                Menjawab yang tidak bisa dijawab jangkauan: <strong>apakah orang bertahan menonton</strong>.
+                Reels dengan tayangan besar tetapi ditinggalkan di detik-detik awal bukan konten yang berhasil.
+                Dipakai <strong>median</strong>, bukan rata-rata — satu Reels yang ditonton tuntas oleh sedikit
+                orang tidak boleh menggeser gambaran seluruh bulan. Hanya Reels yang punya angka ini;
+                Foto dan Carousel tidak mendukungnya.
+              </p>
             </div>
           )}
 

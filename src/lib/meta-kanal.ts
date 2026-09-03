@@ -361,25 +361,27 @@ async function tarikRincian(
  */
 export async function tarikTotalHarianIg(
   igId: string, token: string, periode: Rentang,
-): Promise<Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number; follow: number; unfollow: number }>> {
-  const out = new Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number; follow: number; unfollow: number }>()
+): Promise<Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number; follow: number; unfollow: number; tautanProfil: number }>> {
+  const out = new Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number; follow: number; unfollow: number; tautanProfil: number }>()
 
   let hari = Date.parse(periode.mulai)
   const akhir = Date.parse(periode.selesai)
   while (hari <= akhir) {
     const tgl = iso(hari)
     const r = await graphGet(
-      `${igId}/insights?metric=views,total_interactions,likes,saves&metric_type=total_value&period=day&${kueriRentang({ mulai: tgl, selesai: tgl })}`,
+      `${igId}/insights?metric=views,total_interactions,likes,saves,profile_links_taps` +
+      `&metric_type=total_value&period=day&${kueriRentang({ mulai: tgl, selesai: tgl })}`,
       token,
     )
     if (r.ok) {
-      const nilai = { tayangan: 0, interaksi: 0, suka: 0, disimpan: 0, follow: 0, unfollow: 0 }
+      const nilai = { tayangan: 0, interaksi: 0, suka: 0, disimpan: 0, follow: 0, unfollow: 0, tautanProfil: 0 }
       for (const d of r.json?.data ?? []) {
         const n = Number(d?.total_value?.value ?? 0)
         if (d.name === 'views')              nilai.tayangan  = n
         if (d.name === 'total_interactions') nilai.interaksi = n
         if (d.name === 'likes')              nilai.suka      = n
         if (d.name === 'saves')              nilai.disimpan  = n
+        if (d.name === 'profile_links_taps') nilai.tautanProfil = n
       }
       // Panggilan KEDUA untuk hari yang sama: follows_and_unfollows menuntut
       // breakdown yang tidak boleh dikenakan pada metrik di atas. Terbukti

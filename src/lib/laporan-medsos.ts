@@ -26,6 +26,29 @@ export interface BarisAkun {
   followerBaru: number
   /** Nilai pada hari TERAKHIR bulan itu — bukan penjumlahan. */
   followerAkhir: number
+
+  // ── Ditambahkan 3 Sep 2026 setelah metriknya terbukti hidup lewat probe.
+  //    KOSONG untuk periode sebelum tanggal itu — kolomnya memang belum ada,
+  //    bukan berarti tidak ada kejadiannya. UI wajib menyatakan ini. ──
+  unfollow: number
+  /** followerBaru − unfollow. Pertumbuhan yang hanya dibaca dari penambahan
+   *  menyembunyikan churn. */
+  pertumbuhanBersih: number
+  /** Instagram saja — ketukan tautan/kontak di profil. */
+  tautanProfil: number
+  /** Facebook saja — keluarga Media View, pengganti Reach yang dihapus Meta. */
+  tayanganMedia: number
+  penontonUnik: number
+}
+
+/** Perhatian pada Reels — hanya Reels yang punya angka ini. */
+export interface BarisPerhatian {
+  bulan: string
+  jumlahReels: number
+  /** MEDIAN, bukan rata-rata: satu Reels yang ditonton tuntas oleh sedikit orang
+   *  tidak boleh menggeser gambaran seluruh bulan. Milidetik mentah. */
+  medianTontonMs: number | null
+  medianLajuLewat: number | null
 }
 
 export interface LaporanMedsos {
@@ -58,6 +81,14 @@ export interface LaporanMedsos {
    * akan menghasilkan angka raksasa yang tidak berarti apa pun.
    */
   ringkasAkun: BarisAkun[]
+
+  /** Perhatian Reels per bulan. Kosong bila kanalnya bukan Instagram atau
+   *  belum ada Reels yang terekam metrik perhatiannya. */
+  perhatianReels: BarisPerhatian[]
+
+  /** Tanggal paling awal metrik baru mulai direkam — dipakai UI menyatakan
+   *  kenapa kolomnya kosong untuk periode lampau. Null bila belum ada sama sekali. */
+  metrikBaruSejak: string | null
 
   /**
    * Angka triwulan lampau dari laporan manual. DISAJIKAN TERPISAH dan ditandai
@@ -134,6 +165,10 @@ export async function rakitLaporan(
       jenis: k.jenis, bulan, sifat: k.sifat as string | null,
       jangkauan: s?.jangkauan ?? 0, tayangan: s?.tayangan ?? 0,
       interaksi: s?.interaksi ?? 0, suka: s?.suka ?? 0,
+      // null, BUKAN 0 — Reels dan konten statis punya metrik yang saling
+      // eksklusif, jadi ketiadaan di sini berarti "tidak berlaku".
+      rerataTontonMs: (s?.rerata_tonton_ms ?? null) as number | null,
+      lajuLewat:      (s?.laju_lewat ?? null) as number | null,
     }
   })
 
@@ -202,12 +237,48 @@ export async function rakitLaporan(
 
   // ── Tabel pembuka: ringkasan akun per bulan ──
   const bulanAkun = [...new Set(harian.map((h: any) => h.tanggal.toISOString().slice(0, 7)))].sort()
+  // ── Perhatian Reels ──
+  // MEDIAN, bukan rata-rata: satu Reels yang ditonton tuntas oleh sedikit orang
+  // tidak boleh menggeser gambaran seluruh bulan. Alasan yang sama dipakai pada
+  // laporan percakapan.
+  const median = (v: number[]): number | null => {
+    if (!v.length) return null
+    const u = [...v].sort((a, b) => a - b)
+    const t = Math.floor(u.length / 2)
+    return u.length % 2 ? u[t] : Math.round((u[t - 1] + u[t]) / 2)
+  }
+  const perhatianReels: BarisPerhatian[] = bulan
+    .map(b => {
+      const r = baris.filter(x => x.bulan === b && x.rerataTontonMs != null)
+      return {
+        bulan: b,
+        jumlahReels:     r.length,
+        medianTontonMs:  median(r.map(x => x.rerataTontonMs as number)),
+        medianLajuLewat: median(r.filter(x => x.lajuLewat != null).map(x => x.lajuLewat as number)),
+      }
+    })
+    .filter(x => x.jumlahReels > 0)
+
+  // Sejak kapan metrik baru mulai direkam — dipakai UI menjelaskan kolom yang
+  // kosong pada periode lampau. Diambil dari baris pertama yang benar-benar
+  // punya isi, bukan dari tanggal rilis yang ditulis tangan.
+  const barisBaru = (harian as { tanggal: Date; unfollow?: number; tautan_profil?: number; tayangan_media?: number }[])
+    .filter(h => (h.unfollow ?? 0) > 0 || (h.tautan_profil ?? 0) > 0 || (h.tayangan_media ?? 0) > 0)
+  const metrikBaruSejak = barisBaru.length
+    ? barisBaru[0].tanggal.toISOString().slice(0, 10)
+    : null
+
   const ringkasAkun: BarisAkun[] = bulanAkun.map(b => {
     const rows = harian.filter((h: any) => h.tanggal.toISOString().slice(0, 7) === b)
     const jml = (f: string) => rows.reduce((s: number, r: any) => s + (r[f] ?? 0), 0)
     return {
       bulan: b,
       jumlahKonten:  baris.filter(r => r.bulan === b).length,
+      unfollow:          jml('unfollow'),
+      pertumbuhanBersih: jml('follower_baru') - jml('unfollow'),
+      tautanProfil:      jml('tautan_profil'),
+      tayanganMedia:     jml('tayangan_media'),
+      penontonUnik:      jml('penonton_unik'),
       jangkauan:     jml('jangkauan'),
       tayangan:      jml('tayangan'),
       interaksi:     jml('interaksi'),
@@ -223,6 +294,9 @@ export async function rakitLaporan(
       bulan: 'TOTAL',
       jumlahKonten: t('jumlahKonten'), jangkauan: t('jangkauan'),
       tayangan: t('tayangan'), interaksi: t('interaksi'), followerBaru: t('followerBaru'),
+      unfollow: t('unfollow'), pertumbuhanBersih: t('pertumbuhanBersih'),
+      tautanProfil: t('tautanProfil'),
+      tayanganMedia: t('tayanganMedia'), penontonUnik: t('penontonUnik'),
       followerAkhir: ringkasAkun[ringkasAkun.length - 1].followerAkhir,
     })
   }
@@ -246,7 +320,7 @@ export async function rakitLaporan(
 
   return {
     periode: { mulai, selesai },
-    ringkasAkun,
+    ringkasAkun, perhatianReels, metrikBaruSejak,
     riwayatManual,
     bulan, format,
     sifat: daftarSifat,
