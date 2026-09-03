@@ -147,6 +147,18 @@ export interface TotalIg {
   akunTerlibat: number; suka: number; disimpan: number; followerBaru: number
   /** Ketukan pada tautan/kontak di profil — metrik NIAT, bukan sekadar tanggapan. */
   tautanProfil: number
+  /**
+   * Follow BRUTO dan unfollow, dari `follows_and_unfollows`.
+   *
+   * `follow` sengaja dipisah dari `followerBaru` meski keduanya mengukur hal
+   * yang sama: yang satu dari `follower_count` (deret harian, riwayat hanya 30
+   * hari), yang lain dari metrik ini (riwayat ~11 bulan). Diadu pada tiga
+   * jendela berbeda 2 Sep 2026, keduanya COCOK PERSIS — 81/81, 105/105, 53/53.
+   * Selisih yang sempat dilaporkan ternyata salah penyelarasan tanggal, bukan
+   * ketidakcocokan Meta.
+   */
+  follow:   number
+  unfollow: number
 }
 export interface KontenIg {
   id: string; jenis: string; tanggal: string; permalink: string; teks: string
@@ -219,7 +231,7 @@ export interface RingkasInstagram {
 
 const IG_KOSONG: TotalIg = {
   jangkauan: 0, tayangan: 0, interaksi: 0, akunTerlibat: 0, suka: 0, disimpan: 0,
-  followerBaru: 0, tautanProfil: 0,
+  followerBaru: 0, tautanProfil: 0, follow: 0, unfollow: 0,
 }
 
 /**
@@ -248,6 +260,10 @@ async function ringkasPeriodeIg(
   const { seri, galat, titik } = await tarikSeri(igId, IG_SERI, token, periode)
   hasil.jangkauan    = jumlah(seri, 'reach')
   hasil.followerBaru = jumlah(seri, 'follower_count')
+
+  const fu = await tarikFollowUnfollowIg(igId, token, periode)
+  hasil.follow   = fu.follow
+  hasil.unfollow = fu.unfollow
 
   const serapTotal = (json: { data?: { name?: unknown; total_value?: { value?: unknown } }[] }) => {
     for (const d of json?.data ?? []) {
@@ -345,8 +361,8 @@ async function tarikRincian(
  */
 export async function tarikTotalHarianIg(
   igId: string, token: string, periode: Rentang,
-): Promise<Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number }>> {
-  const out = new Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number }>()
+): Promise<Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number; follow: number; unfollow: number }>> {
+  const out = new Map<string, { tayangan: number; interaksi: number; suka: number; disimpan: number; follow: number; unfollow: number }>()
 
   let hari = Date.parse(periode.mulai)
   const akhir = Date.parse(periode.selesai)
@@ -357,7 +373,7 @@ export async function tarikTotalHarianIg(
       token,
     )
     if (r.ok) {
-      const nilai = { tayangan: 0, interaksi: 0, suka: 0, disimpan: 0 }
+      const nilai = { tayangan: 0, interaksi: 0, suka: 0, disimpan: 0, follow: 0, unfollow: 0 }
       for (const d of r.json?.data ?? []) {
         const n = Number(d?.total_value?.value ?? 0)
         if (d.name === 'views')              nilai.tayangan  = n
@@ -365,6 +381,13 @@ export async function tarikTotalHarianIg(
         if (d.name === 'likes')              nilai.suka      = n
         if (d.name === 'saves')              nilai.disimpan  = n
       }
+      // Panggilan KEDUA untuk hari yang sama: follows_and_unfollows menuntut
+      // breakdown yang tidak boleh dikenakan pada metrik di atas. Terbukti
+      // melayani per hari (20 Agu: 9 follow / 2 unfollow).
+      const fu = await tarikFollowUnfollowIg(igId, token, { mulai: tgl, selesai: tgl })
+      nilai.follow   = fu.follow
+      nilai.unfollow = fu.unfollow
+
       out.set(tgl, nilai)
     }
     hari += HARI
@@ -502,6 +525,40 @@ export async function ringkasInstagram(
       : null,
     galat,
   }
+}
+
+/**
+ * Follow bruto & unfollow lewat `follows_and_unfollows`.
+ *
+ * Panggilan SENDIRI, tidak digabung dengan IG_TOTAL: metrik ini menuntut
+ * `breakdown=follow_type` sekaligus `metric_type=total_value`, dan breakdown itu
+ * akan ikut dikenakan pada metrik lain bila digabung.
+ *
+ * Nilai pecahannya BUKAN "pengikut vs bukan pengikut" seperti pada `reach`.
+ * Uraian Meta sendiri berbunyi "jumlah akun yang mengikuti Anda dan jumlah akun
+ * yang batal mengikuti", dan pembacaan FOLLOWER=follow / NON_FOLLOWER=unfollow
+ * sudah dibuktikan dengan mengadu FOLLOWER terhadap penjumlahan `follower_count`
+ * pada tiga jendela: cocok persis ketiganya.
+ */
+async function tarikFollowUnfollowIg(
+  igId: string, token: string, periode: Rentang,
+): Promise<{ follow: number; unfollow: number }> {
+  let follow = 0, unfollow = 0
+  for (const jendela of pecahJendela(periode)) {
+    const r = await graphGet(
+      `${igId}/insights?metric=follows_and_unfollows&metric_type=total_value` +
+      `&breakdown=follow_type&period=day&${kueriRentang(jendela)}`,
+      token,
+    )
+    if (!r.ok) continue
+    const hasil = r.json?.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? []
+    for (const x of hasil as { dimension_values?: string[]; value?: unknown }[]) {
+      const n = Number(x.value ?? 0)
+      if (x.dimension_values?.[0] === 'FOLLOWER')     follow   += n
+      if (x.dimension_values?.[0] === 'NON_FOLLOWER') unfollow += n
+    }
+  }
+  return { follow, unfollow }
 }
 
 /**
@@ -739,6 +796,11 @@ const FB_SERI = [
   'page_post_engagements', 'page_daily_follows_unique', 'page_views_total',
   'page_follows', 'page_video_views', 'page_total_actions',
   'page_media_view', 'page_total_media_view_unique',
+  // Unfollow dipasangkan dengan `page_daily_follows_unique` yang sudah ada —
+  // keduanya hitungan UNIK, jadi selisihnya bermakna. Angkanya kecil di RKZ
+  // (4 unfollow berbanding 13 follow dalam 48 hari), tetapi itu memang keadaan
+  // Halaman-nya, bukan tanda metriknya tidak jalan.
+  'page_daily_unfollows_unique',
 ]
 
 export interface TotalFb {
@@ -748,6 +810,8 @@ export interface TotalFb {
    *  Metodologinya BERBEDA; jangan disambung dengan riwayat jangkauan lama. */
   tayanganMedia: number
   penontonUnik:  number
+  /** Hitungan UNIK, sepadan dengan followerBaru — selisihnya bermakna. */
+  unfollow: number
 }
 export interface RingkasFacebook {
   page: { id: string; nama: string; follower: number } | null
@@ -762,6 +826,8 @@ export interface RingkasFacebook {
   /** Keluarga Media View per hari — dipakai grafik dan snapshot harian. */
   tayanganMediaHarian: Record<string, number>
   penontonUnikHarian:  Record<string, number>
+  /** Unfollow per hari — dipakai snapshot harian. */
+  unfollowHarian:      Record<string, number>
   bandingHarian: { tanggal: string; interaksi: number }[]
   followerHarian: { tanggal: string; naik: number }[]
   semuaKonten: {
@@ -787,7 +853,7 @@ export interface RingkasFacebook {
 
 const FB_KOSONG: TotalFb = {
   interaksi: 0, followerBaru: 0, kunjunganProfil: 0, tayanganVideo: 0, totalAksi: 0,
-  tayanganMedia: 0, penontonUnik: 0,
+  tayanganMedia: 0, penontonUnik: 0, unfollow: 0,
 }
 
 const totalDariSeri = (seri: SeriHarian): TotalFb => ({
@@ -801,6 +867,7 @@ const totalDariSeri = (seri: SeriHarian): TotalFb => ({
   // berbeda terhitung dua kali — sama persis dengan sifat jangkauan Instagram,
   // dan sama-sama diperingatkan lewat `catatanUnik`.
   penontonUnik:    jumlah(seri, 'page_total_media_view_unique'),
+  unfollow:        jumlah(seri, 'page_daily_unfollows_unique'),
 })
 
 export async function ringkasFacebook(
@@ -809,7 +876,7 @@ export async function ringkasFacebook(
   const kosong: RingkasFacebook = {
     page: null, periode: FB_KOSONG, banding: null, bandingSeriKosong: false,
     harian: [], tayanganVideoHarian: {}, kunjunganHarian: {},
-    tayanganMediaHarian: {}, penontonUnikHarian: {},
+    tayanganMediaHarian: {}, penontonUnikHarian: {}, unfollowHarian: {},
     bandingHarian: [], followerHarian: [], semuaKonten: [], teratas: [], komentarTersedia: false,
   }
 
@@ -843,6 +910,7 @@ export async function ringkasFacebook(
     kunjunganHarian:     Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_views_total ?? 0])),
     tayanganMediaHarian: Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_media_view ?? 0])),
     penontonUnikHarian:  Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_total_media_view_unique ?? 0])),
+    unfollowHarian:      Object.fromEntries(tanggal.map(t => [t, utama.seri[t].page_daily_unfollows_unique ?? 0])),
     bandingHarian:  seriBanding
       ? Object.keys(seriBanding.seri).sort().map(t => ({ tanggal: t, interaksi: seriBanding.seri[t].page_post_engagements ?? 0 }))
       : [],

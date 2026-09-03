@@ -248,6 +248,7 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
           suka:           t?.suka      ?? 0,
           disimpan:       t?.disimpan  ?? 0,
           follower_baru:  naikPerTgl.get(h.tanggal) ?? 0,
+          unfollow:       t?.unfollow ?? 0,
           follower_total: followerTotal,
         })
       }
@@ -285,6 +286,7 @@ export async function jalankanSnapshot(slug: string): Promise<HasilSnapshot[]> {
           tayangan:         fb.tayanganVideoHarian?.[h.tanggal] ?? 0,
           kunjungan_profil: fb.kunjunganHarian?.[h.tanggal] ?? 0,
           follower_baru:    naikPerTgl.get(h.tanggal) ?? 0,
+          unfollow:         fb.unfollowHarian?.[h.tanggal] ?? 0,
           follower_total:   fb.page?.follower ?? 0,
           tayangan_media:   fb.tayanganMediaHarian?.[h.tanggal] ?? 0,
           penonton_unik:    fb.penontonUnikHarian?.[h.tanggal] ?? 0,

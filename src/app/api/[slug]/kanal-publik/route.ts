@@ -100,7 +100,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
           } else {
             const fb = data.banding as {
               interaksi: number; kunjunganProfil: number; tayanganVideo: number
-              tayanganMedia: number; penontonUnik: number
+              tayanganMedia: number; penontonUnik: number; unfollow: number
             }
             data.banding.followerBaru = tambal.followerBaru
             fb.interaksi       = tambal.interaksi
@@ -108,6 +108,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
             fb.tayanganVideo   = tambal.tayanganVideo
             fb.tayanganMedia   = tambal.tayanganMedia
             fb.penontonUnik    = tambal.penontonUnik
+            // Wajib ikut: pertumbuhan bersih = follow − unfollow, jadi unfollow
+            // yang tertinggal nol akan membuat periode pembanding tampak tumbuh
+            // lebih baik daripada kenyataannya.
+            fb.unfollow        = tambal.unfollow
           }
         }
       }

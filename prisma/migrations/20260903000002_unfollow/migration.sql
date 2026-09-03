@@ -1,0 +1,15 @@
+-- Unfollow harian untuk kedua kanal.
+--
+-- Terbukti hidup lewat probe akun RKZ 2-3 Sep 2026:
+--   Instagram : follows_and_unfollows, breakdown follow_type -> NON_FOLLOWER
+--               (20 Agu: 9 follow / 2 unfollow) — TERSEDIA PER HARI
+--   Facebook  : page_daily_unfollows_unique
+--               (48 hari: 4 unfollow berbanding 13 follow)
+--
+-- Pembacaan FOLLOWER=follow / NON_FOLLOWER=unfollow dibuktikan dengan mengadu
+-- FOLLOWER terhadap penjumlahan follower_count pada tiga jendela berbeda:
+-- 81/81, 105/105, 53/53 — cocok persis ketiganya.
+--
+-- Idempoten: migrasi di proyek ini kerap dijalankan lewat psql langsung karena
+-- `migrate deploy` tersandung P3005 pada basis data yang sudah berisi.
+ALTER TABLE "crm_social_account_daily" ADD COLUMN IF NOT EXISTS "unfollow" INTEGER NOT NULL DEFAULT 0;

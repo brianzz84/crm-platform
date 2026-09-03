@@ -1407,6 +1407,11 @@ model SocialAccountDaily {
   suka             Int         @default(0)
   disimpan         Int         @default(0)
   follower_baru    Int         @default(0)
+  /// Follow yang DIBATALKAN. Instagram dari `follows_and_unfollows`
+  /// (NON_FOLLOWER), Facebook dari `page_daily_unfollows_unique`. Keduanya
+  /// hitungan unik, sepadan dengan follower_baru, jadi selisihnya bermakna
+  /// sebagai pertumbuhan bersih.
+  unfollow         Int         @default(0)
   follower_total   Int         @default(0) // nilai saat diambil — bukan nilai historis
   kunjungan_profil Int         @default(0)
 

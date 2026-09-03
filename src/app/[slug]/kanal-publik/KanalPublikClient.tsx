@@ -42,6 +42,7 @@ interface TotalIg {
   suka: number; disimpan: number; followerBaru: number
   /** Ketukan tautan/kontak di profil — metrik niat. */
   tautanProfil: number
+  follow: number; unfollow: number
 }
 /** Satu baris pecahan demografi. */
 interface L { label: string; jumlah: number }
@@ -81,7 +82,7 @@ interface TotalFb {
   tayanganVideo: number; totalAksi: number
   /** Keluarga Media View — pengganti Reach/Impressions yang dihapus Meta.
    *  Metodologinya berbeda; jangan disebut "Jangkauan" di layar mana pun. */
-  tayanganMedia: number; penontonUnik: number
+  tayanganMedia: number; penontonUnik: number; unfollow: number
 }
 interface RingkasFacebook {
   page: { id: string; nama: string; follower: number } | null
@@ -1042,10 +1043,10 @@ export default function KanalPublikClient({
                   { label: 'Ketukan Tautan Profil', nilai: angka(ig.periode.tautanProfil), warna: '#DB2777',
                     delta: <Delta kini={ig.periode.tautanProfil} dulu={ig.banding?.tautanProfil} />,
                     catatan: 'menekan tautan/kontak di profil — lebih dekat ke niat menghubungi daripada suka' },
-                  { label: 'Follower Baru', nilai: angka(ig.periode.followerBaru), warna: '#7C3AED',
-                    delta: <Delta kini={ig.periode.followerBaru}
-                      dulu={kosongIg('follower_count') && !tambal ? null : ig.banding?.followerBaru}
-                      cakupan={kosongIg('follower_count') && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                  { label: 'Pertumbuhan Follower', nilai: angka(ig.periode.follow - ig.periode.unfollow), warna: '#7C3AED',
+                    delta: <Delta kini={ig.periode.follow - ig.periode.unfollow}
+                      dulu={ig.banding ? ig.banding.follow - ig.banding.unfollow : null} />,
+                    catatan: `${angka(ig.periode.follow)} follow − ${angka(ig.periode.unfollow)} unfollow` },
                 ]} />
                 {labelBanding && (
                   <div style={{ padding: '8px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)' }}>
@@ -1166,8 +1167,11 @@ export default function KanalPublikClient({
                     cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
                   { label: 'Kunjungan Profil', nilai: angka(fb.periode.kunjunganProfil), warna: 'var(--c-secondary)', delta: <Delta kini={fb.periode.kunjunganProfil} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.kunjunganProfil}
                     cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
-                  { label: 'Follower Baru', nilai: angka(fb.periode.followerBaru), warna: 'var(--c-success)', delta: <Delta kini={fb.periode.followerBaru} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.followerBaru}
-                    cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
+                  { label: 'Pertumbuhan Follower', nilai: angka(fb.periode.followerBaru - fb.periode.unfollow), warna: 'var(--c-success)',
+                    delta: <Delta kini={fb.periode.followerBaru - fb.periode.unfollow}
+                      dulu={fb.bandingSeriKosong && !tambal ? null : (fb.banding ? fb.banding.followerBaru - fb.banding.unfollow : null)}
+                      cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} />,
+                    catatan: `${angka(fb.periode.followerBaru)} follow − ${angka(fb.periode.unfollow)} unfollow` },
                   { label: 'Tayangan Video', nilai: angka(fb.periode.tayanganVideo), warna: '#7C3AED', delta: <Delta kini={fb.periode.tayanganVideo} dulu={fb.bandingSeriKosong && !tambal ? null : fb.banding?.tayanganVideo}
                     cakupan={fb.bandingSeriKosong && tambal ? { terisi: tambal.hariTerisi, diminta: tambal.hariDiminta } : null} /> },
                 ]} />
