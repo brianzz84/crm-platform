@@ -364,6 +364,14 @@ interface KontenMasuk {
   id: string; jenis: string; tanggal: string; teks: string; permalink: string; gambar: string
   jangkauan: number; suka: number; komentar: number; dibagikan: number
   disimpan: number; interaksi: number; tayangan: number
+  // Metrik per jenis media — hanya terisi pada konten yang sudah diperkaya
+  // (lihat perkayaMediaIg). `null`/tak-ada = tidak berlaku untuk jenis ini.
+  rerataTontonMs?:  number | null
+  totalTontonMs?:   number | null
+  lajuLewat?:       number | null
+  kunjunganProfil?: number | null
+  aktivitasProfil?: number | null
+  followDariSini?:  number | null
 }
 
 /**
@@ -401,6 +409,22 @@ async function simpanKonten(
       jangkauan: k.jangkauan, tayangan: k.tayangan, suka: k.suka,
       komentar: k.komentar, dibagikan: k.dibagikan, disimpan: k.disimpan,
       interaksi: k.interaksi,
+      // Kolom lama `follower_baru` dan `kunjungan_profil` sudah ada sejak awal
+      // tetapi TIDAK PERNAH terisi — metriknya baru bisa ditarik setelah bundel
+      // per jenis media dipasang 2 Sep 2026. Mulai sekarang keduanya ikut.
+      //
+      // `undefined`, BUKAN 0 atau null, ketika nilainya tidak ada. Prisma
+      // memperlakukan undefined sebagai "jangan sentuh" saat update dan "pakai
+      // bawaan" saat create. Ini penting: backfill memakai konten yang TIDAK
+      // diperkaya, jadi memaksa 0 di situ akan menimpa angka asli yang sudah
+      // tertangkap malam sebelumnya — kehilangan data yang tidak akan
+      // ketahuan karena nol terlihat seperti nilai yang sah.
+      follower_baru:    k.followDariSini  ?? undefined,
+      kunjungan_profil: k.kunjunganProfil ?? undefined,
+      aktivitas_profil: k.aktivitasProfil ?? undefined,
+      rerata_tonton_ms: k.rerataTontonMs  ?? undefined,
+      total_tonton_ms:  k.totalTontonMs   ?? undefined,
+      laju_lewat:       k.lajuLewat       ?? undefined,
     }
 
     const umur  = umurHari(new Date(k.tanggal), sekarang)

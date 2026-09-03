@@ -1474,6 +1474,20 @@ model SocialContentSnapshot {
   follower_baru    Int @default(0) // metric `follows` — hanya tersedia utk Foto/Carousel
   kunjungan_profil Int @default(0) // metric `profile_visits`
 
+  /// Metrik yang KETERSEDIAANNYA BERGANTUNG JENIS MEDIA. Sengaja nullable:
+  /// `null` berarti tidak berlaku untuk jenis ini, DIBEDAKAN dari 0 yang berarti
+  /// berlaku tetapi nilainya nol. Diuji 2 Sep 2026 — Reels dan konten statis
+  /// saling eksklusif, bukan sekadar sebagian tersedia.
+  ///
+  /// Inilah alasan snapshot umur tetap tidak tergantikan oleh retensi API yang
+  /// panjang: waktu tonton bersifat kumulatif seumur hidup konten, jadi "rerata
+  /// tonton pada hari ke-7" HANYA bisa diketahui bila diukur tepat di hari
+  /// ketujuh. Ditarik ulang kapan pun nanti, yang didapat selalu angka hari ini.
+  aktivitas_profil Int?   // metric `profile_activity` — Foto/Carousel
+  rerata_tonton_ms Int?   // `ig_reels_avg_watch_time` — MILIDETIK mentah
+  total_tonton_ms  Int?   // `ig_reels_video_view_total_time` — MILIDETIK mentah
+  laju_lewat       Float? // `reels_skip_rate` — persen, bukan pecahan
+
   diambil_pada DateTime @default(now())
 
   content SocialContent @relation(fields: [content_id], references: [id], onDelete: Cascade)
