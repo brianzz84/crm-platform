@@ -14,6 +14,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import RingkasanTab from './RingkasanTab'
+import {
+  NAMA_SUMBER, WARNA_SUMBER, WARNA_SENTIMEN, WARNA_RISIKO,
+  angka, tanggal, kartu,
+} from './tampilan'
 
 interface Kategori { kode: string; nama: string; warna: string; kelompok?: string | null; deskripsi?: string | null }
 
@@ -33,27 +38,6 @@ interface Baris {
   risiko: string[];   risikoUsulan: string[]
 }
 
-const NAMA_SUMBER: Record<string, string> = {
-  IG_TAG: 'Instagram', FB_TAG: 'Facebook', FB_RATING: 'Rekomendasi FB',
-  YOUTUBE: 'YouTube', GOOGLE_ULASAN: 'Ulasan Google',
-  KOMENTAR_IG: 'Komentar IG', KOMENTAR_FB: 'Komentar FB',
-}
-const WARNA_SUMBER: Record<string, string> = {
-  IG_TAG: '#E1306C', FB_TAG: '#1877F2', FB_RATING: '#1877F2',
-  YOUTUBE: '#FF0000', GOOGLE_ULASAN: '#0F9D58',
-  KOMENTAR_IG: '#E1306C', KOMENTAR_FB: '#1877F2',
-}
-const WARNA_SENTIMEN: Record<string, string> = {
-  POSITIF: '#16A34A', NETRAL: '#64748B', NEGATIF: '#DC2626',
-}
-const WARNA_RISIKO: Record<string, string> = {
-  RENDAH: '#16A34A', SEDANG: '#D97706', TINGGI: '#DC2626',
-}
-
-const kartu: React.CSSProperties = {
-  background: 'white', border: '1px solid var(--c-border)',
-  borderRadius: 'var(--r-lg)', padding: 'var(--sp-5)', marginBottom: 'var(--sp-4)',
-}
 const tombol = (utama: boolean, sibuk: boolean): React.CSSProperties => ({
   padding: '8px 16px', borderRadius: 'var(--r-md)', fontFamily: 'inherit',
   fontSize: 'var(--font-size-sm)', fontWeight: 700, cursor: sibuk ? 'wait' : 'pointer',
@@ -61,9 +45,6 @@ const tombol = (utama: boolean, sibuk: boolean): React.CSSProperties => ({
   background: utama ? (sibuk ? '#94A3B8' : 'var(--c-secondary)') : 'white',
   color: utama ? 'white' : 'var(--c-text-muted)',
 })
-const angka = (n: number) => Math.round(n).toLocaleString('id-ID')
-const tanggal = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 
 function Lencana({ nama, warna, usulan }: { nama: string; warna: string; usulan?: boolean }) {
   return (
@@ -95,6 +76,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
   const [galat, setGalat]     = useState('')
   const [kabar, setKabar]     = useState('')
   const [modal, setModal]     = useState<Baris | null>(null)
+  const [tab, setTab]         = useState<'tinjau' | 'ringkas'>('tinjau')
 
   const ambil = useCallback(async () => {
     setMuat(true); setGalat('')
@@ -215,7 +197,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
               <strong>usulan itu tidak masuk laporan sampai Anda tetapkan di sini</strong>.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0, visibility: tab === 'tinjau' ? 'visible' : 'hidden' }}>
             <button onClick={tarik} disabled={!!sibuk} style={tombol(true, sibuk === 'tarik')}>
               {sibuk === 'tarik' ? '⏳ Menarik…' : '⤓ Tarik sekarang'}
             </button>
@@ -239,7 +221,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
         {/* Jalur statistik. Angka per sumber ikut ditampilkan karena ia sekaligus
             menunjukkan penarik mana yang benar-benar menghasilkan — bukan sekadar
             terpasang lalu diam. */}
-        <div style={{ display: 'flex', gap: 'var(--sp-5)', flexWrap: 'wrap', marginTop: 'var(--sp-4)', paddingTop: 'var(--sp-4)', borderTop: '1px solid var(--c-border)' }}>
+        <div style={{ display: tab === 'tinjau' ? 'flex' : 'none', gap: 'var(--sp-5)', flexWrap: 'wrap', marginTop: 'var(--sp-4)', paddingTop: 'var(--sp-4)', borderTop: '1px solid var(--c-border)' }}>
           <Angka label="Belum ditinjau" nilai={angka(perlu)} warna={perlu ? '#B45309' : 'var(--c-success)'} />
           <Angka label="Total sebutan"  nilai={angka(totalSebutan)} warna="var(--c-primary)" />
           {perSumber.map(s => (
@@ -251,6 +233,20 @@ export default function SebutanClient({ slug }: { slug: string }) {
         {galat && <div style={{ marginTop: 'var(--sp-3)', background: '#FEF2F2', color: '#B91C1C', padding: '10px 14px', borderRadius: 'var(--r-sm)', fontSize: 13, borderLeft: '3px solid #EF4444' }}>{galat}</div>}
         {kabar && <div style={{ marginTop: 'var(--sp-3)', background: '#F0FDF4', color: '#15803D', padding: '10px 14px', borderRadius: 'var(--r-sm)', fontSize: 13, borderLeft: '3px solid #22C55E' }}>{kabar}</div>}
       </div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--sp-4)', borderBottom: '2px solid var(--c-border)' }}>
+        {([['tinjau', '📋 Peninjauan'], ['ringkas', '📊 Ringkasan']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} style={{
+            padding: '9px 18px', border: 'none', background: 'transparent', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: 13, fontWeight: tab === k ? 800 : 500,
+            color: tab === k ? 'var(--c-secondary)' : 'var(--c-text-muted)',
+            borderBottom: `2px solid ${tab === k ? 'var(--c-secondary)' : 'transparent'}`,
+            marginBottom: -2,
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'ringkas' ? <RingkasanTab slug={slug} topik={topik} poli={poli} /> : <>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         {([['perlu', 'Perlu ditinjau'], ['selesai', 'Sudah ditetapkan'], ['semua', 'Semua']] as const).map(([k, label]) => (
@@ -368,6 +364,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
         // daftarnya tidak berganti.
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }} />
+
+      </>}
 
       {modal && (
         <ModalLabel
