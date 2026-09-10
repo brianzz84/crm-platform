@@ -57,6 +57,12 @@ export default function Sidebar({ tenantSlug, tenantName, logoUrl, userName, use
         // WhatsApp massal — sehingga admin medsos tak bisa diberi akses ke sini
         // tanpa sekalian diberi kemampuan menyiarkan ke ribuan pasien.
         { href: `${base}/kanal-publik`, label: 'Kanal Publik', icon: '📣', feature: 'viewKanalPublik' },
+        // Sebutan Publik BERDIRI SENDIRI, tidak menjadi tab kesembilan di Kanal
+        // Publik. Subjeknya berbeda: Kanal Publik mengukur kanal MILIK RKZ,
+        // Sebutan mengumpulkan suara ORANG LAIN. Lagipula bilah tab di sana sudah
+        // delapan dan baru saja dirapikan karena kepadatan — menambah satu lagi
+        // memperburuk masalah yang belum lama diperbaiki.
+        { href: `${base}/sebutan`, label: 'Sebutan Publik', icon: '🔎', feature: 'viewKanalPublik' },
         { href: `${base}/inbox`,     label: 'Inbox',       icon: '💬', feature: 'replyChat', badge: inboxUnread || undefined },
         // Iklan berdiri sendiri, tidak di dalam Kanal Publik: yang diukur di sini
         // justru orang yang TERIDENTIFIKASI — dari klik iklan sampai kunjungan
