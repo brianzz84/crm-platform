@@ -13,7 +13,7 @@
  * usaha sekaligus akan tampak sebagai simpul paling sentral.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import RingkasanTab from './RingkasanTab'
 import {
   NAMA_SUMBER, WARNA_SUMBER, WARNA_SENTIMEN, WARNA_RISIKO,
@@ -37,6 +37,10 @@ interface Baris {
   unit: string[];     unitUsulan: string[]
   risiko: string[];   risikoUsulan: string[]
 }
+
+/** Batas keras putaran usulan AI. 40 x 30 = 1.200 sebutan — jauh di atas
+ *  tunggakan 608 yang terukur, tetapi tetap berhingga. */
+const MAKS_PUTARAN = 40
 
 const tombol = (utama: boolean, sibuk: boolean): React.CSSProperties => ({
   padding: '8px 16px', borderRadius: 'var(--r-md)', fontFamily: 'inherit',
@@ -77,6 +81,9 @@ export default function SebutanClient({ slug }: { slug: string }) {
   const [kabar, setKabar]     = useState('')
   const [modal, setModal]     = useState<Baris | null>(null)
   const [tab, setTab]         = useState<'tinjau' | 'ringkas'>('tinjau')
+  /** Ditandai lewat ref, bukan state: putaran yang sedang berjalan membaca
+   *  nilainya langsung, sementara state baru terlihat pada render berikutnya. */
+  const hentikan = useRef(false)
 
   const ambil = useCallback(async () => {
     setMuat(true); setGalat('')
@@ -136,31 +143,94 @@ export default function SebutanClient({ slug }: { slug: string }) {
   /** `ulangi` membuang usulan yang belum ditinjau lalu meminta ulang — dipakai
    *  setelah uraian kategori diperbaiki. Label yang sudah ditetapkan manusia
    *  tidak pernah tersentuh. */
+  /**
+   * Meminta usulan AI sampai tunggakan habis.
+   *
+   * Satu panggilan hanya memproses 30 sebutan — batas itu ada supaya jawaban AI
+   * tidak terpotong di tengah, bukan karena terikat halaman. Tetapi 608 dibagi 30
+   * berarti dua puluh kali tekan, jadi pengulangannya dikerjakan di sini.
+   *
+   * TIGA PENGAMAN, karena putaran yang salah membakar token tanpa batas:
+   *
+   * 1. `ulangi` HANYA pada panggilan pertama. Kalau ikut terkirim di panggilan
+   *    berikutnya, ia akan menghapus usulan yang baru saja dibuat panggilan
+   *    sebelumnya — dan putarannya tidak akan pernah selesai.
+   * 2. Berhenti bila satu batch menghasilkan NOL usulan. Sebutan yang tidak
+   *    dilabeli tetap tak berlabel, jadi batch berikutnya akan berisi ke-30 yang
+   *    sama persis. Ini satu-satunya keadaan yang benar-benar bisa berputar abadi.
+   * 3. Batas keras 40 putaran, kalau-kalau ada keadaan yang belum terpikirkan.
+   */
   async function usulkan(ulangi = false) {
     if (ulangi && !window.confirm(
       'Buang semua usulan AI yang belum ditinjau, lalu minta ulang?\n\n' +
       'Label yang sudah Anda tetapkan tidak akan tersentuh.'
     )) return
+
+    hentikan.current = false
     setSibuk(ulangi ? 'ulangi' : 'usul'); setGalat(''); setKabar('')
+
+    let diperiksa = 0, berlabel = 0, ragu = 0, ditolak = 0, putaran = 0
+    let alasanBerhenti = ''
+
     try {
-      const res  = await fetch(`/api/${slug}/sebutan/usulan`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ulangi }),
-      })
-      const json = await res.json()
-      if (!json.success) { setGalat(json.error ?? 'Usulan gagal.'); return }
-      if (json.diperiksa === 0) { setKabar(json.pesan ?? 'Tidak ada yang perlu diusulkan.'); return }
-      // Angka `ragu` dan `ditolak` ditampilkan, bukan disembunyikan: keduanya
-      // menunjukkan di mana uraian kategori masih perlu dipertajam.
-      setKabar([
-        `${json.diperiksa} sebutan diperiksa`,
-        `${json.berlabel} mendapat usulan`,
-        json.ragu     ? `${json.ragu} dibiarkan kosong (terlalu kabur)` : '',
-        json.ditolak  ? `${json.ditolak} kode ditolak` : '',
-      ].filter(Boolean).join(', ') + '.')
+      while (putaran < MAKS_PUTARAN) {
+        if (hentikan.current) { alasanBerhenti = 'dihentikan'; break }
+
+        const res  = await fetch(`/api/${slug}/sebutan/usulan`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          // Pengaman 1 — lihat catatan di atas.
+          body: JSON.stringify({ ulangi: ulangi && putaran === 0 }),
+        })
+        const json = await res.json()
+        if (!json.success) {
+          // Kegagalan di tengah TIDAK membatalkan yang sudah tersimpan — tiap
+          // batch berdiri sendiri. Jadi angkanya tetap dilaporkan di bawah.
+          setGalat(json.error ?? 'Usulan gagal.')
+          alasanBerhenti = 'galat'
+          break
+        }
+        putaran++
+
+        if (json.diperiksa === 0) { alasanBerhenti = 'selesai'; break }
+
+        diperiksa += json.diperiksa
+        berlabel  += json.berlabel
+        ragu      += json.ragu ?? 0
+        ditolak   += json.ditolak ?? 0
+
+        // Pengaman 2.
+        if (json.berlabel === 0) { alasanBerhenti = 'mandek'; break }
+
+        setKabar(`⏳ ${angka(diperiksa)} sebutan diperiksa, ${angka(berlabel)} mendapat usulan… (putaran ${putaran})`)
+      }
+      if (!alasanBerhenti) alasanBerhenti = 'batas'
+
+      if (diperiksa === 0) {
+        setKabar('Tidak ada sebutan yang perlu diusulkan.')
+      } else {
+        // `ragu` dan `ditolak` ditampilkan, bukan disembunyikan: keduanya
+        // menunjukkan di mana uraian kategori masih perlu dipertajam.
+        const ekor: Record<string, string> = {
+          selesai: 'Seluruh tunggakan selesai.',
+          dihentikan: 'Dihentikan — tekan lagi untuk melanjutkan sisanya.',
+          mandek: 'Berhenti: satu putaran tidak menghasilkan usulan sama sekali, '
+                + 'jadi sisanya kemungkinan besar terlalu kabur untuk dinilai AI. '
+                + 'Label sisanya secara manual.',
+          batas: `Berhenti di batas ${MAKS_PUTARAN} putaran — tekan lagi untuk melanjutkan.`,
+          galat: 'Berhenti karena galat di atas; yang sudah tersimpan tetap aman.',
+        }
+        setKabar([
+          `${angka(diperiksa)} sebutan diperiksa`,
+          `${angka(berlabel)} mendapat usulan`,
+          ragu    ? `${angka(ragu)} dibiarkan kosong (terlalu kabur)` : '',
+          ditolak ? `${angka(ditolak)} kode ditolak` : '',
+        ].filter(Boolean).join(', ') + '. ' + (ekor[alasanBerhenti] ?? ''))
+      }
+      // Sekali di akhir, bukan tiap putaran: dua puluh kali muat ulang daftar
+      // membuat layar berkedip tanpa menambah keterangan apa pun.
       ambil()
     } catch { setGalat('Gagal menghubungi server.') }
-    finally { setSibuk('') }
+    finally { setSibuk(''); hentikan.current = false }
   }
 
   async function setujuiSemua() {
@@ -201,9 +271,17 @@ export default function SebutanClient({ slug }: { slug: string }) {
             <button onClick={tarik} disabled={!!sibuk} style={tombol(true, sibuk === 'tarik')}>
               {sibuk === 'tarik' ? '⏳ Menarik…' : '⤓ Tarik sekarang'}
             </button>
-            <button onClick={() => usulkan(false)} disabled={!!sibuk} style={tombol(false, sibuk === 'usul')}>
-              {sibuk === 'usul' ? '⏳ Meminta AI…' : '🤖 Usulkan label AI'}
-            </button>
+            {sibuk === 'usul' || sibuk === 'ulangi' ? (
+              <button onClick={() => { hentikan.current = true }}
+                style={{ ...tombol(false, false), borderColor: '#DC2626', color: '#B91C1C' }}
+                title="Berhenti setelah putaran yang sedang berjalan selesai">
+                ⏹ Hentikan
+              </button>
+            ) : (
+              <button onClick={() => usulkan(false)} disabled={!!sibuk} style={tombol(false, false)}>
+                🤖 Usulkan label AI
+              </button>
+            )}
             {adaUsulan && (
               <button onClick={() => usulkan(true)} disabled={!!sibuk} style={tombol(false, sibuk === 'ulangi')}
                 title="Buang usulan yang belum ditinjau, lalu minta ulang">
