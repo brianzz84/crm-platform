@@ -1741,6 +1741,12 @@ model ConversationLabel {
   disetujui       Boolean  @default(false)
   /// Alasan singkat dari AI, hanya terisi untuk sumber 'AI'.
   alasan          String?
+  /// SIAPA yang menyetujui, dan kapan. Ditambahkan 4 Sep 2026 atas usul konsultan:
+  /// `disetujui` saja menjawab "sudah ditinjau?" tetapi tidak "oleh siapa?" —
+  /// dan untuk angka yang masuk laporan direksi, pertanyaan kedua itu yang
+  /// menentukan apakah jejaknya benar-benar bisa diaudit.
+  approved_by     String?
+  approved_at     DateTime?
   created_at      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
@@ -1749,6 +1755,141 @@ model ConversationLabel {
   @@index([conversation_id])
   @@index([dimensi, kode, disetujui])
   @@map("crm_conversation_labels")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// RHIP — Sebutan publik
+//
+// Lapisan intelligence di atas Kanal Publik: apa yang orang LAIN katakan
+// tentang RKZ, bukan apa yang RKZ terbitkan atau apa yang orang tanyakan
+// lewat Inbox. Tiga subjek yang berbeda, karena itu tiga taksonomi:
+//
+//   SocialSifatLibrary       — konten yang KAMI terbitkan
+//   PercakapanTopikLibrary   — yang MEREKA tanyakan ke kami
+//   SebutanTopikLibrary      — yang MEREKA katakan tentang kami di publik
+//
+// Menyatukannya akan memaksa satu daftar melayani tiga pertanyaan yang tidak
+// berhubungan, dan tiap penambahan kategori di satu sisi mengotori dua sisi lain.
+// ──────────────────────────────────────────────────────────────────────
+
+/// Satu sebutan publik dari sumber mana pun, disimpan apa adanya.
+model Sebutan {
+  id          String @id @default(uuid())
+  tenant_slug String
+
+  /// YOUTUBE | IG_TAG | FB_TAG | FB_RATING | GOOGLE_ULASAN | KOMENTAR_IG | KOMENTAR_FB
+  sumber      String
+  /// ID asli dari platform. Bersama tenant_slug + sumber inilah yang mencegah
+  /// satu sebutan tersimpan dua kali ketika penarikan terjadwal berjalan
+  /// berulang — dan itu PASTI terjadi, bukan kemungkinan.
+  sumber_id   String
+
+  penulis     String?
+  username    String?
+  teks        String?
+  tautan      String?
+  terbit_pada DateTime
+
+  /// Balasan mentah dari platform. Disimpan utuh karena bentuk API berubah tanpa
+  /// pemberitahuan, dan tanpa salinan mentah kekeliruan penguraian tidak akan
+  /// pernah bisa diperbaiki surut.
+  mentah      Json?
+
+  ditemukan_pada DateTime  @default(now())
+  /// Terisi bila sebutan sudah tidak ada lagi di sumbernya.
+  ///
+  /// TIDAK dihapus — keputusan pemilik sistem 4 Sep 2026: laporan triwulan yang
+  /// sudah terbit harus tetap bisa dipertanggungjawabkan, dan menghapus surut
+  /// membuat angka yang pernah dipakai berubah tanpa jejak.
+  ///
+  /// HANYA BOLEH DIISI bila ketiadaan memang berarti terhapus. Untuk IG /tags dan
+  /// FB /tagged itu sah — keduanya mendaftar seluruh tandaan. Untuk hasil
+  /// PENCARIAN YouTube tidak: peringkat berubah-ubah, jadi hilang dari hasil
+  /// bukan bukti apa pun. Di sana video wajib diperiksa per ID lebih dulu.
+  hilang_pada DateTime?
+
+  created_at DateTime @default(now())
+
+  labels SebutanLabel[]
+
+  @@unique([tenant_slug, sumber, sumber_id])
+  @@index([tenant_slug, sumber])
+  @@index([tenant_slug, terbit_pada])
+  @@map("crm_sebutan")
+}
+
+/// Tafsir atas sebutan — usulan AI dan penetapan manusia.
+///
+/// Bentuknya sengaja meniru ConversationLabel yang sudah terbukti dua kali:
+/// AI menulis dengan `disetujui: false`, dan laporan HANYA menghitung yang sudah
+/// bernilai true.
+model SebutanLabel {
+  id         String @id @default(uuid())
+  sebutan_id String
+
+  /// TOPIK | SENTIMEN | UNIT | RISIKO
+  ///
+  /// TOPIK merujuk SebutanTopikLibrary; UNIT merujuk PercakapanPoliLibrary yang
+  /// SUDAH ADA — poli yang sama, tidak perlu daftar kedua. SENTIMEN dan RISIKO
+  /// bernilai tetap, jadi tidak berpustaka.
+  dimensi    String
+  kode       String
+  sumber     String  @default("AI")
+  alasan     String?
+
+  disetujui   Boolean   @default(false)
+  approved_by String?
+  approved_at DateTime?
+  created_at  DateTime  @default(now())
+
+  sebutan Sebutan @relation(fields: [sebutan_id], references: [id], onDelete: Cascade)
+
+  @@unique([sebutan_id, dimensi, kode])
+  @@index([sebutan_id])
+  @@index([dimensi, kode, disetujui])
+  @@map("crm_sebutan_labels")
+}
+
+/// Taksonomi sebutan publik. Kode KEKAL — dirujuk SebutanLabel.
+model SebutanTopikLibrary {
+  id          String   @id @default(uuid())
+  tenant_slug String
+  kode        String
+  nama        String
+  deskripsi   String? // dibaca AI saat mengusulkan — makin tegas, makin sedikit salah
+  warna       String   @default("#0089A8")
+  urutan      Int      @default(0)
+  aktif       Boolean  @default(true) // TIDAK PERNAH DELETE — nonaktifkan saja
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, kode])
+  @@index([tenant_slug, aktif])
+  @@map("crm_sebutan_topik_library")
+}
+
+/// Kata kunci pencarian per sumber.
+///
+/// Di tabel, bukan di kode: admin medsos menambah atau mencabut sendiri tanpa
+/// menunggu deploy. "RKZ" sendirian sengaja tidak disemai — singkatan sependek
+/// itu cocok dengan banyak hal tak berkaitan, dan derau yang dihasilkannya
+/// seluruhnya menjadi beban peninjau manusia.
+model SebutanKataKunci {
+  id          String @id @default(uuid())
+  tenant_slug String
+  /// Sumber yang memakai kata kunci ini — sementara baru YOUTUBE.
+  sumber      String
+  kata        String
+  aktif       Boolean @default(true)
+  urutan      Int     @default(0)
+  /// Kapan terakhir dipakai menarik — dipakai membagi kuota harian.
+  ditarik_pada DateTime?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_slug, sumber, kata])
+  @@index([tenant_slug, sumber, aktif])
+  @@map("crm_sebutan_kata_kunci")
 }
 
 /// Angka triwulan lampau yang DIKETIK ULANG dari laporan manual.
