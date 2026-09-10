@@ -17,7 +17,9 @@ import { semaiPoli } from '@/lib/percakapan-poli'
 
 type Ctx = { params: { slug: string } }
 
-const MAKS_BARIS = 60
+/** 30 per halaman: cukup untuk menilai berturut-turut tanpa harus menggulir
+ *  jauh, dan cukup kecil agar kartu berisi teks utuh tetap terbaca. */
+const PER_HALAMAN = 30
 
 /** Dimensi yang hanya boleh bernilai SATU. Satu sebutan tidak bisa sekaligus
  *  positif dan negatif; membiarkannya ganda membuat penjumlahan laporan
@@ -39,6 +41,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const q       = req.nextUrl.searchParams
   const saring  = q.get('saring') ?? 'perlu'
   const sumber  = q.get('sumber') ?? ''
+  // Dibatasi 1 ke atas: nilainya datang dari URL dan langsung menjadi `skip`.
+  const hal     = Math.max(1, Number(q.get('hal')) || 1)
 
   try {
     const db = await getTenantDb(params.slug)
@@ -51,7 +55,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     if (saring === 'perlu')        where.labels = { none: { disetujui: true } }
     else if (saring === 'selesai') where.labels = { some: { disetujui: true } }
 
-    const [topik, poli, rows, jumlahPerlu, perSumber] = await Promise.all([
+    const [topik, poli, rows, total, jumlahPerlu, perSumber] = await Promise.all([
       db.sebutanTopikLibrary.findMany({
         where:   { tenant_slug: params.slug, aktif: true },
         orderBy: [{ urutan: 'asc' }],
@@ -65,13 +69,18 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       db.sebutan.findMany({
         where,
         orderBy: { terbit_pada: 'desc' },
-        take:    MAKS_BARIS,
+        skip:    (hal - 1) * PER_HALAMAN,
+        take:    PER_HALAMAN,
         select: {
           id: true, sumber: true, penulis: true, username: true,
           teks: true, tautan: true, terbit_pada: true, hilang_pada: true,
           labels: { select: { dimensi: true, kode: true, disetujui: true, sumber: true, alasan: true } },
         },
       }),
+      // Jumlah pada SARINGAN YANG SEDANG AKTIF — inilah pembagi halaman.
+      db.sebutan.count({ where }),
+      // Jumlah yang perlu ditinjau, LEPAS dari saringan: angka ini tetap
+      // menunjukkan sisa pekerjaan meski sedang melihat saringan lain.
       db.sebutan.count({
         where: { tenant_slug: params.slug, labels: { none: { disetujui: true } } },
       }),
@@ -87,6 +96,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       topik, poli,
       sentimen: SENTIMEN, risiko: RISIKO,
       jumlahPerlu,
+      hal, perHalaman: PER_HALAMAN, total,
+      totalHalaman: Math.max(1, Math.ceil(total / PER_HALAMAN)),
       perSumber: perSumber.map((s: { sumber: string; _count: { _all: number } }) =>
         ({ sumber: s.sumber, jumlah: s._count._all })),
       data: rows.map((r: BarisMentah) => {

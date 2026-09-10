@@ -86,6 +86,10 @@ export default function SebutanClient({ slug }: { slug: string }) {
   const [perSumber, setPerSumber] = useState<{ sumber: string; jumlah: number }[]>([])
   const [saring, setSaring]   = useState<'perlu' | 'selesai' | 'semua'>('perlu')
   const [sumber, setSumber]   = useState('')
+  const [hal, setHal]         = useState(1)
+  const [totalHalaman, setTotalHalaman] = useState(1)
+  const [totalSaring, setTotalSaring]   = useState(0)
+  const [perHalaman, setPerHalaman]     = useState(30)
   const [muat, setMuat]       = useState(true)
   const [sibuk, setSibuk]     = useState('')
   const [galat, setGalat]     = useState('')
@@ -95,7 +99,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
   const ambil = useCallback(async () => {
     setMuat(true); setGalat('')
     try {
-      const q = new URLSearchParams({ saring })
+      const q = new URLSearchParams({ saring, hal: String(hal) })
       if (sumber) q.set('sumber', sumber)
       const res  = await fetch(`/api/${slug}/sebutan?${q}`)
       const json = await res.json()
@@ -104,9 +108,16 @@ export default function SebutanClient({ slug }: { slug: string }) {
       setSentimen(json.sentimen ?? []); setRisiko(json.risiko ?? [])
       setRows(json.data ?? []); setPerlu(json.jumlahPerlu ?? 0)
       setPerSumber(json.perSumber ?? [])
+      setTotalHalaman(json.totalHalaman ?? 1)
+      setTotalSaring(json.total ?? 0)
+      setPerHalaman(json.perHalaman ?? 30)
+      // Menyetujui sebutan MENGECILKAN saringan 'perlu'. Meninjau halaman 12 lalu
+      // menemukan hanya tersisa 9 halaman akan menampilkan layar kosong yang
+      // tampak seperti kerusakan — jadi mundur ke halaman terakhir yang ada.
+      if ((json.data?.length ?? 0) === 0 && hal > 1) setHal(json.totalHalaman ?? 1)
     } catch { setGalat('Gagal menghubungi server.') }
     finally { setMuat(false) }
-  }, [slug, saring, sumber])
+  }, [slug, saring, sumber, hal])
 
   useEffect(() => { ambil() }, [ambil])
 
@@ -204,15 +215,21 @@ export default function SebutanClient({ slug }: { slug: string }) {
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         {([['perlu', 'Perlu ditinjau'], ['selesai', 'Sudah ditetapkan'], ['semua', 'Semua']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setSaring(k)} style={pil(saring === k)}>{label}</button>
+          <button key={k} onClick={() => { setSaring(k); setHal(1) }} style={pil(saring === k)}>{label}</button>
         ))}
         <span style={{ width: 12 }} />
-        <button onClick={() => setSumber('')} style={pil(sumber === '')}>Semua sumber</button>
+        <button onClick={() => { setSumber(''); setHal(1) }} style={pil(sumber === '')}>Semua sumber</button>
         {perSumber.map(s => (
-          <button key={s.sumber} onClick={() => setSumber(s.sumber)} style={pil(sumber === s.sumber)}>
+          <button key={s.sumber} onClick={() => { setSumber(s.sumber); setHal(1) }} style={pil(sumber === s.sumber)}>
             {NAMA_SUMBER[s.sumber] ?? s.sumber}
           </button>
         ))}
+        {totalSaring > 0 && (
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c-text-muted)' }}>
+            {angka((hal - 1) * perHalaman + 1)}–{angka(Math.min(hal * perHalaman, totalSaring))} dari{' '}
+            <strong>{angka(totalSaring)}</strong>
+          </span>
+        )}
       </div>
 
       {muat ? (
@@ -296,6 +313,13 @@ export default function SebutanClient({ slug }: { slug: string }) {
         </div>
       )}
 
+      <Paginasi hal={hal} totalHalaman={totalHalaman} pindah={n => {
+        setHal(n)
+        // Tanpa ini pembaca mendarat di tengah halaman baru dan menyangka
+        // daftarnya tidak berganti.
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }} />
+
       {modal && (
         <ModalLabel
           baris={modal} topik={topik} poli={poli} sentimen={sentimen} risiko={risiko}
@@ -314,6 +338,40 @@ const pil = (aktif: boolean): React.CSSProperties => ({
   background: aktif ? 'var(--c-secondary)' : 'white',
   color: aktif ? 'white' : 'var(--c-text-muted)',
 })
+
+/** Paginasi. Mengikuti bentuk yang sudah dipakai BroadcastList supaya kendali
+ *  yang sama tidak tampak berbeda di dua halaman. Tambahannya hanya lompatan ke
+ *  halaman awal/akhir: pada 21 halaman, mencapai yang terakhir dengan '›' saja
+ *  berarti dua puluh klik. */
+function Paginasi({ hal, totalHalaman, pindah }: {
+  hal: number; totalHalaman: number; pindah: (n: number) => void
+}) {
+  if (totalHalaman <= 1) return null
+
+  const gaya = (mati: boolean): React.CSSProperties => ({
+    padding: '7px 14px', borderRadius: 'var(--r-sm)', fontFamily: 'inherit', fontSize: 13,
+    border: '1px solid var(--c-border)', background: 'white',
+    cursor: mati ? 'not-allowed' : 'pointer',
+    color: mati ? 'var(--c-text-faint)' : 'var(--c-text)',
+  })
+  const awal  = hal <= 1
+  const akhir = hal >= totalHalaman
+
+  return (
+    <div style={{
+      marginTop: 'var(--sp-4)', display: 'flex', justifyContent: 'center',
+      alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap',
+    }}>
+      <button onClick={() => pindah(1)} disabled={awal} style={gaya(awal)}>« Awal</button>
+      <button onClick={() => pindah(Math.max(1, hal - 1))} disabled={awal} style={gaya(awal)}>‹ Sebelumnya</button>
+      <span style={{ padding: '7px 12px', fontSize: 13, color: 'var(--c-text-muted)' }}>
+        {angka(hal)} / {angka(totalHalaman)}
+      </span>
+      <button onClick={() => pindah(Math.min(totalHalaman, hal + 1))} disabled={akhir} style={gaya(akhir)}>Berikutnya ›</button>
+      <button onClick={() => pindah(totalHalaman)} disabled={akhir} style={gaya(akhir)}>Akhir »</button>
+    </div>
+  )
+}
 
 function Angka({ label, nilai, warna }: { label: string; nilai: string; warna: string }) {
   return (
