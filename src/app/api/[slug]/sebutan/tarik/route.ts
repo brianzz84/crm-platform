@@ -8,11 +8,19 @@
  * juga di luar pengujian: penarikan pertama membawa ratusan sebutan lama
  * sekaligus, dan itu harus bisa dipicu sadar.
  *
- * Hanya MEMBACA dari Instagram. Tidak ada yang dikirim keluar.
+ * SELURUH SUMBER DITARIK BERSAMA, dan kegagalan salah satunya tidak
+ * menggugurkan yang lain. Instagram dan YouTube memakai kredensial yang
+ * sepenuhnya terpisah — token Instagram Login dan OAuth Google — sehingga
+ * salah satu bisa kedaluwarsa sementara yang lain sehat. Melaporkan
+ * "penarikan gagal" karena satu dari dua tumbang akan menyembunyikan
+ * ratusan sebutan yang sebenarnya berhasil masuk.
+ *
+ * Hanya MEMBACA dari Instagram dan YouTube. Tidak ada yang dikirim keluar.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { tarikSebutanInstagram } from '@/lib/sebutan-instagram'
+import { tarikSebutanYoutube } from '@/lib/sebutan-youtube'
 
 type Ctx = { params: { slug: string } }
 
@@ -21,24 +29,48 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (error) return error
 
   try {
-    const h = await tarikSebutanInstagram(params.slug)
+    // Berurutan, bukan Promise.all: keduanya menulis ke tabel yang sama lewat
+    // koneksi tenant yang sama, dan tidak ada yang menunggu hasilnya di layar
+    // dalam hitungan detik.
+    const ig = await tarikSebutanInstagram(params.slug)
+    const yt = await tarikSebutanYoutube(params.slug)
 
     // Angka dilaporkan apa adanya, termasuk `tuntas`. Peninjau perlu tahu apakah
     // penelusuran sampai habis — karena hanya pada penelusuran tuntas angka
     // "hilang" punya arti.
-    const bagian = [
-      `${h.ditemukan} sebutan dibaca`,
-      `${h.baru} baru`,
-      h.diperbarui ? `${h.diperbarui} diperbarui` : '',
-      h.hilang     ? `${h.hilang} ditandai hilang di sumber` : '',
-      h.kembali    ? `${h.kembali} muncul kembali` : '',
-      h.tuntas ? '' : 'penelusuran BELUM tuntas — penandaan hilang dilewati',
-    ].filter(Boolean)
+    const bagianIg = [
+      `${ig.ditemukan} sebutan dibaca`,
+      `${ig.baru} baru`,
+      ig.diperbarui ? `${ig.diperbarui} diperbarui` : '',
+      ig.hilang     ? `${ig.hilang} ditandai hilang di sumber` : '',
+      ig.kembali    ? `${ig.kembali} muncul kembali` : '',
+      ig.tuntas ? '' : 'penelusuran BELUM tuntas — penandaan hilang dilewati',
+    ].filter(Boolean).join(', ')
+
+    // `dibuang` SENGAJA ikut dilaporkan. Pencarian YouTube mencocokkan kata
+    // secara longgar, jadi bila angka ini mendekati `dibaca`, kata kuncinya
+    // terlalu lebar dan perlu dipersempit — itu keterangan yang hanya terlihat
+    // di sini.
+    const bagianYt = [
+      `${yt.dibaca} hasil dibaca dari ${yt.kataKunci} kata kunci`,
+      `${yt.cocok} lolos saringan frasa`,
+      yt.baru       ? `${yt.baru} baru` : '',
+      yt.diperbarui ? `${yt.diperbarui} diperbarui` : '',
+      yt.dibuang    ? `${yt.dibuang} dibuang karena frasa tidak muncul utuh` : '',
+    ].filter(Boolean).join(', ')
+
+    const pesan = [
+      `Instagram: ${ig.galat ? `gagal — ${ig.galat}` : bagianIg + '.'}`,
+      `YouTube: ${yt.galat ? `gagal — ${yt.galat}` : bagianYt + '.'}`,
+    ].join(' ')
 
     return NextResponse.json({
-      success: !h.galat,
-      pesan:   h.galat ? h.galat : bagian.join(', ') + '.',
-      ...h,
+      // Berhasil bila SETIDAKNYA satu sumber jalan. Pesannya tetap menyebutkan
+      // yang gagal, jadi tidak ada kegagalan yang tersembunyi di balik `true`.
+      success: !(ig.galat && yt.galat),
+      pesan,
+      instagram: ig,
+      youtube:   yt,
     })
   } catch (e) {
     return NextResponse.json(

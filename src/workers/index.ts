@@ -135,6 +135,18 @@ async function main() {
         return hasil
       }
 
+      if (job.name === 'sebutan-yt') {
+        const { tarikSebutanYoutube } = await import('@/lib/sebutan-youtube')
+        const hasil = await tarikSebutanYoutube(job.data.tenantSlug)
+        // `dibuang` ikut dicatat: bila ia mendekati `dibaca`, kata kuncinya
+        // terlalu longgar — dan log adalah satu-satunya tempat pola itu terlihat
+        // dari malam ke malam.
+        job.log(`[SEBUTAN_YT] ${hasil.dibaca} dibaca, ${hasil.cocok} cocok, ` +
+                `${hasil.baru} baru, ${hasil.dibuang} dibuang` +
+                `${hasil.galat ? ' — ' + hasil.galat : ''}`)
+        return hasil
+      }
+
       if (job.name === 'medsos-story') {
         const { tangkapStory } = await import('@/lib/social-snapshot')
         const hasil = await tangkapStory(job.data.tenantSlug)

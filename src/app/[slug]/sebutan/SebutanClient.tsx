@@ -121,6 +121,15 @@ export default function SebutanClient({ slug }: { slug: string }) {
       const json = await res.json()
       if (!json.success) { setGalat(json.pesan ?? json.error ?? 'Penarikan gagal.'); return }
       setKabar(json.pesan)
+      // Kegagalan SEBAGIAN tidak boleh tenggelam di kotak hijau. Instagram dan
+      // YouTube memakai kredensial terpisah, jadi satu bisa kedaluwarsa
+      // sementara yang lain sehat — dan itu justru keadaan yang paling mudah
+      // tidak disadari berbulan-bulan.
+      const gagal = [
+        json.instagram?.galat ? `Instagram: ${json.instagram.galat}` : '',
+        json.youtube?.galat   ? `YouTube: ${json.youtube.galat}` : '',
+      ].filter(Boolean)
+      if (gagal.length) setGalat(gagal.join(' · '))
       ambil()
     } catch { setGalat('Gagal menghubungi server.') }
     finally { setSibuk('') }
@@ -366,7 +375,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
         <div style={{ ...kartu, color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)', lineHeight: 1.7 }}>
           {totalSebutan === 0
             ? <>Belum ada sebutan tersimpan. Tekan <strong>⤓ Tarik sekarang</strong> untuk
-               mengambil sebutan Instagram — penarikan pertama membawa ratusan konten lama sekaligus.</>
+               mengambil sebutan Instagram dan YouTube — penarikan pertama membawa ratusan
+               konten lama sekaligus.</>
             : saring === 'perlu' ? 'Tidak ada yang perlu ditinjau.'
             : saring === 'tanpateks' ? 'Tidak ada sebutan tanpa takarir yang tersisa.'
             : 'Tidak ada pada saringan ini.'}

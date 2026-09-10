@@ -255,6 +255,28 @@ export async function runScanner(job: Job) {
         enqueued++
       }
 
+      // SEBUTAN YOUTUBE: sekali sehari, menumpang jam yang sama.
+      //
+      // Digantung pada `snap.aktif` seperti sebutan Instagram, bukan pada
+      // konfigurasi Google: keduanya adalah pekerjaan Sebutan Publik, dan satu
+      // sakelar untuk seluruh modul lebih mudah diterangkan daripada dua yang
+      // bisa berbeda tanpa alasan. Bila Google belum tersambung, penariknya
+      // berhenti sendiri dengan pesan yang jelas — bukan gagal berisik.
+      if (snap?.aktif && snap.jam_snapshot === hourWib) {
+        await queue.add(
+          'sebutan-yt',
+          { type: 'SEBUTAN_YT', tenantSlug: tenant.slug },
+          {
+            jobId: `sebutan-yt-${tenant.slug}-${nowWib.toISOString().slice(0, 10)}`,
+            attempts: 2,
+            backoff: { type: 'fixed', delay: 60_000 },
+            removeOnComplete: 10,
+            removeOnFail: 20,
+          },
+        )
+        enqueued++
+      }
+
       if (snap?.aktif && snap.jam_snapshot === hourWib) {
         const today = nowWib.toISOString().slice(0, 10)
         await queue.add(
