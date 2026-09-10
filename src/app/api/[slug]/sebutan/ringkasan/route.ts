@@ -72,8 +72,16 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         select: { sebutan_id: true, dimensi: true, kode: true },
       }),
 
+      // `username` disaring bukan-null DI KUERI, bukan setelahnya: sebutan tanpa
+      // nama akun akan mengelompok jadi satu baris null yang hampir pasti
+      // terbesar, memakan satu dari 15 slot lalu dibuang — sehingga akun ke-15
+      // yang sebenarnya tidak pernah muncul.
       db.sebutan.groupBy({
-        by: ['username'], where: rentang, _count: { _all: true },
+        by: ['username'],
+        where: { ...rentang, username: { not: null } },
+        // `username` ikut dihitung, bukan hanya `_all`: Prisma menuntut field
+        // yang dipakai mengurutkan ada di dalam pilihan _count.
+        _count: { _all: true, username: true },
         orderBy: { _count: { username: 'desc' } },
         take: MAKS_AKUN,
       }),
@@ -128,7 +136,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       unit:     keluarkan('UNIT'),
       risiko:   keluarkan('RISIKO'),
       akun: (akun as { username: string | null; _count: { _all: number } }[])
-        .filter(a => a.username)
         .map(a => ({ username: a.username, jumlah: a._count._all })),
       sorot: (sorotMentah as {
         id: string; sumber: string; username: string | null
