@@ -2,9 +2,11 @@
  * Penarik sebutan Instagram — konten orang lain yang MENANDAI akun RKZ.
  *
  * Memakai jalur Instagram Login (`graph.instagram.com`) dengan token yang sudah
- * dipegang untuk DM. Diuji 4 Sep 2026: endpoint `/tags` mengembalikan **252
- * konten dari 102 akun berbeda**, tertua Mei 2023 — tanpa App Review, tanpa
- * izin tambahan, tanpa biaya.
+ * dipegang untuk DM. Dijalankan tuntas 10 Sep 2026: endpoint `/tags`
+ * mengembalikan **608 konten dari 267 akun berbeda**, tertua 3 Desember 2015 —
+ * tanpa App Review, tanpa izin tambahan, tanpa biaya. (Pengujian pertama 4 Sep
+ * melaporkan 252/102 sejak Mei 2023; itu penelusuran yang terpotong di halaman
+ * ke-15, bukan jumlah sebenarnya. Lihat catatan pada PER_HALAMAN di bawah.)
  *
  * Endpoint yang sama DITOLAK lewat token Halaman di graph.facebook.com
  * ("(#10) Application does not have permission"). Jadi jalur Instagram Login

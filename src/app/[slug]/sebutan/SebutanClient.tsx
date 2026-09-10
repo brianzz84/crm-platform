@@ -151,6 +151,36 @@ export default function SebutanClient({ slug }: { slug: string }) {
     finally { setSibuk('') }
   }
 
+  /** `ulangi` membuang usulan yang belum ditinjau lalu meminta ulang — dipakai
+   *  setelah uraian kategori diperbaiki. Label yang sudah ditetapkan manusia
+   *  tidak pernah tersentuh. */
+  async function usulkan(ulangi = false) {
+    if (ulangi && !window.confirm(
+      'Buang semua usulan AI yang belum ditinjau, lalu minta ulang?\n\n' +
+      'Label yang sudah Anda tetapkan tidak akan tersentuh.'
+    )) return
+    setSibuk(ulangi ? 'ulangi' : 'usul'); setGalat(''); setKabar('')
+    try {
+      const res  = await fetch(`/api/${slug}/sebutan/usulan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ulangi }),
+      })
+      const json = await res.json()
+      if (!json.success) { setGalat(json.error ?? 'Usulan gagal.'); return }
+      if (json.diperiksa === 0) { setKabar(json.pesan ?? 'Tidak ada yang perlu diusulkan.'); return }
+      // Angka `ragu` dan `ditolak` ditampilkan, bukan disembunyikan: keduanya
+      // menunjukkan di mana uraian kategori masih perlu dipertajam.
+      setKabar([
+        `${json.diperiksa} sebutan diperiksa`,
+        `${json.berlabel} mendapat usulan`,
+        json.ragu     ? `${json.ragu} dibiarkan kosong (terlalu kabur)` : '',
+        json.ditolak  ? `${json.ditolak} kode ditolak` : '',
+      ].filter(Boolean).join(', ') + '.')
+      ambil()
+    } catch { setGalat('Gagal menghubungi server.') }
+    finally { setSibuk('') }
+  }
+
   async function setujuiSemua() {
     if (!window.confirm(
       'Setujui semua usulan AI yang belum ditinjau?\n\n' +
@@ -189,6 +219,15 @@ export default function SebutanClient({ slug }: { slug: string }) {
             <button onClick={tarik} disabled={!!sibuk} style={tombol(true, sibuk === 'tarik')}>
               {sibuk === 'tarik' ? '⏳ Menarik…' : '⤓ Tarik sekarang'}
             </button>
+            <button onClick={() => usulkan(false)} disabled={!!sibuk} style={tombol(false, sibuk === 'usul')}>
+              {sibuk === 'usul' ? '⏳ Meminta AI…' : '🤖 Usulkan label AI'}
+            </button>
+            {adaUsulan && (
+              <button onClick={() => usulkan(true)} disabled={!!sibuk} style={tombol(false, sibuk === 'ulangi')}
+                title="Buang usulan yang belum ditinjau, lalu minta ulang">
+                {sibuk === 'ulangi' ? '⏳…' : '↻ Usulkan ulang'}
+              </button>
+            )}
             {adaUsulan && (
               <button onClick={setujuiSemua} disabled={!!sibuk} style={tombol(false, sibuk === 'semua')}>
                 {sibuk === 'semua' ? '⏳…' : '✓ Setujui semua usulan'}
@@ -243,6 +282,16 @@ export default function SebutanClient({ slug }: { slug: string }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 'var(--sp-3)' }}>
+          {/* Muncul hanya ketika ada tunggakan tetapi belum satu pun usulan AI —
+              menunggu orang menemukan sendiri tombolnya, pada 608 baris, berarti
+              menunggu mereka menyerah lebih dulu. */}
+          {saring === 'perlu' && !adaUsulan && (
+            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 'var(--r-md)', padding: '10px 14px', fontSize: 13, color: '#075985', lineHeight: 1.6 }}>
+              Ada <strong>{angka(totalSaring)}</strong> sebutan menunggu ditinjau dan belum
+              ada usulan AI. Tekan <strong>🤖 Usulkan label AI</strong> — Anda tinggal
+              memeriksa, bukan mengarang dari nol.
+            </div>
+          )}
           {rows.map(r => {
             const adaUsul = !r.topik.length && (r.topikUsulan.length > 0 || r.sentimenUsulan.length > 0)
             return (
