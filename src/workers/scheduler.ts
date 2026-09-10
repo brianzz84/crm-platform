@@ -231,6 +231,30 @@ export async function runScanner(job: Job) {
         enqueued++
       }
 
+      // SEBUTAN INSTAGRAM: sekali sehari, bukan tiap jam.
+      //
+      // Berbeda dari DM, tidak ada yang menunggu jawaban di sini — sebutan publik
+      // tidak menuntut kesegaran menit. Dan penarikan ini menelusuri SELURUH
+      // halaman (252 konten dan bertambah), jadi menjalankannya tiap jam hanya
+      // membakar kuota untuk membaca ulang hal yang sama.
+      //
+      // Menumpang jam yang sama dengan snapshot: keduanya pekerjaan malam yang
+      // tidak dilihat siapa pun saat berjalan.
+      if (snap?.aktif && snap.jam_snapshot === hourWib) {
+        await queue.add(
+          'sebutan-ig',
+          { type: 'SEBUTAN_IG', tenantSlug: tenant.slug },
+          {
+            jobId: `sebutan-ig-${tenant.slug}-${nowWib.toISOString().slice(0, 10)}`,
+            attempts: 2,
+            backoff: { type: 'fixed', delay: 60_000 },
+            removeOnComplete: 10,
+            removeOnFail: 20,
+          },
+        )
+        enqueued++
+      }
+
       if (snap?.aktif && snap.jam_snapshot === hourWib) {
         const today = nowWib.toISOString().slice(0, 10)
         await queue.add(

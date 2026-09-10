@@ -124,6 +124,17 @@ async function main() {
         return hasil
       }
 
+      if (job.name === 'sebutan-ig') {
+        const { tarikSebutanInstagram } = await import('@/lib/sebutan-instagram')
+        const hasil = await tarikSebutanInstagram(job.data.tenantSlug)
+        // `tuntas` ikut dicatat: angka "hilang" hanya punya arti pada penelusuran
+        // yang sampai habis, dan tanpa penanda ini log akan menyesatkan.
+        job.log(`[SEBUTAN_IG] ${hasil.ditemukan} dibaca, ${hasil.baru} baru, ` +
+                `${hasil.hilang} hilang, tuntas=${hasil.tuntas}` +
+                `${hasil.galat ? ' — ' + hasil.galat : ''}`)
+        return hasil
+      }
+
       if (job.name === 'medsos-story') {
         const { tangkapStory } = await import('@/lib/social-snapshot')
         const hasil = await tangkapStory(job.data.tenantSlug)
