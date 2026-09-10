@@ -17,6 +17,8 @@ interface RingkasYouTube {
   subscriberHarian: { tanggal: string; naik: number; turun: number; bersih: number }[]
   teratas: { videoId: string; judul: string; tayangan: number; retensiPersen: number }[]
   sumberTrafik: { nama: string; tayangan: number }[]
+  istilahPencarian: { istilah: string; tayangan: number }[]
+  tayanganPencarian: number
   demografi:    { kelompok: string; gender: string; persen: number }[]
   jenisKonten:  { jenis: string; tayangan: number }[]
   galat?: string
@@ -609,6 +611,29 @@ function Sampul({ url, alt }: { url: string; alt: string }) {
   )
 }
 
+/**
+ * Keterangan cakupan istilah pencarian.
+ *
+ * YouTube MENYEMBUNYIKAN istilah bervolume rendah — bukan menggabungkannya ke
+ * baris "lainnya", melainkan menghilangkannya sama sekali. Akibatnya jumlah
+ * istilah di daftar selalu lebih kecil daripada total tayangan dari pencarian,
+ * kadang jauh lebih kecil.
+ *
+ * Tanpa keterangan ini, orang akan menjumlahkan daftarnya, mendapati angkanya
+ * tidak cocok dengan baris "Pencarian YouTube" di kartu atasnya, lalu
+ * menyimpulkan salah satunya salah. Keduanya benar; yang hilang adalah ekor
+ * panjang kueri yang masing-masing hanya muncul sekali dua kali.
+ */
+function istilahCatatan(yt: RingkasYouTube): string {
+  const dasar = 'Ini kueri yang diketik PENONTON, berbeda dari kata kunci di Sebutan Publik '
+              + 'yang merupakan kueri kita sendiri untuk menemukan video orang lain.'
+  const jumlah = yt.istilahPencarian.reduce((n, i) => n + i.tayangan, 0)
+  if (!yt.tayanganPencarian || !jumlah) return dasar
+  const persen = Math.min(100, Math.round((jumlah / yt.tayanganPencarian) * 100))
+  return `${dasar} Daftar ini mencakup ${persen}% dari seluruh tayangan lewat pencarian — `
+       + 'sisanya kueri bervolume terlalu rendah, yang disembunyikan YouTube dan tidak bisa ditarik.'
+}
+
 function Peringkat({ judul, baris, catatan }: {
   judul: string; catatan?: string
   baris: { kiri: React.ReactNode; kanan: string; sub?: string; gambar?: string }[]
@@ -1007,6 +1032,13 @@ export default function KanalPublikClient({
               <Peringkat judul="Video Teratas" catatan="Retensi disertakan karena “ramai” bisa datang dari judul yang memancing, sedangkan orang bertahan menonton tidak bisa dipalsukan."
                 baris={yt.teratas.map(v => ({ kiri: v.judul, sub: `rata² ditonton ${v.retensiPersen.toFixed(1)}%`, kanan: angka(v.tayangan) }))} />
               <Peringkat judul="Bagaimana Penonton Menemukan Video" baris={yt.sumberTrafik.map(s => ({ kiri: s.nama, kanan: angka(s.tayangan) }))} />
+              {/* Istilah pencarian. Ditaruh TEPAT DI BAWAH sumber trafik karena
+                  ia jawaban lanjutan dari baris "Pencarian YouTube" di atasnya —
+                  yang menyebut berapa, tetapi tidak pernah menyebut apa. */}
+              <Peringkat
+                judul="Yang Diketik Penonton di Pencarian YouTube"
+                catatan={istilahCatatan(yt)}
+                baris={yt.istilahPencarian.map(i => ({ kiri: i.istilah, kanan: angka(i.tayangan) }))} />
               <Peringkat judul="Jenis Konten" catatan="Shorts dan video biasa berperilaku sangat berbeda — menggabungkannya membuat angka retensi menyesatkan."
                 baris={yt.jenisKonten.map(j => ({ kiri: j.jenis, kanan: angka(j.tayangan) }))} />
               <Peringkat judul="Demografi Penonton"

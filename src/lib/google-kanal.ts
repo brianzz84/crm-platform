@@ -48,6 +48,18 @@ export interface RingkasYouTube {
   subscriberHarian: { tanggal: string; naik: number; turun: number; bersih: number }[]
   teratas: { videoId: string; judul: string; tayangan: number; retensiPersen: number }[]
   sumberTrafik: { nama: string; tayangan: number }[]
+  /**
+   * Istilah yang DIKETIK PENONTON di pencarian YouTube sampai menemukan video
+   * ini. Berbeda dari `sumberTrafik`, yang hanya menyebut kategorinya
+   * ("Pencarian YouTube: 1.240") tanpa pernah mengatakan orang mencari APA.
+   *
+   * Berbeda pula dari kata kunci di Sebutan Publik: yang di sana adalah kueri
+   * KITA untuk menemukan video orang lain; yang di sini kueri MEREKA.
+   */
+  istilahPencarian: { istilah: string; tayangan: number }[]
+  /** Total tayangan dari YT_SEARCH. Dipakai menghitung berapa persen istilah di
+   *  atas benar-benar mencakup pencarian — lihat catatan di `ringkasYouTube`. */
+  tayanganPencarian: number
   demografi:    { kelompok: string; gender: string; persen: number }[]
   jenisKonten:  { jenis: string; tayangan: number }[]
   galat?: string
@@ -96,7 +108,8 @@ export async function ringkasYouTube(
 ): Promise<RingkasYouTube> {
   const kosong: RingkasYouTube = {
     channel: null, periode: TOTAL_KOSONG, banding: null,
-    harian: [], subscriberHarian: [], teratas: [], sumberTrafik: [], demografi: [], jenisKonten: [],
+    harian: [], subscriberHarian: [], teratas: [], sumberTrafik: [],
+    istilahPencarian: [], tayanganPencarian: 0, demografi: [], jenisKonten: [],
   }
 
   let token: string
@@ -115,13 +128,25 @@ export async function ringkasYouTube(
   const laporan = (p: Record<string, string>) =>
     googleGet(`${YT_ANALYTICS}/reports?${new URLSearchParams({ ...dasar, ...p }).toString()}`, token)
 
-  const [tot, tBanding, rHari, rSub, rVid, rSumber, rDemo, rJenis] = await Promise.all([
+  const [tot, tBanding, rHari, rSub, rVid, rSumber, rIstilah, rDemo, rJenis] = await Promise.all([
     totalYouTube(token, ids, periode),
     banding ? totalYouTube(token, ids, banding) : Promise.resolve(null),
     laporan({ metrics: 'views,estimatedMinutesWatched', dimensions: 'day', sort: 'day' }),
     laporan({ metrics: 'subscribersGained,subscribersLost', dimensions: 'day', sort: 'day' }),
     laporan({ metrics: 'views,averageViewPercentage', dimensions: 'video', sort: '-views', maxResults: '10' }),
     laporan({ metrics: 'views', dimensions: 'insightTrafficSourceType', sort: '-views', maxResults: '12' }),
+    // Istilah pencarian. `filters` WAJIB — tanpa penyaring YT_SEARCH, dimensi
+    // detail ini mencampur judul video terkait, nama channel, dan URL situs luar
+    // ke dalam satu daftar yang tidak berarti apa-apa.
+    //
+    // Kegagalannya ditangani seperti potongan lain: channel yang terlalu kecil
+    // membuat Google menolak dimensi ini, dan itu tidak boleh mengosongkan
+    // seluruh halaman.
+    laporan({
+      metrics: 'views', dimensions: 'insightTrafficSourceDetail',
+      filters: 'insightTrafficSourceType==YT_SEARCH',
+      sort: '-views', maxResults: '25',
+    }),
     laporan({ metrics: 'viewerPercentage', dimensions: 'ageGroup,gender', sort: '-viewerPercentage' }),
     laporan({ metrics: 'views', dimensions: 'creatorContentType', sort: '-views' }),
   ])
@@ -157,6 +182,16 @@ export async function ringkasYouTube(
     sumberTrafik: (rSumber.ok ? rSumber.json?.rows ?? [] : []).map((r: any) => ({
       nama: LABEL_SUMBER[String(r[0])] ?? String(r[0]), tayangan: Number(r[1] ?? 0),
     })),
+    istilahPencarian: (rIstilah.ok ? rIstilah.json?.rows ?? [] : []).map((r: unknown[]) => ({
+      istilah: String(r[0]), tayangan: Number(r[1] ?? 0),
+    })),
+    // Diambil dari baris YT_SEARCH pada laporan sumber trafik, BUKAN dari
+    // penjumlahan istilah di atas: YouTube menyembunyikan istilah bervolume
+    // rendah, jadi jumlah keduanya memang tidak akan pernah sama. Justru
+    // selisihnya yang perlu ditampilkan.
+    tayanganPencarian: Number(
+      (rSumber.ok ? rSumber.json?.rows ?? [] : [])
+        .find((r: unknown[]) => String(r[0]) === 'YT_SEARCH')?.[1] ?? 0),
     demografi: (rDemo.ok ? rDemo.json?.rows ?? [] : []).map((r: any) => ({
       kelompok: String(r[0]).replace('age', ''), gender: String(r[1]), persen: Number(r[2] ?? 0),
     })),
