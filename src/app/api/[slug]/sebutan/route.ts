@@ -54,6 +54,13 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     // 'perlu' = belum ada satu pun label yang disetujui — inilah pekerjaannya.
     if (saring === 'perlu')        where.labels = { none: { disetujui: true } }
     else if (saring === 'selesai') where.labels = { some: { disetujui: true } }
+    // 'tanpateks' = unggahan tanpa takarir. Dipisahkan karena inilah satu-satunya
+    // kelompok yang TIDAK PERNAH masuk antrean AI — tanpa saringan sendiri, ia
+    // tercecer di antara ratusan baris lain dan tak pernah selesai.
+    else if (saring === 'tanpateks') {
+      where.teks   = null
+      where.labels = { none: { disetujui: true } }
+    }
 
     const [topik, poli, rows, total, jumlahPerlu, perSumber] = await Promise.all([
       db.sebutanTopikLibrary.findMany({

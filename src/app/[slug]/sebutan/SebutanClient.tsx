@@ -69,7 +69,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
   const [rows, setRows]       = useState<Baris[]>([])
   const [perlu, setPerlu]     = useState(0)
   const [perSumber, setPerSumber] = useState<{ sumber: string; jumlah: number }[]>([])
-  const [saring, setSaring]   = useState<'perlu' | 'selesai' | 'semua'>('perlu')
+  const [saring, setSaring]   = useState<'perlu' | 'selesai' | 'semua' | 'tanpateks'>('perlu')
   const [sumber, setSumber]   = useState('')
   const [hal, setHal]         = useState(1)
   const [totalHalaman, setTotalHalaman] = useState(1)
@@ -155,10 +155,14 @@ export default function SebutanClient({ slug }: { slug: string }) {
    * 1. `ulangi` HANYA pada panggilan pertama. Kalau ikut terkirim di panggilan
    *    berikutnya, ia akan menghapus usulan yang baru saja dibuat panggilan
    *    sebelumnya — dan putarannya tidak akan pernah selesai.
-   * 2. Berhenti bila satu batch menghasilkan NOL usulan. Sebutan yang tidak
-   *    dilabeli tetap tak berlabel, jadi batch berikutnya akan berisi ke-30 yang
-   *    sama persis. Ini satu-satunya keadaan yang benar-benar bisa berputar abadi.
-   * 3. Batas keras 40 putaran, kalau-kalau ada keadaan yang belum terpikirkan.
+   * 2. `lewati` naik sebanyak yang TIDAK terlabeli pada putaran sebelumnya.
+   *    Tanpa ini, sebutan yang tak terbaca AI tetap tak berlabel, duduk di
+   *    posisi teratas yang sama, dan ditanyakan ulang di setiap putaran —
+   *    sehingga putarannya tidak pernah menyentuh yang di bawahnya.
+   * 3. Berhenti setelah TIGA putaran berturut-turut tanpa satu pun usulan.
+   *    Dengan `lewati` yang melangkah, ini bukan lagi soal putaran abadi
+   *    melainkan soal biaya: 90 sebutan tanpa hasil berarti ada yang rusak.
+   * 4. Batas keras 40 putaran, kalau-kalau ada keadaan yang belum terpikirkan.
    */
   async function usulkan(ulangi = false) {
     if (ulangi && !window.confirm(
@@ -170,6 +174,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
     setSibuk(ulangi ? 'ulangi' : 'usul'); setGalat(''); setKabar('')
 
     let diperiksa = 0, berlabel = 0, ragu = 0, ditolak = 0, putaran = 0
+    let lewati = 0, nolBerturut = 0, tanpaTeks = 0
     let alasanBerhenti = ''
 
     try {
@@ -178,8 +183,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
 
         const res  = await fetch(`/api/${slug}/sebutan/usulan`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          // Pengaman 1 — lihat catatan di atas.
-          body: JSON.stringify({ ulangi: ulangi && putaran === 0 }),
+          // Pengaman 1 dan 2 — lihat catatan di atas.
+          body: JSON.stringify({ ulangi: ulangi && putaran === 0, lewati }),
         })
         const json = await res.json()
         if (!json.success) {
@@ -191,6 +196,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
         }
         putaran++
 
+        tanpaTeks = json.tanpaTeks ?? 0
         if (json.diperiksa === 0) { alasanBerhenti = 'selesai'; break }
 
         diperiksa += json.diperiksa
@@ -198,24 +204,30 @@ export default function SebutanClient({ slug }: { slug: string }) {
         ragu      += json.ragu ?? 0
         ditolak   += json.ditolak ?? 0
 
-        // Pengaman 2.
-        if (json.berlabel === 0) { alasanBerhenti = 'mandek'; break }
+        // Pengaman 2: langkahi yang tidak terlabeli pada putaran ini.
+        lewati += json.diperiksa - json.berlabel
+
+        // Pengaman 3.
+        nolBerturut = json.berlabel === 0 ? nolBerturut + 1 : 0
+        if (nolBerturut >= 3) { alasanBerhenti = 'mandek'; break }
 
         setKabar(`⏳ ${angka(diperiksa)} sebutan diperiksa, ${angka(berlabel)} mendapat usulan… (putaran ${putaran})`)
       }
       if (!alasanBerhenti) alasanBerhenti = 'batas'
 
       if (diperiksa === 0) {
-        setKabar('Tidak ada sebutan yang perlu diusulkan.')
+        setKabar('Tidak ada sebutan bertakarir yang perlu diusulkan.'
+          + (tanpaTeks ? ` Tersisa ${angka(tanpaTeks)} sebutan tanpa takarir — `
+            + `AI tidak pernah diberi apa pun untuk dibaca di sini, jadi saring `
+            + `“Tanpa teks” dan labeli sendiri.` : ''))
       } else {
         // `ragu` dan `ditolak` ditampilkan, bukan disembunyikan: keduanya
         // menunjukkan di mana uraian kategori masih perlu dipertajam.
         const ekor: Record<string, string> = {
           selesai: 'Seluruh tunggakan selesai.',
           dihentikan: 'Dihentikan — tekan lagi untuk melanjutkan sisanya.',
-          mandek: 'Berhenti: satu putaran tidak menghasilkan usulan sama sekali, '
-                + 'jadi sisanya kemungkinan besar terlalu kabur untuk dinilai AI. '
-                + 'Label sisanya secara manual.',
+          mandek: 'Berhenti: tiga putaran berturut-turut tanpa satu pun usulan. '
+                + 'Sisanya kemungkinan besar terlalu kabur untuk dinilai dari teksnya.',
           batas: `Berhenti di batas ${MAKS_PUTARAN} putaran — tekan lagi untuk melanjutkan.`,
           galat: 'Berhenti karena galat di atas; yang sudah tersimpan tetap aman.',
         }
@@ -224,7 +236,9 @@ export default function SebutanClient({ slug }: { slug: string }) {
           `${angka(berlabel)} mendapat usulan`,
           ragu    ? `${angka(ragu)} dibiarkan kosong (terlalu kabur)` : '',
           ditolak ? `${angka(ditolak)} kode ditolak` : '',
-        ].filter(Boolean).join(', ') + '. ' + (ekor[alasanBerhenti] ?? ''))
+        ].filter(Boolean).join(', ') + '. ' + (ekor[alasanBerhenti] ?? '')
+          + (tanpaTeks ? ` ${angka(tanpaTeks)} sebutan tanpa takarir tidak bisa dinilai AI `
+            + `— saring “Tanpa teks” untuk melabelinya sendiri.` : ''))
       }
       // Sekali di akhir, bukan tiap putaran: dua puluh kali muat ulang daftar
       // membuat layar berkedip tanpa menambah keterangan apa pun.
@@ -327,7 +341,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
       {tab === 'ringkas' ? <RingkasanTab slug={slug} topik={topik} poli={poli} /> : <>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-3)', flexWrap: 'wrap', alignItems: 'center' }}>
-        {([['perlu', 'Perlu ditinjau'], ['selesai', 'Sudah ditetapkan'], ['semua', 'Semua']] as const).map(([k, label]) => (
+        {([['perlu', 'Perlu ditinjau'], ['tanpateks', 'Tanpa teks'],
+           ['selesai', 'Sudah ditetapkan'], ['semua', 'Semua']] as const).map(([k, label]) => (
           <button key={k} onClick={() => { setSaring(k); setHal(1) }} style={pil(saring === k)}>{label}</button>
         ))}
         <span style={{ width: 12 }} />
@@ -352,13 +367,22 @@ export default function SebutanClient({ slug }: { slug: string }) {
           {totalSebutan === 0
             ? <>Belum ada sebutan tersimpan. Tekan <strong>⤓ Tarik sekarang</strong> untuk
                mengambil sebutan Instagram — penarikan pertama membawa ratusan konten lama sekaligus.</>
-            : saring === 'perlu' ? 'Tidak ada yang perlu ditinjau.' : 'Tidak ada pada saringan ini.'}
+            : saring === 'perlu' ? 'Tidak ada yang perlu ditinjau.'
+            : saring === 'tanpateks' ? 'Tidak ada sebutan tanpa takarir yang tersisa.'
+            : 'Tidak ada pada saringan ini.'}
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 'var(--sp-3)' }}>
           {/* Muncul hanya ketika ada tunggakan tetapi belum satu pun usulan AI —
               menunggu orang menemukan sendiri tombolnya, pada 608 baris, berarti
               menunggu mereka menyerah lebih dulu. */}
+          {saring === 'tanpateks' && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--r-md)', padding: '10px 14px', fontSize: 13, color: '#92400E', lineHeight: 1.6 }}>
+              Unggahan ini <strong>tidak punya takarir</strong>, jadi tidak pernah masuk
+              antrean AI — menebak dari nama akun saja hanya melahirkan label yang salah
+              tapi terdengar yakin. Buka tautannya, lihat gambarnya, lalu tetapkan sendiri.
+            </div>
+          )}
           {saring === 'perlu' && !adaUsulan && (
             <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 'var(--r-md)', padding: '10px 14px', fontSize: 13, color: '#075985', lineHeight: 1.6 }}>
               Ada <strong>{angka(totalSaring)}</strong> sebutan menunggu ditinjau dan belum

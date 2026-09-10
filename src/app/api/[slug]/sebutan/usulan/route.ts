@@ -60,8 +60,20 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   // Ada karena memperbaiki uraian kategori tidak ada gunanya bila usulan lama —
   // yang dibuat sebelum perbaikan itu — tetap menempel selamanya. Label yang
   // sudah DISETUJUI manusia tidak pernah disentuh.
-  const body   = await req.json().catch(() => ({})) as { ulangi?: unknown }
+  const body   = await req.json().catch(() => ({})) as { ulangi?: unknown; lewati?: unknown }
   const ulangi = body.ulangi === true
+  /**
+   * Berapa sebutan teratas yang DILEWATI.
+   *
+   * Ada karena sebutan yang tidak berhasil dilabeli AI tetap tak berlabel, jadi
+   * ia masuk lagi ke batch berikutnya — dan karena urutannya terbaru-dulu, ia
+   * duduk di posisi yang sama persis. Tanpa `lewati`, satu sebutan yang tak
+   * terbaca AI akan ditanyakan berulang di SETIAP putaran, dan putarannya
+   * berhenti sebelum menyentuh yang di bawahnya.
+   *
+   * Klien menaikkannya sebanyak yang tidak terlabeli pada putaran sebelumnya.
+   */
+  const lewati = Math.max(0, Math.trunc(Number(body.lewati)) || 0)
 
   try {
     const db = await getTenantDb(params.slug)
@@ -116,13 +128,22 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         teks:   { not: null },
       },
       orderBy: { terbit_pada: 'desc' },
+      skip:    lewati,
       take:    MAKS_SEBUTAN,
       select:  { id: true, sumber: true, username: true, teks: true },
     })
+    // Sebutan tanpa takarir tidak pernah masuk kueri di atas. Angkanya WAJIB
+    // dilaporkan: tanpa itu, "belum ditinjau" berhenti di angka yang tak pernah
+    // turun dan pemakainya menyimpulkan AI-nya rusak, padahal AI memang tidak
+    // pernah diberi apa pun untuk dibaca.
+    const tanpaTeks = await db.sebutan.count({
+      where: { tenant_slug: params.slug, labels: { none: {} }, teks: null },
+    })
+
     if (!sebutan.length) {
       return NextResponse.json({
-        success: true, diperiksa: 0, berlabel: 0,
-        pesan: 'Tidak ada sebutan yang perlu diusulkan.',
+        success: true, diperiksa: 0, berlabel: 0, tanpaTeks,
+        pesan: 'Tidak ada sebutan bertakarir yang perlu diusulkan.',
       })
     }
 
@@ -277,6 +298,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       success:   true,
       diperiksa: sebutan.length,
       berlabel,
+      tanpaTeks,
       labelTopik:    hitung.TOPIK,
       labelSentimen: hitung.SENTIMEN,
       labelPoli:     hitung.UNIT,
