@@ -25,10 +25,20 @@ const GRAPH = 'https://graph.instagram.com'
 const VERSI = 'v21.0'
 const FIELDS = 'id,caption,username,timestamp,media_type,permalink,like_count,comments_count'
 
-/** 50 per halaman × 20 = 1.000 konten. Jauh di atas 252 yang ada sekarang,
- *  cukup longgar untuk pertumbuhan bertahun-tahun. */
-const PER_HALAMAN  = 50
-const MAKS_HALAMAN = 20
+/**
+ * Batas ini SUDAH SALAH SEKALI dan diukur ulang 10 Sep 2026.
+ *
+ * Versi pertama memakai 50 per halaman dengan batas 20 halaman, atas dugaan
+ * bahwa 252 konten sudah mendekati seluruhnya. Dijalankan sungguhan, akun RKZ
+ * ternyata punya **608 sebutan dari 267 akun, tertua Desember 2015** — batas itu
+ * hanya menangkap 332, dan `tuntas` tidak pernah tercapai sehingga penandaan
+ * hilang tidak akan pernah berjalan.
+ *
+ * 100 per halaman diterima Instagram dan menuntaskan 608 dalam 42 halaman.
+ * Batas 60 memberi ruang tumbuh sekitar 40% sebelum perlu ditinjau lagi.
+ */
+const PER_HALAMAN  = 100
+const MAKS_HALAMAN = 60
 
 export interface HasilTarikSebutan {
   ditemukan:  number
@@ -64,6 +74,18 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
     `${GRAPH}/${VERSI}/${cfg.ig_business_id}/tags` +
     `?fields=${FIELDS}&limit=${PER_HALAMAN}&access_token=${encodeURIComponent(cfg.ig_msg_token)}`
 
+  // SATU kueri untuk seluruh yang sudah tersimpan, bukan findUnique per item.
+  // Pada 608 sebutan, cara lama berarti 1.216 perjalanan ke basis data tiap
+  // malam — dan `kembali` tetap bisa dihitung karena `hilang_pada` ikut dibaca
+  // di sini.
+  const tersimpan = new Map<string, { id: string; hilang_pada: Date | null }>(
+    (await db.sebutan.findMany({
+      where:  { tenant_slug: slug, sumber: 'IG_TAG' },
+      select: { id: true, sumber_id: true, hilang_pada: true },
+    })).map((r: { id: string; sumber_id: string; hilang_pada: Date | null }) =>
+      [r.sumber_id, { id: r.id, hilang_pada: r.hilang_pada }]),
+  )
+
   const terlihat = new Set<string>()
   let ditemukan = 0, baru = 0, diperbarui = 0, kembali = 0
   let halaman = 0, tuntas = false, galat: string | undefined
@@ -95,11 +117,7 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
         mentah:   m as unknown as object,
       }
 
-      const ada = await db.sebutan.findUnique({
-        where: { tenant_slug_sumber_sumber_id: {
-          tenant_slug: slug, sumber: 'IG_TAG', sumber_id: m.id } },
-        select: { id: true, hilang_pada: true },
-      })
+      const ada = tersimpan.get(m.id)
 
       if (!ada) {
         await db.sebutan.create({
