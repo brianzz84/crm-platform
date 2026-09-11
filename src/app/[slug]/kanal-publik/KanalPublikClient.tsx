@@ -35,6 +35,9 @@ interface RingkasGa4 {
   perangkat: { nama: string; sesi: number }[]
   kota:      { nama: string; sesi: number }[]
   baruKembali: { nama: string; pengguna: number }[]
+  rujukanAi: { nama: string; sesi: number }[]
+  sesiAi: number
+  cariDalamSitus: { nama: string; sesi: number }[]
   galat?: string
 }
 
@@ -989,6 +992,27 @@ export default function KanalPublikClient({
                 <TrenBatang label={`Sesi per hari — ${mulai} s/d ${selesai}`} satuan="sesi" data={ga4.harian.map(h => ({ tanggal: h.tanggal, nilai: h.sesi }))} />
               </div>
               <Peringkat judul="Sumber Trafik" baris={ga4.sumber.map(s => ({ kiri: s.nama, kanan: angka(s.sesi) + ' sesi' }))} />
+              {/* Rujukan asisten AI. Ditaruh tepat di bawah Sumber Trafik karena
+                  ia PECAHAN dari baris "Referral" di kartu itu — bukan kanal
+                  terpisah, melainkan bagian yang selama ini tersembunyi di
+                  dalamnya. */}
+              <Peringkat
+                judul={`Rujukan Asisten AI${ga4.sesiAi ? ` — ${angka(ga4.sesiAi)} sesi` : ''}`}
+                catatan={
+                  'ANGKA INI BATAS BAWAH, bukan jumlah. Dua bagian besar tidak bisa dihitung '
+                  + 'siapa pun: klik dari AI Overviews Google tiba sebagai organik google.com '
+                  + 'biasa dan tidak terpisahkan, sedangkan rujukan dari aplikasi ponsel sering '
+                  + 'datang tanpa referrer sehingga jatuh ke “Direct”. Angka kecil di sini TIDAK '
+                  + 'berarti AI belum berpengaruh — hanya berarti sebagian kecilnya yang terbaca.'
+                }
+                baris={ga4.rujukanAi.map(r => ({ kiri: r.nama, kanan: angka(r.sesi) + ' sesi' }))} />
+
+              {/* Hanya dirender bila situs benar-benar mengirim event-nya.
+                  Kartu kosong akan terbaca sebagai "tidak ada yang mencari",
+                  padahal artinya "pencariannya tidak pernah dilaporkan". */}
+              <Peringkat judul="Pencarian di Dalam Situs"
+                catatan="Kueri yang diketik orang di kotak pencarian rkzsurabaya.com. Hanya terisi bila situs mengirim event view_search_results."
+                baris={ga4.cariDalamSitus.map(c => ({ kiri: c.nama, kanan: angka(c.sesi) + ' sesi' }))} />
               <Peringkat judul="Halaman Pendarat" catatan="Halaman pertama yang dibuka pengunjung — berbeda dari halaman terpopuler, dan inilah yang menentukan kesan pertama."
                 baris={ga4.pendarat.map(h => ({ kiri: h.path, kanan: angka(h.sesi) + ' sesi' }))} />
               <Peringkat judul="Halaman Terpopuler" baris={ga4.halaman.map(h => ({ kiri: h.path, kanan: angka(h.tayangan) }))} />

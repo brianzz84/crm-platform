@@ -220,7 +220,50 @@ export interface RingkasGa4 {
   perangkat: { nama: string; sesi: number }[]
   kota:      { nama: string; sesi: number }[]
   baruKembali: { nama: string; pengguna: number }[]
+  /**
+   * Rujukan dari asisten AI — ChatGPT, Gemini, Perplexity, Copilot, Claude.
+   *
+   * Tidak ada di `sumber`, yang memakai `sessionDefaultChannelGroup` dan melebur
+   * seluruhnya ke keranjang "Referral". Kanal ini belum punya kerangka
+   * pengukuran di mana pun, dan tanpa pecahan sendiri ia tidak terlihat sama
+   * sekali di dalam produk — padahal probe pernah menemukan 145 sesi ChatGPT.
+   */
+  rujukanAi: { nama: string; sesi: number }[]
+  /** Total sesi dari seluruh host AI yang dikenali. */
+  sesiAi: number
+  /**
+   * Kueri yang diketik orang di PENCARIAN DALAM SITUS. Hanya terisi bila situs
+   * mengirim event `view_search_results`. Kosong berarti situsnya tidak
+   * mengirimnya — bukan berarti tidak ada yang mencari.
+   */
+  cariDalamSitus: { nama: string; sesi: number }[]
   galat?: string
+}
+
+/**
+ * Host asisten AI. Dicocokkan sebagai AWALAN pada `sessionSource`, karena GA4
+ * kadang mengirim subdomain atau varian ("chat.openai.com", "chatgpt.com").
+ *
+ * DAFTAR INI TIDAK AKAN PERNAH LENGKAP, dan itu bukan kelalaian: asisten baru
+ * muncul terus, dan yang lewat aplikasi ponsel sering datang tanpa referrer
+ * sehingga jatuh ke "Direct". Angka di sini SELALU batas bawah.
+ */
+const HOST_AI: { cocok: string[]; nama: string }[] = [
+  { nama: 'ChatGPT',    cocok: ['chatgpt.com', 'chat.openai.com', 'openai.com'] },
+  { nama: 'Gemini',     cocok: ['gemini.google.com', 'bard.google.com'] },
+  { nama: 'Perplexity', cocok: ['perplexity.ai'] },
+  { nama: 'Copilot',    cocok: ['copilot.microsoft.com', 'bing.com/chat'] },
+  { nama: 'Claude',     cocok: ['claude.ai'] },
+  { nama: 'Meta AI',    cocok: ['meta.ai'] },
+  { nama: 'Grok',       cocok: ['grok.com', 'x.ai'] },
+  { nama: 'DeepSeek',   cocok: ['deepseek.com'] },
+]
+
+/** Nama asisten untuk satu `sessionSource`, atau null bila bukan asisten AI. */
+function namaAsisten(sumber: string): string | null {
+  const s = sumber.toLowerCase()
+  for (const h of HOST_AI) if (h.cocok.some(c => s.includes(c))) return h.nama
+  return null
 }
 
 const GA4_KOSONG: TotalGa4 = { sesi: 0, pengguna: 0, tayanganHalaman: 0, rerataDetik: 0 }
@@ -232,6 +275,7 @@ export async function ringkasGa4(
   const kosong: RingkasGa4 = {
     propertyId: propertyId || null, periode: GA4_KOSONG, banding: null,
     harian: [], sumber: [], halaman: [], pendarat: [], perangkat: [], kota: [], baruKembali: [],
+    rujukanAi: [], sesiAi: 0, cariDalamSitus: [],
   }
   if (!propertyId) {
     return { ...kosong, galat: 'GA4 Property ID belum diisi di Pengaturan → Integrasi Google Business.' }
@@ -256,7 +300,8 @@ export async function ringkasGa4(
       orderBys: [{ metric: { metricName: metrik }, desc: true }], limit: String(limit),
     })
 
-  const [rTotal, rHari, rSumber, rHalaman, rPendarat, rPerangkat, rKota, rBaru] = await Promise.all([
+  const [rTotal, rHari, rSumber, rHalaman, rPendarat, rPerangkat, rKota, rBaru,
+         rAsal, rCari] = await Promise.all([
     googlePost(url, token, {
       dateRanges: rentangTotal,
       metrics: [{ name: 'sessions' }, { name: 'activeUsers' }, { name: 'screenPageViews' }, { name: 'averageSessionDuration' }],
@@ -272,6 +317,13 @@ export async function ringkasGa4(
     pecahan('deviceCategory', 'sessions', 5),
     pecahan('city',        'sessions'),
     pecahan('newVsReturning', 'activeUsers', 3),
+    // `sessionSource` mentah, bukan channel group: rujukan asisten AI hanya
+    // terlihat di sini. Limit besar karena host AI jarang masuk sepuluh besar.
+    pecahan('sessionSource', 'sessions', 100),
+    // Pencarian dalam situs. Gagal atau kosong bila situs tidak mengirim
+    // `view_search_results` — ditangani sendiri seperti potongan lain, jadi
+    // ketiadaannya tidak mengosongkan apa pun.
+    pecahan('searchTerm', 'sessions', 25),
   ])
 
   if (!rTotal.ok) return { ...kosong, galat: pesanErrorGoogle(rTotal) }
@@ -310,6 +362,25 @@ export async function ringkasGa4(
     perangkat:   petakan(rPerangkat, 'sesi'),
     kota:        petakan(rKota,      'sesi'),
     baruKembali: petakan(rBaru,      'pengguna'),
+    ...(() => {
+      // Digabung per ASISTEN, bukan per host: "chatgpt.com" dan
+      // "chat.openai.com" adalah pintu yang sama, dan menampilkannya sebagai dua
+      // baris membuat keduanya tampak lebih kecil daripada kenyataannya.
+      const peta = new Map<string, number>()
+      for (const r of (rAsal.ok ? rAsal.json?.rows ?? [] : []) as unknown[]) {
+        const nama = namaAsisten(dim(r))
+        if (!nama) continue
+        peta.set(nama, (peta.get(nama) ?? 0) + angka(r))
+      }
+      const rujukanAi = [...peta.entries()]
+        .map(([nama, sesi]) => ({ nama, sesi }))
+        .sort((a, b) => b.sesi - a.sesi)
+      return {
+        rujukanAi,
+        sesiAi: rujukanAi.reduce((n, r) => n + r.sesi, 0),
+      }
+    })(),
+    cariDalamSitus: petakan(rCari, 'sesi'),
   }
 }
 
