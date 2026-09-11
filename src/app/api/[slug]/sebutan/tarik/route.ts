@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { tarikSebutanInstagram } from '@/lib/sebutan-instagram'
 import { tarikSebutanYoutube } from '@/lib/sebutan-youtube'
+import { tarikSebutanUlasan } from '@/lib/sebutan-ulasan'
 
 type Ctx = { params: { slug: string } }
 
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // dalam hitungan detik.
     const ig = await tarikSebutanInstagram(params.slug)
     const yt = await tarikSebutanYoutube(params.slug)
+    // Basis-data-ke-basis-data: nol kuota, nol kredensial. Dijalankan terakhir
+    // supaya kegagalan jaringan pada dua sumber di atas tidak menghalanginya.
+    const ul = await tarikSebutanUlasan(params.slug)
 
     // Angka dilaporkan apa adanya, termasuk `tuntas`. Peninjau perlu tahu apakah
     // penelusuran sampai habis — karena hanya pada penelusuran tuntas angka
@@ -59,18 +63,27 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       yt.dibuang    ? `${yt.dibuang} dibuang karena frasa tidak muncul utuh` : '',
     ].filter(Boolean).join(', ')
 
+    const bagianUl = [
+      `${ul.dibaca} ulasan diperiksa`,
+      ul.baru       ? `${ul.baru} disalin` : '',
+      ul.diperbarui ? `${ul.diperbarui} diperbarui` : '',
+      !ul.baru && !ul.diperbarui ? 'tidak ada yang baru' : '',
+    ].filter(Boolean).join(', ')
+
     const pesan = [
       `Instagram: ${ig.galat ? `gagal — ${ig.galat}` : bagianIg + '.'}`,
       `YouTube: ${yt.galat ? `gagal — ${yt.galat}` : bagianYt + '.'}`,
+      `Ulasan Google: ${ul.galat ? `gagal — ${ul.galat}` : bagianUl + '.'}`,
     ].join(' ')
 
     return NextResponse.json({
       // Berhasil bila SETIDAKNYA satu sumber jalan. Pesannya tetap menyebutkan
       // yang gagal, jadi tidak ada kegagalan yang tersembunyi di balik `true`.
-      success: !(ig.galat && yt.galat),
+      success: !(ig.galat && yt.galat && ul.galat),
       pesan,
       instagram: ig,
       youtube:   yt,
+      ulasan:    ul,
     })
   } catch (e) {
     return NextResponse.json(

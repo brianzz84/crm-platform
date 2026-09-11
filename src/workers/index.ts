@@ -135,6 +135,14 @@ async function main() {
         return hasil
       }
 
+      if (job.name === 'sebutan-ulasan') {
+        const { tarikSebutanUlasan } = await import('@/lib/sebutan-ulasan')
+        const hasil = await tarikSebutanUlasan(job.data.tenantSlug)
+        job.log(`[SEBUTAN_ULASAN] ${hasil.dibaca} diperiksa, ${hasil.baru} disalin, ` +
+                `${hasil.diperbarui} diperbarui`)
+        return hasil
+      }
+
       if (job.name === 'sebutan-yt') {
         const { tarikSebutanYoutube } = await import('@/lib/sebutan-youtube')
         const hasil = await tarikSebutanYoutube(job.data.tenantSlug)

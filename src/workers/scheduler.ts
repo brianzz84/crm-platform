@@ -255,6 +255,24 @@ export async function runScanner(job: Job) {
         enqueued++
       }
 
+      // JEMBATAN ULASAN GOOGLE -> SEBUTAN: sekali sehari, setelah snapshot
+      // Google mengisi GbpReview. Tidak memanggil Google sama sekali, jadi ia
+      // tidak menambah kuota apa pun — yang dibatasi cuma waktu prosesnya.
+      if (snap?.aktif && snap.jam_snapshot === hourWib) {
+        await queue.add(
+          'sebutan-ulasan',
+          { type: 'SEBUTAN_ULASAN', tenantSlug: tenant.slug },
+          {
+            jobId: `sebutan-ulasan-${tenant.slug}-${nowWib.toISOString().slice(0, 10)}`,
+            attempts: 2,
+            backoff: { type: 'fixed', delay: 60_000 },
+            removeOnComplete: 10,
+            removeOnFail: 20,
+          },
+        )
+        enqueued++
+      }
+
       // SEBUTAN YOUTUBE: sekali sehari, menumpang jam yang sama.
       //
       // Digantung pada `snap.aktif` seperti sebutan Instagram, bukan pada
