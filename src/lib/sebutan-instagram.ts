@@ -22,6 +22,7 @@
 
 import { getTenantDb } from './tenant'
 import { pesanGalatIg } from './instagram-messaging'
+import { catatSnapshotRun } from './snapshot-run'
 
 const GRAPH = 'https://graph.instagram.com'
 const VERSI = 'v21.0'
@@ -72,8 +73,15 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
   const cfg = await db.metaConfig.findUnique({ where: { tenant_slug: slug } })
 
   if (!cfg?.ig_msg_token || !cfg.ig_business_id) {
-    return { ...kosong, galat: 'Instagram Messaging belum tersambung — token jalur ini yang dipakai.' }
+    const galat = 'Instagram Messaging belum tersambung — token jalur ini yang dipakai.'
+    // Dicatat sebagai GAGAL, bukan dilewati diam-diam. Kolektor yang tidak
+    // pernah bisa berjalan menghasilkan layar sepi yang sama persis dengan
+    // kolektor sehat yang tidak menemukan apa-apa.
+    await catatSnapshotRun(slug, 'SEBUTAN_IG', 'gagal', galat)
+    return { ...kosong, galat }
   }
+
+  const mulai = Date.now()
 
   let url: string | null =
     `${GRAPH}/${VERSI}/${cfg.ig_business_id}/tags` +
@@ -188,6 +196,15 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
     })
     hilang = r.count
   }
+
+  // `tuntas` menentukan status: penelusuran yang terpotong bukan kegagalan,
+  // tetapi juga bukan keberhasilan penuh — penandaan hilang dilewati di sana.
+  await catatSnapshotRun(
+    slug, 'SEBUTAN_IG',
+    galat ? 'gagal' : tuntas ? 'ok' : 'sebagian',
+    galat ?? `${ditemukan} dibaca, ${baru} baru, ${hilang} hilang, tuntas=${tuntas}`,
+    Date.now() - mulai,
+  )
 
   return { ditemukan, baru, diperbarui, hilang, kembali, milikSendiri, tuntas, galat }
 }

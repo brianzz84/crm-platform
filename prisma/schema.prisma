@@ -1511,6 +1511,12 @@ model SocialContentSnapshot {
 enum SumberSnapshot {
   META
   GOOGLE
+  /// Penarik modul Sebutan Publik. Menumpang tabel yang sama, bukan tabel
+  /// sendiri: konsepnya identik — satu lari per sumber per hari — dan dua
+  /// tabel berarti dua logika deteksi hari bolong yang akan menyimpang.
+  SEBUTAN_IG
+  SEBUTAN_YT
+  SEBUTAN_ULASAN
 }
 
 /// Satu baris per sumber per hari — hasil penarikan terjadwal.

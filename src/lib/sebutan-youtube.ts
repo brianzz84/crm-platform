@@ -33,6 +33,7 @@
 import { getTenantDb } from './tenant'
 import { ambilAccessToken, googleGet, YT_DATA } from './google-client'
 import { semaiKataKunci } from './sebutan-kata-kunci'
+import { catatSnapshotRun } from './snapshot-run'
 
 /** Scope yang wajib ada pada consent. Tanpa ini panggilan akan ditolak 403. */
 const SCOPE_YT = 'https://www.googleapis.com/auth/youtube.readonly'
@@ -97,16 +98,31 @@ export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutu
     dibaca: 0, cocok: 0, baru: 0, diperbarui: 0, dibuang: 0, milikSendiri: 0, kataKunci: 0,
   }
 
+  const mulai = Date.now()
+  /** Mencatat lari lalu mengembalikan hasilnya — dipakai di SETIAP jalan keluar,
+   *  termasuk yang berhenti sebelum satu panggilan pun dibuat. Jalan keluar yang
+   *  tidak tercatat adalah persis lubang yang membuat kolektor rusak tak
+   *  terlihat. */
+  const selesai = async (h: HasilTarikYoutube): Promise<HasilTarikYoutube> => {
+    await catatSnapshotRun(
+      slug, 'SEBUTAN_YT',
+      h.galat ? 'gagal' : 'ok',
+      h.galat ?? `${h.dibaca} dibaca, ${h.cocok} cocok, ${h.baru} baru, ${h.dibuang} dibuang`,
+      Date.now() - mulai,
+    )
+    return h
+  }
+
   const db  = await getTenantDb(slug)
   const cfg = await db.googleConfig.findUnique({ where: { tenant_slug: slug } })
 
   if (!cfg?.refresh_token) {
-    return { ...kosong, galat: 'Google belum tersambung — hubungkan lebih dulu di Pengaturan.' }
+    return selesai({ ...kosong, galat: 'Google belum tersambung — hubungkan lebih dulu di Pengaturan.' })
   }
   // Diperiksa di depan, bukan dibiarkan gagal 403 di tengah: pesan "scope kurang"
   // menunjuk ke tindakan yang jelas, sedangkan 403 mentah dari Google tidak.
   if (cfg.scopes?.length && !cfg.scopes.includes(SCOPE_YT)) {
-    return { ...kosong, galat: 'Izin YouTube belum disetujui — sambungkan ulang Google dan setujui akses YouTube.' }
+    return selesai({ ...kosong, galat: 'Izin YouTube belum disetujui — sambungkan ulang Google dan setujui akses YouTube.' })
   }
 
   await semaiKataKunci(db, slug)
@@ -115,7 +131,7 @@ export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutu
     orderBy: { urutan: 'asc' },
   })
   if (!kunci.length) {
-    return { ...kosong, galat: 'Belum ada kata kunci YouTube yang aktif.' }
+    return selesai({ ...kosong, galat: 'Belum ada kata kunci YouTube yang aktif.' })
   }
 
   let token: string
@@ -126,7 +142,7 @@ export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutu
       refresh_token: cfg.refresh_token,
     })
   } catch (e) {
-    return { ...kosong, galat: e instanceof Error ? e.message : 'Gagal menukar token Google.' }
+    return selesai({ ...kosong, galat: e instanceof Error ? e.message : 'Gagal menukar token Google.' })
   }
 
   /**
@@ -252,5 +268,5 @@ export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutu
     })
   }
 
-  return { ...hasil, galat }
+  return selesai({ ...hasil, galat })
 }

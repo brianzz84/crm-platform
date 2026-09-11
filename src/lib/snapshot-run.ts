@@ -9,7 +9,14 @@
 
 import { getTenantDb } from './tenant'
 
-export type SumberSnapshot = 'META' | 'GOOGLE'
+export type SumberSnapshot =
+  | 'META' | 'GOOGLE'
+  | 'SEBUTAN_IG' | 'SEBUTAN_YT' | 'SEBUTAN_ULASAN'
+
+/** Sumber milik modul Sebutan Publik. Dipisah supaya halaman Sebutan bisa
+ *  meringkas cakupannya sendiri tanpa ikut menampilkan Meta dan Google, yang
+ *  mengukur hal yang sama sekali berbeda. */
+export const SUMBER_SEBUTAN = ['SEBUTAN_IG', 'SEBUTAN_YT', 'SEBUTAN_ULASAN'] as const
 export type StatusSnapshot = 'ok' | 'sebagian' | 'gagal'
 
 /**
@@ -74,7 +81,12 @@ export interface RingkasSumber {
  * Hari ini TIDAK dihitung sebagai bolong: penarikan dijadwalkan pagi, dan halaman
  * yang dibuka sebelum jadwal akan salah melaporkan lubang.
  */
-export async function ringkasRiwayat(slug: string, hari = 30): Promise<RingkasSumber[]> {
+export async function ringkasRiwayat(
+  slug: string, hari = 30,
+  // Bawaan tetap META + GOOGLE supaya halaman Penarikan yang sudah ada tidak
+  // berubah perilakunya sama sekali.
+  sumberDiminta: readonly SumberSnapshot[] = ['META', 'GOOGLE'],
+): Promise<RingkasSumber[]> {
   const db = await getTenantDb(slug)
   const sejak = new Date(tanggalWib().getTime() - (hari - 1) * 86_400_000)
 
@@ -85,7 +97,7 @@ export async function ringkasRiwayat(slug: string, hari = 30): Promise<RingkasSu
 
   const hariIni = tanggalWib().toISOString().slice(0, 10)
 
-  return (['META', 'GOOGLE'] as const).map(sumber => {
+  return sumberDiminta.map(sumber => {
     const milikSumber = baris
       .filter(b => b.sumber === sumber)
       .map(b => ({

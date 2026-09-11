@@ -29,6 +29,7 @@
  */
 
 import { getTenantDb } from './tenant'
+import { catatSnapshotRun } from './snapshot-run'
 
 export interface HasilTarikUlasan {
   dibaca:     number
@@ -73,6 +74,7 @@ const denganBintang = (bintang: number, teks: string | null) => {
 export async function tarikSebutanUlasan(slug: string): Promise<HasilTarikUlasan> {
   const kosong: HasilTarikUlasan = { dibaca: 0, baru: 0, diperbarui: 0 }
 
+  const mulai = Date.now()
   const db = await getTenantDb(slug)
 
   // Yang belum pernah disalin didahulukan, lalu yang terbaru. Dengan tunggakan
@@ -140,6 +142,12 @@ export async function tarikSebutanUlasan(slug: string): Promise<HasilTarikUlasan
       hasil.diperbarui++
     }
   }
+
+  await catatSnapshotRun(
+    slug, 'SEBUTAN_ULASAN', 'ok',
+    `${hasil.dibaca} diperiksa, ${hasil.baru} disalin, ${hasil.diperbarui} diperbarui`,
+    Date.now() - mulai,
+  )
 
   return hasil
 }

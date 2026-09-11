@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import RingkasanTab from './RingkasanTab'
+import PitaCakupan from './PitaCakupan'
 import {
   NAMA_SUMBER, WARNA_SUMBER, WARNA_SENTIMEN, WARNA_RISIKO,
   angka, tanggal, kartu,
@@ -335,6 +336,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
         {galat && <div style={{ marginTop: 'var(--sp-3)', background: '#FEF2F2', color: '#B91C1C', padding: '10px 14px', borderRadius: 'var(--r-sm)', fontSize: 13, borderLeft: '3px solid #EF4444' }}>{galat}</div>}
         {kabar && <div style={{ marginTop: 'var(--sp-3)', background: '#F0FDF4', color: '#15803D', padding: '10px 14px', borderRadius: 'var(--r-sm)', fontSize: 13, borderLeft: '3px solid #22C55E' }}>{kabar}</div>}
       </div>
+
+      <PitaCakupan slug={slug} />
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--sp-4)', borderBottom: '2px solid var(--c-border)' }}>
         {([['tinjau', '📋 Peninjauan'], ['ringkas', '📊 Ringkasan']] as const).map(([k, label]) => (
