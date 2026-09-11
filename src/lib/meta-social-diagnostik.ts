@@ -358,11 +358,29 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
       `ig_hashtag_search?user_id=${cfg.ig_business_id}&q=${TAGAR_UJI}`, token)
 
     if (!rCari.ok) {
+      const pesanGalat = pesanErrorGraph(rCari)
+      // DIBEDAKAN: "terkunci App Review" BUKAN "tertutup".
+      //
+      // Probe ini pernah menyimpulkan keduanya sama, dan itu keliru. Balasan
+      // Meta yang menyebut 'Instagram Public Content Access' berarti endpointnya
+      // ADA dan kasus penggunaannya diakui — hanya menuntut peninjauan. Menuliskan
+      // "tidak bisa" akan menutup pilihan yang sebenarnya masih terbuka, dan
+      // tidak ada yang akan memeriksanya ulang setahun kemudian.
+      const terkunciReview = /Public Content Access|must be reviewed and approved/i
+        .test(pesanGalat)
+
       hasil.push({
-        kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram', status: 'gagal',
+        kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram',
+        status: terkunciReview ? 'lewati' : 'gagal',
         fase: 'Sebutan Publik',
-        pesan: `Langkah 1 (cari tagar #${TAGAR_UJI}) ditolak — ${pesanErrorGraph(rCari)}. `
-             + 'Artinya sebutan tanpa tandaan TIDAK bisa ditangkap lewat tagar.',
+        pesan: terkunciReview
+          ? `TERKUNCI APP REVIEW, bukan tertutup — ${pesanGalat} `
+          + 'Fitur "Instagram Public Content Access" mencantumkan pemantauan sentimen '
+          + 'merek sebagai kasus penggunaan yang SAH, jadi pengajuan mungkin. '
+          + 'Catatan penting sebelum memutuskan: walaupun disetujui, pencarian tagar '
+          + 'hanya menangkap unggahan bertagar dalam 24 jam terakhir — ia TIDAK '
+          + 'menangkap komentar di unggahan orang lain, dan itu tetap mustahil.'
+          : `Langkah 1 (cari tagar #${TAGAR_UJI}) ditolak — ${pesanGalat}`,
       })
     } else {
       const tagarId = String(rCari.json?.data?.[0]?.id ?? '')
