@@ -50,6 +50,8 @@ export interface HasilTarikSebutan {
   hilang:     number
   /** Muncul kembali setelah sempat ditandai hilang. */
   kembali:    number
+  /** Dilewati karena unggahan milik akun RKZ sendiri. */
+  milikSendiri: number
   /** Seluruh halaman berhasil ditelusuri sampai habis. */
   tuntas:     boolean
   galat?:     string
@@ -62,7 +64,8 @@ interface Tandaan {
 
 export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSebutan> {
   const kosong: HasilTarikSebutan = {
-    ditemukan: 0, baru: 0, diperbarui: 0, hilang: 0, kembali: 0, tuntas: false,
+    ditemukan: 0, baru: 0, diperbarui: 0, hilang: 0, kembali: 0,
+    milikSendiri: 0, tuntas: false,
   }
 
   const db  = await getTenantDb(slug)
@@ -88,8 +91,20 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
       [r.sumber_id, { id: r.id, hilang_pada: r.hilang_pada }]),
   )
 
+  /**
+   * Akun RKZ sendiri — dikeluarkan dari hasil.
+   *
+   * `/tags` mendaftar tandaan dari siapa pun, termasuk dari akun RKZ sendiri bila
+   * ia menandai dirinya di unggahannya. Konten sendiri hampir selalu dilabeli
+   * POSITIF, jadi membiarkannya masuk berarti RKZ menaikkan sentimennya sendiri
+   * dengan kata-katanya sendiri — merusak justru angka yang paling dipercaya.
+   *
+   * Dibandingkan pada username karena `/tags` mengembalikan username, bukan id.
+   */
+  const akunSendiri = (cfg.ig_msg_username ?? '').trim().toLowerCase()
+
   const terlihat = new Set<string>()
-  let ditemukan = 0, baru = 0, diperbarui = 0, kembali = 0
+  let ditemukan = 0, baru = 0, diperbarui = 0, kembali = 0, milikSendiri = 0
   let halaman = 0, tuntas = false, galat: string | undefined
 
   while (url && halaman < MAKS_HALAMAN) {
@@ -106,6 +121,16 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
     const data = (json.data ?? []) as Tandaan[]
     for (const m of data) {
       if (!m.id) continue
+
+      if (akunSendiri && (m.username ?? '').trim().toLowerCase() === akunSendiri) {
+        // TETAP ditandai terlihat. Kalau tidak, ia akan dianggap "hilang di
+        // sumber" pada penelusuran tuntas berikutnya — padahal ia ada, hanya
+        // sengaja tidak disimpan.
+        terlihat.add(m.id)
+        milikSendiri++
+        continue
+      }
+
       ditemukan++
       terlihat.add(m.id)
 
@@ -164,5 +189,5 @@ export async function tarikSebutanInstagram(slug: string): Promise<HasilTarikSeb
     hilang = r.count
   }
 
-  return { ditemukan, baru, diperbarui, hilang, kembali, tuntas, galat }
+  return { ditemukan, baru, diperbarui, hilang, kembali, milikSendiri, tuntas, galat }
 }

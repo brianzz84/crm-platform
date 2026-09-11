@@ -67,6 +67,9 @@ export interface HasilTarikYoutube {
   /** Dibuang karena frasanya tidak muncul utuh — angka ini SENGAJA dilaporkan:
    *  bila ia mendekati `dibaca`, kata kuncinya terlalu longgar. */
   dibuang:    number
+  /** Dibuang karena video milik channel RKZ sendiri. Dilaporkan terpisah dari
+   *  `dibuang` supaya tidak tertukar: yang ini bukan soal kata kunci. */
+  milikSendiri: number
   kataKunci:  number
   galat?:     string
 }
@@ -91,7 +94,7 @@ const normalkan = (s: string) =>
 
 export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutube> {
   const kosong: HasilTarikYoutube = {
-    dibaca: 0, cocok: 0, baru: 0, diperbarui: 0, dibuang: 0, kataKunci: 0,
+    dibaca: 0, cocok: 0, baru: 0, diperbarui: 0, dibuang: 0, milikSendiri: 0, kataKunci: 0,
   }
 
   const db  = await getTenantDb(slug)
@@ -124,6 +127,24 @@ export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutu
     })
   } catch (e) {
     return { ...kosong, galat: e instanceof Error ? e.message : 'Gagal menukar token Google.' }
+  }
+
+  /**
+   * Channel RKZ sendiri — WAJIB dikeluarkan dari hasil.
+   *
+   * Pencarian "RKZ Surabaya" tentu saja menemukan video yang diunggah RKZ
+   * sendiri, dan tanpa penyaring ini konten kita masuk sebagai "sebutan publik
+   * tentang RKZ". Akibatnya bukan sekadar baris berlebih: konten sendiri hampir
+   * selalu dilabeli POSITIF, sehingga RKZ menaikkan sentimennya sendiri dengan
+   * kata-katanya sendiri. Itu merusak angka yang justru paling dipercaya orang.
+   *
+   * Kalau id channel belum tersimpan di konfigurasi, ditanyakan sekali — satu
+   * unit kuota, dibanding seluruh laporan sentimen yang salah.
+   */
+  let milikSendiri = cfg.youtube_channel_id?.trim() || ''
+  if (!milikSendiri) {
+    const rCh = await googleGet(`${YT_DATA}/channels?part=id&mine=true`, token)
+    if (rCh.ok) milikSendiri = String(rCh.json?.items?.[0]?.id ?? '')
   }
 
   // SATU kueri untuk seluruh yang sudah tersimpan — bukan findUnique per video.
@@ -177,6 +198,11 @@ export async function tarikSebutanYoutube(slug: string): Promise<HasilTarikYoutu
         const sn      = it.snippet
         if (!videoId || !sn) continue
         hasil.dibaca++
+
+        // Penyaring milik sendiri didahulukan sebelum saringan frasa: video RKZ
+        // hampir pasti memuat frasanya utuh, jadi kalau urutannya dibalik ia
+        // akan lolos dan tersimpan.
+        if (milikSendiri && sn.channelId === milikSendiri) { hasil.milikSendiri++; continue }
 
         const judul = (sn.title ?? '').trim()
         const isi   = (sn.description ?? '').trim()

@@ -48,6 +48,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       ig.diperbarui ? `${ig.diperbarui} diperbarui` : '',
       ig.hilang     ? `${ig.hilang} ditandai hilang di sumber` : '',
       ig.kembali    ? `${ig.kembali} muncul kembali` : '',
+      ig.milikSendiri ? `${ig.milikSendiri} dilewati (unggahan RKZ sendiri)` : '',
       ig.tuntas ? '' : 'penelusuran BELUM tuntas — penandaan hilang dilewati',
     ].filter(Boolean).join(', ')
 
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       yt.baru       ? `${yt.baru} baru` : '',
       yt.diperbarui ? `${yt.diperbarui} diperbarui` : '',
       yt.dibuang    ? `${yt.dibuang} dibuang karena frasa tidak muncul utuh` : '',
+      yt.milikSendiri ? `${yt.milikSendiri} dilewati (video channel RKZ sendiri)` : '',
     ].filter(Boolean).join(', ')
 
     const bagianUl = [
