@@ -135,6 +135,16 @@ async function main() {
         return hasil
       }
 
+      if (job.name === 'sebutan-komentar') {
+        const { tarikSebutanKomentar } = await import('@/lib/sebutan-komentar')
+        const h = await tarikSebutanKomentar(job.data.tenantSlug)
+        job.log(`[SEBUTAN_KOMENTAR] IG ${h.ig.dibaca} komentar/${h.ig.baru} baru` +
+                `${h.ig.galat ? ' — ' + h.ig.galat : ''} · ` +
+                `FB ${h.fb.dibaca} komentar/${h.fb.baru} baru` +
+                `${h.fb.galat ? ' — ' + h.fb.galat : ''}`)
+        return h
+      }
+
       if (job.name === 'sebutan-ulasan') {
         const { tarikSebutanUlasan } = await import('@/lib/sebutan-ulasan')
         const hasil = await tarikSebutanUlasan(job.data.tenantSlug)

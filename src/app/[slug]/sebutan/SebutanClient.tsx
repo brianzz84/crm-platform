@@ -130,6 +130,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
         json.instagram?.galat ? `Instagram: ${json.instagram.galat}` : '',
         json.youtube?.galat   ? `YouTube: ${json.youtube.galat}` : '',
         json.ulasan?.galat    ? `Ulasan Google: ${json.ulasan.galat}` : '',
+        json.komentar?.ig?.galat ? `Komentar IG: ${json.komentar.ig.galat}` : '',
+        json.komentar?.fb?.galat ? `Komentar FB: ${json.komentar.fb.galat}` : '',
       ].filter(Boolean)
       if (gagal.length) setGalat(gagal.join(' · '))
       ambil()
@@ -379,8 +381,9 @@ export default function SebutanClient({ slug }: { slug: string }) {
         <div style={{ ...kartu, color: 'var(--c-text-muted)', fontSize: 'var(--font-size-sm)', lineHeight: 1.7 }}>
           {totalSebutan === 0
             ? <>Belum ada sebutan tersimpan. Tekan <strong>⤓ Tarik sekarang</strong> untuk
-               mengambil sebutan Instagram, YouTube, dan ulasan Google — penarikan pertama
-               membawa ratusan konten lama sekaligus.</>
+               mengambil sebutan Instagram, YouTube, ulasan Google, dan komentar di
+               unggahan RKZ sendiri — penarikan pertama membawa ratusan konten lama
+               sekaligus.</>
             : saring === 'perlu' ? 'Tidak ada yang perlu ditinjau.'
             : saring === 'tanpateks' ? 'Tidak ada sebutan tanpa takarir yang tersisa.'
             : 'Tidak ada pada saringan ini.'}

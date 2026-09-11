@@ -12,11 +12,15 @@ import { getTenantDb } from './tenant'
 export type SumberSnapshot =
   | 'META' | 'GOOGLE'
   | 'SEBUTAN_IG' | 'SEBUTAN_YT' | 'SEBUTAN_ULASAN'
+  | 'SEBUTAN_KOMENTAR_IG' | 'SEBUTAN_KOMENTAR_FB'
 
 /** Sumber milik modul Sebutan Publik. Dipisah supaya halaman Sebutan bisa
  *  meringkas cakupannya sendiri tanpa ikut menampilkan Meta dan Google, yang
  *  mengukur hal yang sama sekali berbeda. */
-export const SUMBER_SEBUTAN = ['SEBUTAN_IG', 'SEBUTAN_YT', 'SEBUTAN_ULASAN'] as const
+export const SUMBER_SEBUTAN = [
+  'SEBUTAN_IG', 'SEBUTAN_YT', 'SEBUTAN_ULASAN',
+  'SEBUTAN_KOMENTAR_IG', 'SEBUTAN_KOMENTAR_FB',
+] as const
 export type StatusSnapshot = 'ok' | 'sebagian' | 'gagal'
 
 /**

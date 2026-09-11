@@ -1517,6 +1517,11 @@ enum SumberSnapshot {
   SEBUTAN_IG
   SEBUTAN_YT
   SEBUTAN_ULASAN
+  /// Dipisah per kanal: keduanya memakai token yang sama tetapi endpoint dan
+  /// bentuk balasan berbeda, dan salah satunya bisa gagal sementara yang lain
+  /// sehat. Digabung, kegagalan satu menyamar sebagai kegagalan keduanya.
+  SEBUTAN_KOMENTAR_IG
+  SEBUTAN_KOMENTAR_FB
 }
 
 /// Satu baris per sumber per hari — hasil penarikan terjadwal.

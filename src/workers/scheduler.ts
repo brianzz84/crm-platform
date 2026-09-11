@@ -255,6 +255,27 @@ export async function runScanner(job: Job) {
         enqueued++
       }
 
+      // KOMENTAR DI UNGGAHAN SENDIRI: sekali sehari, jam yang sama.
+      //
+      // Bisa saja lebih sering — keluhan di kolom komentar menuntut jawaban
+      // cepat. Tetapi tiap lari menyapu puluhan unggahan, dan menaikkannya ke
+      // tiap jam berarti 24x panggilan untuk membaca ulang komentar yang sama.
+      // Naikkan hanya bila terbukti ada keluhan yang terlambat tertangani.
+      if (snap?.aktif && snap.jam_snapshot === hourWib) {
+        await queue.add(
+          'sebutan-komentar',
+          { type: 'SEBUTAN_KOMENTAR', tenantSlug: tenant.slug },
+          {
+            jobId: `sebutan-komentar-${tenant.slug}-${nowWib.toISOString().slice(0, 10)}`,
+            attempts: 2,
+            backoff: { type: 'fixed', delay: 60_000 },
+            removeOnComplete: 10,
+            removeOnFail: 20,
+          },
+        )
+        enqueued++
+      }
+
       // JEMBATAN ULASAN GOOGLE -> SEBUTAN: sekali sehari, setelah snapshot
       // Google mengisi GbpReview. Tidak memanggil Google sama sekali, jadi ia
       // tidak menambah kuota apa pun — yang dibatasi cuma waktu prosesnya.

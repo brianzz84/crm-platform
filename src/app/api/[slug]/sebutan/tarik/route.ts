@@ -22,6 +22,7 @@ import { requireTenantPermission } from '@/lib/auth'
 import { tarikSebutanInstagram } from '@/lib/sebutan-instagram'
 import { tarikSebutanYoutube } from '@/lib/sebutan-youtube'
 import { tarikSebutanUlasan } from '@/lib/sebutan-ulasan'
+import { tarikSebutanKomentar } from '@/lib/sebutan-komentar'
 
 type Ctx = { params: { slug: string } }
 
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // Basis-data-ke-basis-data: nol kuota, nol kredensial. Dijalankan terakhir
     // supaya kegagalan jaringan pada dua sumber di atas tidak menghalanginya.
     const ul = await tarikSebutanUlasan(params.slug)
+    const km = await tarikSebutanKomentar(params.slug)
 
     // Angka dilaporkan apa adanya, termasuk `tuntas`. Peninjau perlu tahu apakah
     // penelusuran sampai habis — karena hanya pada penelusuran tuntas angka
@@ -72,20 +74,34 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       !ul.baru && !ul.diperbarui ? 'tidak ada yang baru' : '',
     ].filter(Boolean).join(', ')
 
+    const bagianKm = (nama: string, h: typeof km.ig) => h.galat
+      ? `${nama}: gagal — ${h.galat}`
+      : `${nama}: ${[
+          `${h.unggahan} unggahan disapu`,
+          `${h.dibaca} komentar`,
+          h.baru         ? `${h.baru} baru` : '',
+          h.milikSendiri ? `${h.milikSendiri} dilewati (balasan RKZ sendiri)` : '',
+          h.hilang       ? `${h.hilang} ditandai hilang` : '',
+        ].filter(Boolean).join(', ')}.`
+
     const pesan = [
       `Instagram: ${ig.galat ? `gagal — ${ig.galat}` : bagianIg + '.'}`,
       `YouTube: ${yt.galat ? `gagal — ${yt.galat}` : bagianYt + '.'}`,
       `Ulasan Google: ${ul.galat ? `gagal — ${ul.galat}` : bagianUl + '.'}`,
+      bagianKm('Komentar IG', km.ig),
+      bagianKm('Komentar FB', km.fb),
     ].join(' ')
 
     return NextResponse.json({
       // Berhasil bila SETIDAKNYA satu sumber jalan. Pesannya tetap menyebutkan
       // yang gagal, jadi tidak ada kegagalan yang tersembunyi di balik `true`.
-      success: !(ig.galat && yt.galat && ul.galat),
+      // Berhasil bila SETIDAKNYA satu sumber jalan.
+      success: !(ig.galat && yt.galat && ul.galat && km.ig.galat && km.fb.galat),
       pesan,
       instagram: ig,
       youtube:   yt,
       ulasan:    ul,
+      komentar:  km,
     })
   } catch (e) {
     return NextResponse.json(

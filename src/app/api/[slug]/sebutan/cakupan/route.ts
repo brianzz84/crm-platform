@@ -33,12 +33,16 @@ const KE_SUMBER_SEBUTAN: Record<string, string> = {
   SEBUTAN_IG:     'IG_TAG',
   SEBUTAN_YT:     'YOUTUBE',
   SEBUTAN_ULASAN: 'GOOGLE_ULASAN',
+  SEBUTAN_KOMENTAR_IG: 'KOMENTAR_IG',
+  SEBUTAN_KOMENTAR_FB: 'KOMENTAR_FB',
 }
 
 const LABEL: Record<string, string> = {
   SEBUTAN_IG:     'Tandaan Instagram',
   SEBUTAN_YT:     'Pencarian YouTube',
   SEBUTAN_ULASAN: 'Ulasan Google',
+  SEBUTAN_KOMENTAR_IG: 'Komentar IG',
+  SEBUTAN_KOMENTAR_FB: 'Komentar FB',
 }
 
 /** Berapa hari riwayat yang diperiksa untuk mencari hari bolong. */
