@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import RingkasanTab from './RingkasanTab'
 import PitaCakupan from './PitaCakupan'
+import GrafTab from './GrafTab'
 import {
   NAMA_SUMBER, WARNA_SUMBER, WARNA_SENTIMEN, WARNA_RISIKO,
   angka, tanggal, kartu,
@@ -81,7 +82,7 @@ export default function SebutanClient({ slug }: { slug: string }) {
   const [galat, setGalat]     = useState('')
   const [kabar, setKabar]     = useState('')
   const [modal, setModal]     = useState<Baris | null>(null)
-  const [tab, setTab]         = useState<'tinjau' | 'ringkas'>('tinjau')
+  const [tab, setTab]         = useState<'tinjau' | 'ringkas' | 'graf'>('tinjau')
   /** Ditandai lewat ref, bukan state: putaran yang sedang berjalan membaca
    *  nilainya langsung, sementara state baru terlihat pada render berikutnya. */
   const hentikan = useRef(false)
@@ -342,7 +343,8 @@ export default function SebutanClient({ slug }: { slug: string }) {
       <PitaCakupan slug={slug} />
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 'var(--sp-4)', borderBottom: '2px solid var(--c-border)' }}>
-        {([['tinjau', '📋 Peninjauan'], ['ringkas', '📊 Ringkasan']] as const).map(([k, label]) => (
+        {([['tinjau', '📋 Peninjauan'], ['ringkas', '📊 Ringkasan'],
+           ['graf', '🕸 Jaringan']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             padding: '9px 18px', border: 'none', background: 'transparent', cursor: 'pointer',
             fontFamily: 'inherit', fontSize: 13, fontWeight: tab === k ? 800 : 500,
@@ -353,7 +355,9 @@ export default function SebutanClient({ slug }: { slug: string }) {
         ))}
       </div>
 
-      {tab === 'ringkas' ? <RingkasanTab slug={slug} topik={topik} poli={poli} /> : <>
+      {tab === 'ringkas' ? <RingkasanTab slug={slug} topik={topik} poli={poli} />
+       : tab === 'graf'   ? <GrafTab slug={slug} topik={topik} />
+       : <>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         {([['perlu', 'Perlu ditinjau'], ['tanpateks', 'Tanpa teks'],
