@@ -62,6 +62,106 @@ function fotoBesar(url: string): string {
   return /=[^=/]*$/.test(url) ? url.replace(/=[^=/]*$/, '=s1600') : `${url}=s1600`
 }
 
+/**
+ * Istilah yang DIKETIK ORANG di Google & Maps sampai menemukan listing ini.
+ *
+ * Ditaruh di tab Google Bisnis, bukan di Sebutan Publik, karena ia menjawab
+ * pertanyaan yang berlawanan arah: Sebutan Publik memantau apa yang orang
+ * katakan TENTANG kita; ini menunjukkan bagaimana orang MENEMUKAN kita.
+ * Keduanya sama-sama disebut "kata kunci" dan sering tertukar.
+ */
+function KataKunciGoogle({ slug, lokasi, judul }: {
+  slug: string; lokasi: string; judul: string
+}) {
+  const [data, setData] = useState<{
+    istilah: { istilah: string; jumlah: number | null; ambang: number | null }[]
+    totalPasti: number; jumlahAmbang: number
+    bulanMulai: string; bulanSelesai: string
+  } | null>(null)
+  const [muat, setMuat]   = useState(false)
+  const [galat, setGalat] = useState('')
+
+  useEffect(() => {
+    if (!lokasi) return
+    let batal = false
+    setMuat(true); setGalat(''); setData(null)
+    fetch(`/api/${slug}/kanal-publik/google-bisnis/kata-kunci?lokasi=${encodeURIComponent(lokasi)}`)
+      .then(r => r.json())
+      .then(j => {
+        if (batal) return
+        if (j.success) setData(j)
+        else setGalat(j.error ?? 'Gagal memuat istilah pencarian.')
+      })
+      .catch(() => { if (!batal) setGalat('Gagal menghubungi server.') })
+      .finally(() => { if (!batal) setMuat(false) })
+    return () => { batal = true }
+  }, [slug, lokasi])
+
+  if (!lokasi) return null
+
+  const puncak = Math.max(...(data?.istilah ?? []).map(i => i.jumlah ?? i.ambang ?? 0), 1)
+
+  return (
+    <div style={kartu}>
+      <div style={{ padding: 'var(--sp-5)', borderBottom: '1px solid var(--c-border)' }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Yang Diketik Orang di Google</div>
+        <div style={{ fontSize: 11.5, color: 'var(--c-text-muted)', marginTop: 3, lineHeight: 1.6 }}>
+          Kueri penelusuran Google &amp; Maps yang berakhir di <strong>{judul}</strong>.
+          Ini kueri <strong>mereka</strong> untuk menemukan kita — berbeda dari kata kunci
+          di Sebutan Publik, yang merupakan kueri kita untuk menemukan mereka.
+          {data && <> Periode {data.bulanMulai} s/d {data.bulanSelesai}.</>}
+        </div>
+      </div>
+
+      {galat ? (
+        <div style={{ padding: 'var(--sp-5)', fontSize: 13, color: '#B91C1C' }}>{galat}</div>
+      ) : muat ? (
+        <div style={{ padding: 'var(--sp-5)', fontSize: 13, color: 'var(--c-text-muted)' }}>Memuat…</div>
+      ) : !data?.istilah.length ? (
+        <div style={{ padding: 'var(--sp-5)', fontSize: 13, color: 'var(--c-text-muted)', lineHeight: 1.7 }}>
+          Google belum menyediakan istilah pencarian untuk profil ini — biasanya karena
+          volume pencariannya di bawah ambang pelaporan.
+        </div>
+      ) : (
+        <>
+          {/* Ambang DINYATAKAN, bukan disamarkan jadi angka. Google menyembunyikan
+              angka pasti untuk istilah bervolume rendah; menjumlahkannya sebagai
+              batas atas melahirkan total yang tidak pernah benar. */}
+          {data.jumlahAmbang > 0 && (
+            <div style={{ padding: '10px var(--sp-5)', fontSize: 11.5, color: '#92400E', background: '#FFFBEB', borderBottom: '1px solid var(--c-border)', lineHeight: 1.6 }}>
+              <strong>{angka(data.jumlahAmbang)} istilah</strong> hanya diberi batas atas
+              oleh Google (“&lt;N”), bukan angka pasti — jadi keduanya tidak bisa
+              dijumlahkan menjadi satu total. Yang pasti berjumlah{' '}
+              <strong>{angka(data.totalPasti)}</strong> tayangan.
+            </div>
+          )}
+          <div style={{ padding: 'var(--sp-4) var(--sp-5)', display: 'grid', gap: 7 }}>
+            {data.istilah.slice(0, 25).map(i => (
+              <div key={i.istilah} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: '0 0 45%', fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.istilah}>
+                  {i.istilah}
+                </div>
+                <div style={{ flex: 1, background: 'var(--c-bg-subtle,#F1F5F9)', borderRadius: 999, height: 13, overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${((i.jumlah ?? i.ambang ?? 0) / puncak) * 100}%`, height: '100%',
+                    borderRadius: 999,
+                    // Yang berambang diberi warna lebih pudar — pembaca harus bisa
+                    // melihat sekilas mana yang angkanya sungguhan.
+                    background: i.jumlah != null ? '#0F9D58' : '#CBD5E1',
+                  }} />
+                </div>
+                <div style={{ flex: '0 0 62px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: i.jumlah != null ? 'var(--c-text)' : 'var(--c-text-faint)' }}>
+                  {i.jumlah != null ? angka(i.jumlah) : `<${angka(i.ambang ?? 0)}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 const kartu: React.CSSProperties = {
   background: 'white', border: '1px solid var(--c-border)',
   borderRadius: 'var(--r-md)', marginBottom: 'var(--sp-5)',
@@ -293,6 +393,8 @@ export default function GoogleBisnisTab(
           </button>
         )}
       </div>
+
+      <KataKunciGoogle slug={slug} lokasi={pilih} judul={terpilih?.judul ?? ''} />
 
       {/* ── Daftar ulasan lokasi terpilih ────────────────────────────────── */}
       <div style={kartu}>
