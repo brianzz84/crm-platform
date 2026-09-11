@@ -332,6 +332,80 @@ export async function jalankanProbeMedsos(slug: string, cfg: ConfigProbe): Promi
     }
   }
 
+  // 6a-2) PENCARIAN TAGAR — satu-satunya jalan Meta menemukan unggahan orang lain
+  //       yang menyebut RKZ TANPA menandai akunnya.
+  //
+  //       Ini kebutuhan Sebutan Publik, bukan kebutuhan dashboard. Ditaruh di
+  //       probe supaya bisa dijawab SEBELUM kolektornya dibangun — jalur token
+  //       Halaman sudah pernah ditolak untuk `/tags` ("(#10) Application does not
+  //       have permission"), dan `ig_hashtag_search` lewat jalur yang sama.
+  //
+  //       Diuji DUA LANGKAH karena kegagalannya punya arti berbeda:
+  //         - langkah 1 gagal -> endpoint pencarian tagar tertutup bagi aplikasi ini
+  //         - langkah 1 lolos, langkah 2 gagal -> tagar bisa dicari tetapi isinya
+  //           tidak boleh dibaca; itu keadaan yang sepenuhnya berbeda dan
+  //           menentukan apakah fiturnya layak dibangun.
+  //
+  //       Batas yang perlu diketahui bila hasilnya hijau: maksimal 30 tagar unik
+  //       per 7 hari berjalan, dan `recent_media` hanya memuat 24 jam terakhir —
+  //       jadi wajib ditarik harian, yang kebetulan sudah kita lakukan.
+  if (!cfg.ig_business_id) {
+    hasil.push({ kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram', status: 'lewati',
+      pesan: 'IG Business ID belum diisi di form.', fase: 'Sebutan Publik' })
+  } else {
+    const TAGAR_UJI = 'rkzsurabaya'
+    const rCari = await graphGet(
+      `ig_hashtag_search?user_id=${cfg.ig_business_id}&q=${TAGAR_UJI}`, token)
+
+    if (!rCari.ok) {
+      hasil.push({
+        kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram', status: 'gagal',
+        fase: 'Sebutan Publik',
+        pesan: `Langkah 1 (cari tagar #${TAGAR_UJI}) ditolak — ${pesanErrorGraph(rCari)}. `
+             + 'Artinya sebutan tanpa tandaan TIDAK bisa ditangkap lewat tagar.',
+      })
+    } else {
+      const tagarId = String(rCari.json?.data?.[0]?.id ?? '')
+      if (!tagarId) {
+        // Endpoint hidup tetapi tagarnya belum pernah dipakai siapa pun. Itu
+        // jawaban yang SAH dan berbeda dari ditolak — fiturnya bisa dibangun,
+        // hanya tagar ujinya yang perlu diganti.
+        hasil.push({
+          kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram', status: 'ok',
+          fase: 'Sebutan Publik',
+          pesan: `Endpoint terbuka, tetapi #${TAGAR_UJI} tidak dikenali Instagram `
+               + '(belum pernah dipakai). Coba tagar lain sebelum menyimpulkan.',
+          detail: potong(rCari.json),
+        })
+      } else {
+        const rMedia = await graphGet(
+          `${tagarId}/recent_media?user_id=${cfg.ig_business_id}`
+          + '&fields=id,caption,permalink,timestamp,media_type&limit=25', token)
+
+        if (rMedia.ok) {
+          const jml = (rMedia.json?.data ?? []).length
+          hasil.push({
+            kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram', status: 'ok',
+            fase: 'Sebutan Publik',
+            pesan: `TERBUKA. #${TAGAR_UJI} ditemukan dan ${jml} unggahan 24 jam terakhir `
+                 + 'bisa dibaca. Sebutan tanpa tandaan bisa ditangkap lewat tagar — '
+                 + 'batasnya 30 tagar unik per 7 hari dan hanya 24 jam ke belakang, '
+                 + 'jadi wajib ditarik harian.',
+            detail: potong(rMedia.json),
+          })
+        } else {
+          hasil.push({
+            kunci: 'ig_hashtag', label: 'Pencarian Tagar Instagram', status: 'gagal',
+            fase: 'Sebutan Publik',
+            pesan: `Langkah 1 lolos (tagar ditemukan), langkah 2 ditolak — `
+                 + `${pesanErrorGraph(rMedia)}. Tagar bisa DICARI tetapi isinya tidak `
+                 + 'boleh dibaca, jadi kolektornya tetap tidak bisa dibangun.',
+          })
+        }
+      }
+    }
+  }
+
   // 6b) Metric per-konten IG. Metric yang sah berbeda antar tipe konten
   //     (REELS/VIDEO vs IMAGE), jadi tipe contohnya ikut dilaporkan.
   await temukanMetrik('ig_media_insights', `Instagram Insights (per konten — ${contohMediaTipe || 'konten'})`,
