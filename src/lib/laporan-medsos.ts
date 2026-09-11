@@ -14,6 +14,19 @@ import { getTenantDb } from './tenant'
 
 /** Metrik konten diambil dari baris berjalan (umur -1) yang disegarkan tiap malam. */
 const UMUR_TERAKHIR = -1
+/**
+ * Umur tetap yang dipakai MEMBANDINGKAN konten satu sama lain.
+ *
+ * UMUR_TERAKHIR tidak boleh dipakai untuk itu. Ia angka berjalan, jadi unggahan
+ * tiga hari lalu diadu dengan unggahan delapan bulan lalu pada nilai kumulatif
+ * masing-masing — dan yang lama pasti menang karena punya waktu delapan bulan
+ * lebih banyak untuk mengumpulkan. Perbandingan semacam itu mengukur UMUR, bukan
+ * mutu kontennya.
+ *
+ * H+7 dipilih karena cukup panjang menangkap sebagian besar interaksi dan cukup
+ * pendek sehingga hampir semua konten punya barisnya.
+ */
+const UMUR_BANDING = 7
 
 export interface SelKonten { jumlah: number; jangkauan: number; interaksi: number; suka: number }
 
@@ -64,7 +77,14 @@ export interface LaporanMedsos {
   sifatFormatBulan: { sifat: string; nama: string; warna: string; sel: Record<string, SelKonten>; total: SelKonten }[]
 
   /** Tabel 2.8 — engagement per sifat × format sepanjang periode. */
-  engagementSifat: { sifat: string; nama: string; warna: string; perFormat: Record<string, SelKonten>; total: SelKonten }[]
+  engagementSifat: {
+    sifat: string; nama: string; warna: string
+    perFormat: Record<string, SelKonten>; total: SelKonten
+    /** Median laju interaksi (%) pada H+7. `null` bila tak satu pun konten
+     *  sifat ini punya snapshot umur tetap. */
+    lajuMedian: number | null
+    jumlahLaju: number
+  }[]
 
   /** Tabel 2.11 — konten terbaik tiap format. */
   teratasPerFormat: {
@@ -104,14 +124,49 @@ export interface LaporanMedsos {
   /** Berapa konten belum bertanda — penentu apakah tabel sifat layak dipercaya. */
   belumDitandai: number
   totalKonten: number
+  /** Konten yang punya snapshot H+7, jadi ikut menghitung laju interaksi.
+   *  Konten yang terbit sebelum snapshot malam berjalan tidak punya baris itu
+   *  dan tidak akan pernah punya — waktunya sudah lewat. */
+  kontenDenganLaju: number
 }
 
 const kosongSel = (): SelKonten => ({ jumlah: 0, jangkauan: 0, interaksi: 0, suka: 0 })
+
+/**
+ * Median, BUKAN rerata.
+ *
+ * Satu unggahan yang viral menarik rerata seluruh kategorinya ke atas, dan
+ * kesimpulan "sifat ini paling berhasil" lalu berdiri di atas satu kejadian yang
+ * tidak terulang. Median menjawab pertanyaan yang sebenarnya ditanyakan tim:
+ * unggahan yang BIASA dari sifat ini biasanya sebagus apa.
+ *
+ * NAMANYA SENGAJA BERBEDA dari `median` lokal di dalam `rakitLaporan`. Yang di
+ * sana membulatkan — benar untuk milidetik tonton, tetapi merusak laju interaksi
+ * yang bernilai satuan persen (1,37% akan menjadi 1%). Dan karena yang di sana
+ * `const` berblok fungsi, memakai nama yang sama membuat pemanggilan dari baris
+ * yang lebih awal jatuh ke TDZ-nya dan melempar saat dijalankan — bukan saat
+ * dikompilasi.
+ */
+function medianTepat(v: number[]): number | null {
+  if (!v.length) return null
+  const u = [...v].sort((a, b) => a - b)
+  const t = u.length >> 1
+  return u.length % 2 ? u[t] : (u[t - 1] + u[t]) / 2
+}
 const tambah = (a: SelKonten, b: Partial<SelKonten>) => {
   a.jumlah    += b.jumlah    ?? 1
   a.jangkauan += b.jangkauan ?? 0
   a.interaksi += b.interaksi ?? 0
   a.suka      += b.suka      ?? 0
+}
+
+/** Bentuk snapshot yang benar-benar dibaca di berkas ini. Sengaja tidak memakai
+ *  tipe Prisma penuh: yang dipakai hanya sebagian kecil kolomnya. */
+interface BarisSnapshot {
+  umur_hari: number
+  jangkauan: number; tayangan: number; interaksi: number; suka: number
+  rerata_tonton_ms: number | null
+  laju_lewat: number | null
 }
 
 export type KanalLaporan = 'IG' | 'FB' | 'YOUTUBE' | 'GA4'
@@ -127,7 +182,10 @@ export async function rakitLaporan(
         tenant_slug: slug, kanal,
         terbit_pada: { gte: new Date(mulai + 'T00:00:00Z'), lte: new Date(selesai + 'T23:59:59Z') },
       },
-      include: { snapshots: { where: { umur_hari: UMUR_TERAKHIR }, take: 1 } },
+      // DUA snapshot, bukan satu. UMUR_TERAKHIR dipakai untuk angka kumulatif
+      // di tabel-tabel jumlah; UMUR_BANDING dipakai KHUSUS membandingkan konten
+      // satu sama lain — lihat catatan pada UMUR_BANDING.
+      include: { snapshots: { where: { umur_hari: { in: [UMUR_TERAKHIR, UMUR_BANDING] } } } },
       orderBy: { terbit_pada: 'asc' },
     }),
     db.socialSifatLibrary.findMany({
@@ -154,7 +212,10 @@ export async function rakitLaporan(
   const sifatTerpakai = new Set<string>()
 
   const baris = isi.map((k: any) => {
-    const s = k.snapshots[0]
+    const cari = (umur: number) =>
+      (k.snapshots as BarisSnapshot[]).find(x => x.umur_hari === umur)
+    const s  = cari(UMUR_TERAKHIR)
+    const s7 = cari(UMUR_BANDING)
     const bulan = k.terbit_pada.toISOString().slice(0, 7)
     bulanSet.add(bulan)
     formatSet.add(k.jenis)
@@ -169,6 +230,10 @@ export async function rakitLaporan(
       // eksklusif, jadi ketiadaan di sini berarti "tidak berlaku".
       rerataTontonMs: (s?.rerata_tonton_ms ?? null) as number | null,
       lajuLewat:      (s?.laju_lewat ?? null) as number | null,
+      // Laju interaksi pada umur yang SAMA untuk semua konten. `null` bila
+      // konten ini tidak punya baris H+7 — dibedakan dari 0, dan yang null
+      // dikeluarkan dari perhitungan alih-alih dihitung sebagai nol.
+      laju7: s7 && s7.jangkauan > 0 ? (s7.interaksi / s7.jangkauan) * 100 : null,
     }
   })
 
@@ -211,12 +276,21 @@ export async function rakitLaporan(
   const engagementSifat = semuaSifat.map(s => {
     const perFormat: Record<string, SelKonten> = {}
     const total = kosongSel()
+    const laju: number[] = []
     for (const r of baris) {
       if ((r.sifat ?? '') !== s.kode) continue
       ;(perFormat[r.jenis] ??= kosongSel())
       tambah(perFormat[r.jenis], r); tambah(total, r)
+      if (r.laju7 !== null) laju.push(r.laju7)
     }
-    return { sifat: s.kode, nama: s.nama, warna: s.warna, perFormat, total }
+    return {
+      sifat: s.kode, nama: s.nama, warna: s.warna, perFormat, total,
+      // Laju interaksi khas sifat ini, diukur pada umur yang sama untuk semua.
+      // `jumlahLaju` ikut dikembalikan supaya angka yang berdiri di atas dua
+      // unggahan tidak dibaca setara dengan yang berdiri di atas empat puluh.
+      lajuMedian: medianTepat(laju),
+      jumlahLaju: laju.length,
+    }
   }).filter(x => x.total.jumlah > 0)
 
   // ── Tabel 2.11 ──
@@ -327,5 +401,6 @@ export async function rakitLaporan(
     jumlahPerFormat, sifatFormatBulan, engagementSifat, teratasPerFormat,
     belumDitandai: baris.filter(r => !r.sifat).length,
     totalKonten: baris.length,
+    kontenDenganLaju: baris.filter(r => r.laju7 !== null).length,
   }
 }

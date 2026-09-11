@@ -29,7 +29,11 @@ interface Laporan {
   format: string[]
   jumlahPerFormat: { format: string; perBulan: Record<string, number>; total: number }[]
   sifatFormatBulan: { sifat: string; nama: string; warna: string; sel: Record<string, Sel>; total: Sel }[]
-  engagementSifat: { sifat: string; nama: string; warna: string; perFormat: Record<string, Sel>; total: Sel }[]
+  engagementSifat: {
+    sifat: string; nama: string; warna: string
+    perFormat: Record<string, Sel>; total: Sel
+    lajuMedian: number | null; jumlahLaju: number
+  }[]
   teratasPerFormat: {
     format: string
     konten: { id: string; teks: string; tanggal: string; permalink: string; gambar: string
@@ -37,6 +41,7 @@ interface Laporan {
   }[]
   belumDitandai: number
   totalKonten: number
+  kontenDenganLaju: number
 }
 
 const angka = (n: number) => Math.round(n).toLocaleString('id-ID')
@@ -426,6 +431,24 @@ export default function LaporanTab(
           {/* ── Engagement per sifat ── */}
           <div style={kartu}>
             <div style={judulKartu}>Interaksi Berdasarkan Sifat dan Format</div>
+            {/* Kolom "laju khas" adalah satu-satunya kolom di tabel ini yang boleh
+                dipakai membandingkan sifat satu sama lain. Kolom interaksi di
+                sebelahnya adalah JUMLAH, jadi ia terutama mencerminkan berapa
+                banyak konten sifat itu yang diterbitkan — bukan seberapa
+                mengena. Keterangan ini ada karena tanpanya orang membaca kolom
+                yang salah, dan itu persis yang sudah terjadi. */}
+            <div style={{ padding: '10px var(--sp-5)', fontSize: 11, color: 'var(--c-text-muted)', borderBottom: '1px solid var(--c-border)', lineHeight: 1.65 }}>
+              Kolom <strong>interaksi</strong> adalah jumlah — ia naik karena kontennya banyak,
+              belum tentu karena mengena. Untuk membandingkan sifat satu sama lain, pakai{' '}
+              <strong>laju khas</strong>: interaksi dibagi jangkauan, diukur pada umur yang sama
+              (H+7) untuk semua konten, dan diambil <strong>mediannya</strong> supaya satu unggahan
+              viral tidak mengangkat seluruh kategorinya.
+              {typeof data.kontenDenganLaju === 'number' && data.totalKonten > 0 && (
+                <> Tercakup {data.kontenDenganLaju} dari {data.totalKonten} konten;
+                  yang terbit sebelum pencatatan malam berjalan tidak punya angka H+7 dan
+                  tidak akan pernah punya.</>
+              )}
+            </div>
             <div style={gulir}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
                 <thead><tr>
@@ -433,6 +456,7 @@ export default function LaporanTab(
                   {data.format.map(f => <th key={f} style={th}>{f}</th>)}
                   <th style={th}>Total</th>
                   <th style={th}>Jangkauan</th>
+                  <th style={th}>Laju khas</th>
                 </tr></thead>
                 <tbody>
                   {data.engagementSifat.map(r => (
@@ -444,6 +468,20 @@ export default function LaporanTab(
                       {data.format.map(f => <td key={f} style={td}>{r.perFormat[f] ? angka(r.perFormat[f].interaksi) : '–'}</td>)}
                       <td style={{ ...td, fontWeight: 800, color: 'var(--c-primary)' }}>{angka(r.total.interaksi)}</td>
                       <td style={{ ...td, color: 'var(--c-text-muted)' }}>{angka(r.total.jangkauan)}</td>
+                      <td style={{ ...td, fontWeight: 800 }}>
+                        {r.lajuMedian === null ? (
+                          <span style={{ color: 'var(--c-text-faint)', fontWeight: 400 }}>–</span>
+                        ) : (
+                          <>
+                            {r.lajuMedian.toFixed(2)}%
+                            {/* n ditampilkan karena median dari dua unggahan dan
+                                median dari empat puluh tidak boleh terbaca setara. */}
+                            <span style={{ fontWeight: 400, fontSize: 10, color: 'var(--c-text-faint)' }}>
+                              {' '}(n={r.jumlahLaju})
+                            </span>
+                          </>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
