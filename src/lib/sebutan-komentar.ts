@@ -97,13 +97,29 @@ async function tarikSatuKanal(
   const batasUnggahan = sudahAda === 0 ? UNGGAHAN_AWAL : UNGGAHAN_RUTIN
 
   const unggahan = await db.socialContent.findMany({
-    where:   { tenant_slug: slug, kanal },
+    where:   {
+      tenant_slug: slug, kanal,
+      // STORY DIKELUARKAN — dan ini bukan penghematan, melainkan perbaikan bug.
+      //
+      // Story tidak bisa dikomentari sama sekali; Meta menolaknya dengan
+      // "(#10) Comments cannot be made on story media". Masalahnya bukan
+      // galatnya, melainkan bahwa story MEMAKAN JATAH SAPUAN: akun ini punya 45
+      // story dari 104 konten IG, dan karena sapuan rutin hanya mengambil 25
+      // konten TERBARU, seluruh jatahnya habis oleh story sebelum satu unggahan
+      // sungguhan pun tersentuh.
+      //
+      // Terbukti di produksi 12 Sep 2026: sapuan membaca NOL komentar dan
+      // tercatat "gagal", padahal penarik pertama — yang menyapu 120 konten dan
+      // karenanya sampai ke unggahan di bawah tumpukan story — berhasil
+      // menyimpan 128 komentar.
+      jenis: { not: 'Story' },
+    },
     orderBy: { terbit_pada: 'desc' },
     take:    batasUnggahan,
     select:  { konten_id: true, permalink: true },
   })
   if (!unggahan.length) {
-    return { ...hasil, galat: `Belum ada unggahan ${kanal} tersimpan — jalankan snapshot medsos lebih dulu.` }
+    return { ...hasil, galat: `Belum ada unggahan ${kanal} yang bisa dikomentari — jalankan snapshot medsos lebih dulu.` }
   }
 
   // SATU kueri untuk seluruh yang sudah tersimpan pada kanal ini.
