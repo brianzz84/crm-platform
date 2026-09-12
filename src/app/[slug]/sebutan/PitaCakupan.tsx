@@ -47,6 +47,64 @@ const TIDAK_TERPANTAU = [
    'Tiba sebagai organik google.com biasa, tidak terpisahkan bahkan di Search Console.'],
 ] as const
 
+/**
+ * Penjelasan tiap sumber, ditulis untuk ADMIN DAN MANAJEMEN — bukan untuk
+ * programer.
+ *
+ * Ada di layar, bukan di dokumen, karena yang membaca angka ini enam bulan lagi
+ * bukan orang yang ikut merancangnya. Tanpa keterangan, "Tandaan Instagram: 608"
+ * dan "Ulasan Google: 1.652" akan dijumlahkan begitu saja seolah mengukur hal
+ * yang sama — padahal yang satu berisi ucapan terima kasih dan yang lain berisi
+ * keluhan.
+ *
+ * Tiap naskah menjawab tiga hal, berurutan: apa ini, di mana terjadinya, dan
+ * apa yang perlu diwaspadai saat membacanya.
+ */
+const PENJELASAN: Record<string, { apa: string; catat: string }> = {
+  SEBUTAN_IG: {
+    apa: 'Unggahan orang lain yang menandai akun RKZ. Mereka memasang foto atau video '
+       + 'di akunnya sendiri, lalu menandai RKZ di dalamnya. Yang tersimpan: takarir '
+       + 'unggahan mereka, nama akunnya, dan tautan ke unggahan aslinya.',
+    catat: 'Isinya cenderung baik — ucapan terima kasih, kegiatan bersama mitra, penanda '
+         + 'lokasi. Itu bukan kebetulan: menandai adalah tindakan sukarela, dan orang '
+         + 'yang kecewa tidak menandai rumah sakit di unggahannya. Jadi angka di sini '
+         + 'menggambarkan siapa yang mau berasosiasi dengan RKZ, BUKAN sentimen publik '
+         + 'secara keseluruhan.',
+  },
+  SEBUTAN_YT: {
+    apa: 'Video orang lain yang menyebut nama RKZ. Ditemukan lewat pencarian kata kunci, '
+       + 'bukan lewat tandaan — jadi video yang menyebut RKZ tanpa menandai siapa pun '
+       + 'tetap tertangkap.',
+    catat: 'YouTube mencocokkan kata secara longgar, sehingga sebagian besar hasilnya '
+         + 'tidak ada kaitannya dengan RKZ. Hanya video yang memuat frasa lengkap di '
+         + 'judul atau deskripsi yang disimpan; sisanya dibuang sebelum masuk. Video '
+         + 'dari channel RKZ sendiri juga tidak ikut.',
+  },
+  SEBUTAN_ULASAN: {
+    apa: 'Ulasan bintang di profil Google Maps RKZ — mencakup seluruh lokasi, bukan hanya '
+       + 'rumah sakit utama. Bintangnya ditempelkan di depan tulisan supaya langsung '
+       + 'terlihat saat ditinjau.',
+    catat: 'Inilah tempat keluhan pasien paling sering mendarat, jadi jangan heran bila '
+         + 'sentimennya lebih keras daripada sumber lain. Sekitar satu dari enam ulasan '
+         + 'hanya berisi bintang tanpa tulisan — itu tetap disimpan, karena bintang saja '
+         + 'sudah cukup untuk menilai puas atau tidak.',
+  },
+  SEBUTAN_KOMENTAR_IG: {
+    apa: 'Komentar orang di bawah unggahan RKZ sendiri di Instagram. Berbeda dari Tandaan: '
+       + 'yang ini terjadi di halaman kita, bukan di halaman mereka.',
+    catat: 'Di sinilah pertanyaan dan keluhan biasanya ditulis, karena orang tahu RKZ pasti '
+         + 'membacanya. Balasan dari admin RKZ sendiri TIDAK ikut tersimpan — kalau ikut, '
+         + 'sentimen kita akan naik oleh kata-kata kita sendiri. Yang tidak tertangkap: '
+         + 'komentar di unggahan orang lain.',
+  },
+  SEBUTAN_KOMENTAR_FB: {
+    apa: 'Komentar orang di bawah unggahan RKZ sendiri di Facebook. Sama seperti Komentar '
+       + 'IG, hanya berbeda kanal.',
+    catat: 'Balasan admin RKZ sendiri tidak ikut tersimpan. Yang tidak tertangkap: komentar '
+         + 'di unggahan orang lain.',
+  },
+}
+
 const WARNA: Record<string, string> = {
   ok: 'var(--c-success)', sebagian: '#D97706', gagal: '#DC2626',
 }
@@ -54,6 +112,11 @@ const WARNA: Record<string, string> = {
 export default function PitaCakupan({ slug }: { slug: string }) {
   const [sumber, setSumber] = useState<Sumber[] | null>(null)
   const [buka, setBuka] = useState(false)
+  /** Sumber yang penjelasannya sedang dibuka. Dibuka lewat KLIK, bukan hover
+   *  semata: di layar sentuh hover tidak pernah terjadi, dan keterangan yang
+   *  hanya bisa dilihat dari komputer tidak menolong orang yang membuka
+   *  laporan dari ponsel. */
+  const [jelas, setJelas] = useState<string | null>(null)
 
   const ambil = useCallback(async () => {
     try {
@@ -88,6 +151,20 @@ export default function PitaCakupan({ slug }: { slug: string }) {
               background: s.terakhir ? WARNA[s.terakhir.status] : 'var(--c-text-faint)',
             }} />
             <span style={{ color: 'var(--c-text)' }}>{s.label}</span>
+            {PENJELASAN[s.kunci] && (
+              <button
+                onClick={() => setJelas(j => j === s.kunci ? null : s.kunci)}
+                aria-label={`Apa itu ${s.label}?`}
+                title={`Apa itu ${s.label}?`}
+                style={{
+                  width: 15, height: 15, borderRadius: 999, flexShrink: 0, padding: 0,
+                  border: `1px solid ${jelas === s.kunci ? 'var(--c-secondary)' : 'var(--c-border)'}`,
+                  background: jelas === s.kunci ? 'var(--c-secondary)' : 'transparent',
+                  color: jelas === s.kunci ? 'white' : 'var(--c-text-muted)',
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 10, fontWeight: 800,
+                  lineHeight: '13px',
+                }}>i</button>
+            )}
             <span style={{ color: 'var(--c-text-faint)' }}>
               {/* BELUM PERNAH BERJALAN dinyatakan apa adanya. Menampilkan "0
                   sebutan" untuk penarik yang tidak pernah hidup akan terbaca
@@ -110,6 +187,24 @@ export default function PitaCakupan({ slug }: { slug: string }) {
           {buka ? 'Tutup' : 'Apa yang tidak terpantau?'}
         </button>
       </div>
+
+      {jelas && PENJELASAN[jelas] && (
+        <div style={{
+          marginTop: 'var(--sp-3)', paddingTop: 'var(--sp-3)',
+          borderTop: '1px solid var(--c-border)', lineHeight: 1.7,
+        }}>
+          <div style={{ fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>
+            {sumber.find(s => s.kunci === jelas)?.label}
+          </div>
+          <div style={{ color: 'var(--c-text)' }}>{PENJELASAN[jelas].apa}</div>
+          {/* Bagian "yang perlu diwaspadai" dibedakan warnanya, karena inilah
+              yang paling sering dilewatkan pembaca yang buru-buru — dan justru
+              yang mencegah angka disalahtafsirkan. */}
+          <div style={{ color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--r-sm)', padding: '8px 11px', marginTop: 8 }}>
+            <strong>Yang perlu diperhatikan:</strong> {PENJELASAN[jelas].catat}
+          </div>
+        </div>
+      )}
 
       {bermasalah > 0 && (
         <div style={{ marginTop: 8, color: '#B45309', lineHeight: 1.6 }}>
