@@ -19,7 +19,7 @@
  *    ADA di sana, supaya tak seorang pun perlu mengingat batasannya sendiri.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { angka, tanggal } from './tampilan'
 
 interface Sumber {
@@ -112,11 +112,34 @@ const WARNA: Record<string, string> = {
 export default function PitaCakupan({ slug }: { slug: string }) {
   const [sumber, setSumber] = useState<Sumber[] | null>(null)
   const [buka, setBuka] = useState(false)
-  /** Sumber yang penjelasannya sedang dibuka. Dibuka lewat KLIK, bukan hover
-   *  semata: di layar sentuh hover tidak pernah terjadi, dan keterangan yang
-   *  hanya bisa dilihat dari komputer tidak menolong orang yang membuka
-   *  laporan dari ponsel. */
+  /**
+   * Sumber yang penjelasannya sedang tampil.
+   *
+   * HOVER di perangkat yang punya tetikus, KETUK di layar sentuh. Bukan salah
+   * satu saja: hover lebih rapi di komputer, tetapi di ponsel hover tidak pernah
+   * terjadi — keterangan yang hanya bisa dilihat dari komputer tidak menolong
+   * orang yang membuka laporan dari jalan.
+   *
+   * Dipilih lewat `matchMedia('(hover: hover)')`, bukan dengan memasang kedua
+   * penangan sekaligus: di layar sentuh, satu ketukan memicu mouseenter DAN
+   * click berturut-turut, sehingga panelnya terbuka lalu langsung tertutup lagi.
+   */
   const [jelas, setJelas] = useState<string | null>(null)
+  const bisaHover = useRef(true)
+  const tunda = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    bisaHover.current =
+      typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches !== false
+  }, [])
+
+  /** Penutupan ditunda sesaat supaya kursor sempat berpindah dari ikon ke panel
+   *  tanpa panelnya keburu hilang di celah antara keduanya. */
+  const tutupNanti = () => {
+    if (tunda.current) clearTimeout(tunda.current)
+    tunda.current = setTimeout(() => setJelas(null), 120)
+  }
+  const batalTutup = () => { if (tunda.current) clearTimeout(tunda.current) }
 
   const ambil = useCallback(async () => {
     try {
@@ -138,6 +161,8 @@ export default function PitaCakupan({ slug }: { slug: string }) {
       background: 'var(--c-bg-subtle,#F8FAFC)', border: '1px solid var(--c-border)',
       borderRadius: 'var(--r-lg)', padding: '12px var(--sp-4)', marginBottom: 'var(--sp-4)',
       fontSize: 12,
+      // Jangkar bagi panel penjelasan yang mengambang di bawahnya.
+      position: 'relative',
     }}>
       <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontWeight: 800, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '.5px', fontSize: 10 }}>
@@ -153,9 +178,14 @@ export default function PitaCakupan({ slug }: { slug: string }) {
             <span style={{ color: 'var(--c-text)' }}>{s.label}</span>
             {PENJELASAN[s.kunci] && (
               <button
-                onClick={() => setJelas(j => j === s.kunci ? null : s.kunci)}
+                onMouseEnter={() => { if (bisaHover.current) { batalTutup(); setJelas(s.kunci) } }}
+                onMouseLeave={() => { if (bisaHover.current) tutupNanti() }}
+                // Keyboard: Tab membuka, Tab berikutnya menutup. Tanpa onBlur,
+                // panelnya akan menggantung terbuka setelah fokus berpindah.
+                onFocus={() => { batalTutup(); setJelas(s.kunci) }}
+                onBlur={tutupNanti}
+                onClick={() => { if (!bisaHover.current) setJelas(j => j === s.kunci ? null : s.kunci) }}
                 aria-label={`Apa itu ${s.label}?`}
-                title={`Apa itu ${s.label}?`}
                 style={{
                   width: 15, height: 15, borderRadius: 999, flexShrink: 0, padding: 0,
                   border: `1px solid ${jelas === s.kunci ? 'var(--c-secondary)' : 'var(--c-border)'}`,
@@ -188,11 +218,22 @@ export default function PitaCakupan({ slug }: { slug: string }) {
         </button>
       </div>
 
+      {/* MENGAMBANG, bukan menyisip. Panel yang menyisip akan mendorong seluruh
+          isi halaman turun tiap kali kursor lewat di atas ikon — dan pada hover,
+          itu berarti halaman melompat-lompat selama tetikus digerakkan.
+          Direntang `left: 0; right: 0` supaya lebarnya mengikuti pita dan tidak
+          pernah terpotong di tepi layar, berapa pun posisi ikonnya. */}
       {jelas && PENJELASAN[jelas] && (
-        <div style={{
-          marginTop: 'var(--sp-3)', paddingTop: 'var(--sp-3)',
-          borderTop: '1px solid var(--c-border)', lineHeight: 1.7,
-        }}>
+        <div
+          onMouseEnter={batalTutup}
+          onMouseLeave={() => { if (bisaHover.current) tutupNanti() }}
+          style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+            marginTop: 6, lineHeight: 1.7,
+            background: 'white', border: '1px solid var(--c-border)',
+            borderRadius: 'var(--r-lg)', padding: 'var(--sp-4)',
+            boxShadow: '0 8px 24px rgba(15,23,42,.12)',
+          }}>
           <div style={{ fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>
             {sumber.find(s => s.kunci === jelas)?.label}
           </div>
