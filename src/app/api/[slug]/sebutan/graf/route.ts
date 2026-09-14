@@ -41,7 +41,31 @@ const POLA_SEBUTAN = /@([A-Za-z0-9._]{2,30})/g
 interface BarisSebutan {
   username: string | null
   teks: string | null
+  terbit_pada: Date
   labels: { dimensi: string; kode: string }[]
+}
+
+/**
+ * Segmentasi akun — inilah yang mengubah "267 titik" menjadi kalimat yang bisa
+ * ditindaklanjuti.
+ *
+ * Urutan pemeriksaannya penting: SPAM diperiksa lebih dulu, lalu ledakan, baru
+ * kesetiaan. Akun promosi yang menandai lima usaha dalam sehari memenuhi syarat
+ * "ledakan" DAN "spam" sekaligus, dan yang lebih berguna diketahui adalah bahwa
+ * ia spam.
+ */
+const HARI_LEDAKAN  = 14
+const HARI_SETIA    = 90
+const MIN_BERULANG  = 3
+
+function segmenAkun(
+  jumlah: number, rentangHari: number, spam: boolean,
+): 'menumpang' | 'ledakan' | 'pendukung' | 'berulang' | 'sekali' {
+  if (spam) return 'menumpang'
+  if (jumlah === 1) return 'sekali'
+  if (jumlah >= MIN_BERULANG && rentangHari <= HARI_LEDAKAN) return 'ledakan'
+  if (jumlah >= MIN_BERULANG && rentangHari >= HARI_SETIA)   return 'pendukung'
+  return 'berulang'
 }
 
 export async function GET(req: NextRequest, { params }: Ctx) {
@@ -65,7 +89,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         terbit_pada: { gte: sejak },
       },
       select: {
-        username: true, teks: true,
+        username: true, teks: true, terbit_pada: true,
         labels: { where: { disetujui: true }, select: { dimensi: true, kode: true } },
       },
     })
@@ -77,6 +101,11 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     let dibuangSpam = 0, tanpaLabel = 0
     // simpul -> berapa kali ia menyebut RKZ
     const bobot  = new Map<string, number>()
+    // simpul -> tanggal sebutan pertama & terakhir. Dipakai membedakan akun yang
+    // setia (tersebar berbulan-bulan) dari ledakan kampanye (terkumpul dalam
+    // hitungan hari) — pelajaran dari graf RS Darmo, yang klaster padatnya
+    // dibaca sebagai komunitas padahal berisi jawaban kuis berhadiah.
+    const waktu  = new Map<string, { pertama: Date; terakhir: Date }>()
     // simpul -> topik yang paling sering ditetapkan padanya
     const topik  = new Map<string, Map<string, number>>()
     // sisi antar-akun, dikunci "a|b"
@@ -91,9 +120,16 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       if (!denganSpam && kodeTopik.includes('SPAM')) { dibuangSpam++; continue }
 
       bobot.set(dari, (bobot.get(dari) ?? 0) + 1)
-      const t = topik.get(dari) ?? new Map<string, number>()
-      for (const k of kodeTopik) t.set(k, (t.get(k) ?? 0) + 1)
-      topik.set(dari, t)
+      const w   = waktu.get(dari)
+      const saat = r.terbit_pada
+      waktu.set(dari, {
+        pertama:  !w || saat < w.pertama  ? saat : w.pertama,
+        terakhir: !w || saat > w.terakhir ? saat : w.terakhir,
+      })
+
+      const petaTopik = topik.get(dari) ?? new Map<string, number>()
+      for (const k of kodeTopik) petaTopik.set(k, (petaTopik.get(k) ?? 0) + 1)
+      topik.set(dari, petaTopik)
 
       // @sebutan di dalam takarir — inilah yang memberi graf ini TEPI SUNGGUHAN,
       // bukan sekadar bintang berpusat RKZ. Diukur 9 Sep: 38% takarir memuatnya.
@@ -123,15 +159,74 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       return [...t.entries()].sort((a, b) => b[1] - a[1])[0][0]
     }
 
+    // Derajat: berapa akun LAIN yang menyebut akun ini di takarirnya. Sengaja
+    // TIDAK disebut sentralitas — pada 267 simpul dengan tepi yang sebagian
+    // besar muncul sekali, sentralitas akan terlihat ilmiah tanpa menjadi benar.
+    // Derajat hanya menghitung, dan hitungan tidak bisa disalahtafsirkan.
+    const derajat = new Map<string, number>()
+    for (const e of sisiTampil) derajat.set(e.ke, (derajat.get(e.ke) ?? 0) + 1)
+
+    const hariAntara = (a: Date, b: Date) =>
+      Math.round((b.getTime() - a.getTime()) / 86_400_000)
+
+    // Seluruh akun — bukan hanya yang tergambar. Tabel dan angka ringkasan harus
+    // berdiri di atas populasi penuh; grafnya boleh disaring, angkanya tidak.
+    const semuaAkun = [...bobot.entries()].map(([id, jumlah]) => {
+      const w = waktu.get(id)!
+      const rentangHari = hariAntara(w.pertama, w.terakhir)
+      const kodeDominan = dominan(id)
+      return {
+        id, jumlah, rentangHari,
+        topik:    kodeDominan,
+        pertama:  w.pertama,
+        terakhir: w.terakhir,
+        derajat:  derajat.get(id) ?? 0,
+        segmen:   segmenAkun(jumlah, rentangHari, kodeDominan === 'SPAM'),
+      }
+    }).sort((a, b) => b.jumlah - a.jumlah || b.terakhir.getTime() - a.terakhir.getTime())
+
+    const setahunLalu = new Date(Date.now() - 365 * 86_400_000)
+    const hitungSegmen = (k: string) => semuaAkun.filter(a => a.segmen === k).length
+
     return NextResponse.json({
       success: true,
       bulan,
+
+      /**
+       * Angka ringkasan — dihitung, bukan ditulis, sehingga selalu benar dan
+       * tidak perlu ditinjau siapa pun. Inilah yang mengubah gambar menjadi
+       * temuan; grafnya sendiri tidak pernah bisa mengatakan "88% sudah diam".
+       */
+      ringkasan: {
+        totalAkun:     semuaAkun.length,
+        sekaliSaja:    semuaAkun.filter(a => a.jumlah === 1).length,
+        berulang:      semuaAkun.filter(a => a.jumlah >= 3).length,
+        aktifSetahun:  semuaAkun.filter(a => a.terakhir >= setahunLalu).length,
+        totalTepi:     sisiTampil.length,
+      },
+
+      segmen: [
+        { kunci: 'pendukung',  nama: 'Pendukung',   jumlah: hitungSegmen('pendukung'),
+          arti: `Menyebut ${MIN_BERULANG}+ kali dan tersebar lebih dari ${HARI_SETIA} hari — kembali karena memang berhubungan, bukan karena satu peristiwa.` },
+        { kunci: 'ledakan',    nama: 'Ledakan',     jumlah: hitungSegmen('ledakan'),
+          arti: `Menyebut ${MIN_BERULANG}+ kali tetapi terkumpul dalam ${HARI_LEDAKAN} hari — ciri kampanye, undian, atau satu kegiatan. Ramai sesaat, bukan hubungan.` },
+        { kunci: 'berulang',   nama: 'Sesekali',    jumlah: hitungSegmen('berulang'),
+          arti: 'Menyebut lebih dari sekali, tetapi belum cukup sering atau belum cukup lama untuk disebut pendukung.' },
+        { kunci: 'sekali',     nama: 'Sekali lewat', jumlah: hitungSegmen('sekali'),
+          arti: 'Menyebut satu kali saja, lalu tidak pernah lagi.' },
+        { kunci: 'menumpang',  nama: 'Menumpang',   jumlah: hitungSegmen('menumpang'),
+          arti: 'Berlabel SPAM — menandai RKZ demi jangkauan, bukan karena berhubungan.' },
+      ],
+
+      akun: semuaAkun.slice(0, 60),
+
       simpul: [...terpilih].map(u => ({
         id: u,
         // 0 berarti akun ini hanya disebut orang lain, tidak pernah menandai RKZ
         // sendiri — dibedakan supaya layar tidak menampilkannya setara.
         sebutan: bobot.get(u) ?? 0,
         topik:   dominan(u),
+        segmen:  semuaAkun.find(a => a.id === u)?.segmen ?? 'sekali',
       })),
       sisi: sisiTampil,
       // Cakupan dilaporkan, seperti di seluruh modul ini: graf yang berdiri di

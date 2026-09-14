@@ -7,28 +7,48 @@
  * tangan. Menambah d3 demi satu tab akan menggandakan ukuran paket klien untuk
  * layar yang dibuka sekali sebulan.
  *
- * ══ TATA LETAK ══
+ * ══ TEMUAN DULU, GAMBAR BELAKANGAN ══
  *
- * Gaya-pegas sederhana: tiap pasang simpul saling menolak, tiap sisi menarik,
- * dan seluruhnya ditarik lembut ke tengah. Dijalankan SEKALI saat data tiba —
- * bukan animasi berkelanjutan, karena grafik yang terus bergoyang membuat orang
- * menunggu alih-alih membaca.
+ * Urutan di layar disengaja: kalimat temuan, lalu segmentasi akun, lalu graf,
+ * lalu tabel. Grafnya sendiri TIDAK PERNAH bisa mengatakan "88% akun sudah
+ * diam" — hanya angka yang bisa. Menaruh gambar paling atas membuat orang
+ * memandanginya lalu pergi tanpa kesimpulan apa pun.
+ *
+ * Seluruh kalimat temuan DIHITUNG, bukan dikarang AI. Karena ia turunan
+ * aritmetika dari angka yang sama yang tampil di layar, ia selalu benar dan
+ * tidak pernah perlu ditinjau siapa pun.
+ *
+ * ══ TATA LETAK RADIAL ══
+ *
+ * Lihat catatan pada `tataLetak`. Ringkasnya: gaya-pegas membuat 68% akun yang
+ * tak punya tepi terdorong menumpuk di sudut bingkai, dan posisinya tidak
+ * berarti apa-apa. Pada radial, jarak dari pusat menyatakan seberapa sering akun
+ * itu kembali — sehingga gambarnya menjadi temuannya sendiri.
  *
  * ══ YANG DITOLAK DARI RANCANGAN ══
  *
  * Tidak ada ukuran simpul berdasarkan "sentralitas". Godaannya besar — itu yang
- * dijual ASIGTA — tetapi sentralitas pada graf yang 40% simpulnya belum
- * berlabel adalah angka yang terlihat ilmiah tanpa menjadi benar. Ukuran di sini
- * hanya menyatakan JUMLAH SEBUTAN, yang tidak bisa disalahtafsirkan.
+ * dijual ASIGTA — tetapi sentralitas pada jaringan setipis ini adalah angka yang
+ * terlihat ilmiah tanpa menjadi benar. Yang dipakai hanya DERAJAT: berapa akun
+ * lain yang menyebut akun ini. Hitungan tidak bisa disalahtafsirkan.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { angka, kartu, tingkatDari } from './tampilan'
 
-interface Simpul { id: string; sebutan: number; topik: string | null }
+interface Simpul { id: string; sebutan: number; topik: string | null; segmen: string }
 interface Sisi   { dari: string; ke: string; bobot: number }
+interface Akun {
+  id: string; jumlah: number; rentangHari: number; topik: string | null
+  pertama: string; terakhir: string; derajat: number; segmen: string
+}
+interface Segmen { kunci: string; nama: string; jumlah: number; arti: string }
 interface Data {
-  simpul: Simpul[]; sisi: Sisi[]
+  simpul: Simpul[]; sisi: Sisi[]; akun: Akun[]; segmen: Segmen[]
+  ringkasan: {
+    totalAkun: number; sekaliSaja: number; berulang: number
+    aktifSetahun: number; totalTepi: number
+  }
   totalSebutan: number; tanpaLabel: number; dibuangSpam: number; bulan: number
 }
 interface Kategori { kode: string; nama: string; warna: string }
@@ -47,55 +67,61 @@ const RENTANG = [
  *  sebutan tidak boleh sepuluh kali lebih lebar daripada yang punya 4. */
 const jari = (n: number) => 5 + Math.sqrt(n) * 3.2
 
-function tataLetak(simpul: Simpul[], sisi: Sisi[]): Titik[] {
-  const n = simpul.length
-  if (!n) return []
+/**
+ * TATA LETAK RADIAL — menggantikan gaya-pegas.
+ *
+ * Gaya-pegas menempatkan simpul menurut TARIKAN SISI. Tetapi 68% akun tidak
+ * punya sisi sama sekali: mereka murni benda yang saling menolak, terdorong
+ * keluar, lalu terjepit di batas bingkai. Itulah gumpalan di sudut yang membuat
+ * grafnya tidak terbaca.
+ *
+ * Lebih buruk lagi, pada gaya-pegas POSISI TIDAK BERARTI APA-APA — simpul di
+ * kiri atas tidak lebih penting daripada yang di kanan bawah.
+ *
+ * Di sini jarak dari pusat menyatakan sesuatu yang nyata: seberapa sering akun
+ * itu kembali menyebut RKZ. Akibatnya gambarnya menjadi temuannya sendiri —
+ * inti tipis dengan cincin luar tebal ADALAH "68% sekali lewat", terlihat tanpa
+ * perlu dibaca.
+ *
+ * Sudutnya diurutkan menurut kategori, sehingga warna membentuk busur alih-alih
+ * bertaburan. Deterministik: bentuknya sama tiap kali dibuka, jadi tidak ada
+ * yang ragu apakah datanya ikut berubah.
+ *
+ * Catatan jujur soal ASIGTA: bentuk bola mereka lahir dari jaringan tagar yang
+ * PADAT. Data RKZ tipis, jadi gaya-pegas tidak akan pernah menghasilkan itu.
+ * Radial memberi tampilan tersusun secara sengaja, bukan dengan berpura-pura
+ * padat.
+ */
+function tataLetak(simpul: Simpul[]): Titik[] {
+  if (!simpul.length) return []
 
-  // Mulai dari lingkaran, bukan acak: hasil akhirnya jadi sama tiap kali dibuka,
-  // dan graf yang berubah bentuk tiap muat ulang membuat orang ragu apakah
-  // datanya ikut berubah.
-  const titik: Titik[] = simpul.map((s, i) => ({
-    ...s,
-    x: L / 2 + Math.cos((i / n) * Math.PI * 2) * (Math.min(L, T) / 2.6),
-    y: T / 2 + Math.sin((i / n) * Math.PI * 2) * (Math.min(L, T) / 2.6),
-  }))
-  const indeks = new Map(titik.map((t, i) => [t.id, i]))
+  // Tiga cincin, dipilih menurut jumlah sebutan.
+  const cincin = (n: number) => (n >= 5 ? 0 : n >= 2 ? 1 : 2)
+  const JARI = [Math.min(L, T) * 0.17, Math.min(L, T) * 0.31, Math.min(L, T) * 0.44]
 
-  for (let putaran = 0; putaran < 220; putaran++) {
-    const dx = new Array(n).fill(0), dy = new Array(n).fill(0)
+  const hasil: Titik[] = []
+  for (let c = 0; c < 3; c++) {
+    const isi = simpul
+      .filter(s => cincin(s.sebutan) === c)
+      // Urut menurut kategori lalu nama: warna sekelompok jadi berdampingan,
+      // dan urutannya tidak berubah antar muat.
+      .sort((a, b) => (a.topik ?? 'zz').localeCompare(b.topik ?? 'zz') || a.id.localeCompare(b.id))
+    if (!isi.length) continue
 
-    // Tolakan antar semua pasangan.
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        let ax = titik[i].x - titik[j].x, ay = titik[i].y - titik[j].y
-        let d2 = ax * ax + ay * ay
-        if (d2 < 1) { ax = Math.random() - .5; ay = Math.random() - .5; d2 = 1 }
-        const gaya = 2600 / d2
-        dx[i] += ax * gaya; dy[i] += ay * gaya
-        dx[j] -= ax * gaya; dy[j] -= ay * gaya
-      }
-    }
-
-    // Tarikan sepanjang sisi.
-    for (const e of sisi) {
-      const a = indeks.get(e.dari), b = indeks.get(e.ke)
-      if (a === undefined || b === undefined) continue
-      const ax = titik[b].x - titik[a].x, ay = titik[b].y - titik[a].y
-      const gaya = 0.012
-      dx[a] += ax * gaya; dy[a] += ay * gaya
-      dx[b] -= ax * gaya; dy[b] -= ay * gaya
-    }
-
-    const dingin = 1 - putaran / 220
-    for (let i = 0; i < n; i++) {
-      // Tarikan lembut ke tengah menahan simpul terpencil kabur dari bingkai.
-      dx[i] += (L / 2 - titik[i].x) * 0.006
-      dy[i] += (T / 2 - titik[i].y) * 0.006
-      titik[i].x = Math.max(24, Math.min(L - 24, titik[i].x + dx[i] * dingin * 0.5))
-      titik[i].y = Math.max(24, Math.min(T - 24, titik[i].y + dy[i] * dingin * 0.5))
-    }
+    isi.forEach((s, k) => {
+      // Cincin luar sering memuat ratusan simpul. Digeser setengah langkah
+      // berselang-seling supaya tidak menjadi satu garis rapat yang menutupi
+      // dirinya sendiri.
+      const sudut = (k / isi.length) * Math.PI * 2 - Math.PI / 2
+      const geser = c === 2 && k % 2 ? 9 : 0
+      hasil.push({
+        ...s,
+        x: L / 2 + Math.cos(sudut) * (JARI[c] + geser),
+        y: T / 2 + Math.sin(sudut) * (JARI[c] + geser),
+      })
+    })
   }
-  return titik
+  return hasil
 }
 
 export default function GrafTab({ slug, topik }: { slug: string; topik: Kategori[] }) {
@@ -120,7 +146,7 @@ export default function GrafTab({ slug, topik }: { slug: string; topik: Kategori
   useEffect(() => { ambil() }, [ambil])
 
   const titik = useMemo(
-    () => data ? tataLetak(data.simpul, data.sisi) : [], [data])
+    () => data ? tataLetak(data.simpul) : [], [data])
   const posisi = useMemo(() => new Map(titik.map(t => [t.id, t])), [titik])
 
   const warna = (kode: string | null) =>
@@ -161,6 +187,39 @@ export default function GrafTab({ slug, topik }: { slug: string; topik: Kategori
           Pembuangan spam bergantung pada label, jadi akun promosi kemungkinan masih
           duduk di dalam graf ini tanpa tertandai. Selesaikan peninjauan lebih dulu
           sebelum menarik kesimpulan tentang siapa yang sentral.
+        </div>
+      )}
+
+      {/* TEMUAN DULU, GAMBAR BELAKANGAN.
+          Grafnya tidak pernah bisa mengatakan "88% akun sudah diam" — hanya
+          angka yang bisa. Menaruh gambar di atas membuat orang memandanginya
+          lalu pergi tanpa kesimpulan apa pun. */}
+      {data && data.ringkasan.totalAkun > 0 && (
+        <div style={{ ...kartu, lineHeight: 1.75, fontSize: 13.5 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
+            Yang terbaca dari jaringan ini
+          </div>
+          <Temuan data={data} />
+        </div>
+      )}
+
+      {data && data.segmen.some(s2 => s2.jumlah > 0) && (
+        <div style={{ ...kartu, padding: 0, overflow: 'hidden' }}>
+          {data.segmen.filter(s2 => s2.jumlah > 0).map((s2, i, arr) => (
+            <div key={s2.kunci} style={{
+              display: 'flex', gap: 'var(--sp-3)', alignItems: 'baseline',
+              padding: '11px var(--sp-5)',
+              borderBottom: i < arr.length - 1 ? '1px solid var(--c-border)' : 'none',
+            }}>
+              <div style={{ flex: '0 0 52px', textAlign: 'right', fontSize: 18, fontWeight: 800, color: WARNA_SEGMEN[s2.kunci] ?? 'var(--c-text)' }}>
+                {angka(s2.jumlah)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{s2.nama}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--c-text-muted)', lineHeight: 1.6 }}>{s2.arti}</div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -212,20 +271,160 @@ export default function GrafTab({ slug, topik }: { slug: string; topik: Kategori
             </svg>
           </div>
 
+          <TabelAkun akun={data.akun} namaTopik={k => topik.find(t => t.kode === k)?.nama ?? k ?? '—'} />
+
           <div style={{ ...kartu, display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap', fontSize: 12, color: 'var(--c-text-muted)', lineHeight: 1.7 }}>
             <span><strong style={{ color: 'var(--c-text)' }}>{angka(data.simpul.length)}</strong> akun</span>
             <span><strong style={{ color: 'var(--c-text)' }}>{angka(data.sisi.length)}</strong> tepi antar-akun</span>
             <span>Label ditetapkan: <strong style={{ color: 'var(--c-text)' }}>{persenLabel}%</strong></span>
             {data.dibuangSpam > 0 && <span>{angka(data.dibuangSpam)} sebutan spam dibuang</span>}
             <span style={{ flexBasis: '100%', color: 'var(--c-text-faint)' }}>
-              Lingkaran <strong>berongga</strong> = akun yang hanya disebut orang lain, belum
-              pernah menandai RKZ. Ukuran menyatakan jumlah sebutan — <em>bukan</em>
-              sentralitas, yang pada cakupan label seperti ini akan terlihat ilmiah tanpa
-              menjadi benar.
+              <strong>Jarak dari pusat = seberapa sering akun itu kembali.</strong> Cincin
+              dalam ≥5 sebutan, tengah 2–4, luar sekali saja. Lingkaran{' '}
+              <strong>berongga</strong> = akun yang hanya disebut orang lain, belum pernah
+              menandai RKZ. Ukuran menyatakan jumlah sebutan — <em>bukan</em> sentralitas,
+              yang pada jaringan setipis ini akan terlihat ilmiah tanpa menjadi benar.
             </span>
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+const WARNA_SEGMEN: Record<string, string> = {
+  pendukung: '#16A34A', ledakan: '#D97706', berulang: '#0891B2',
+  sekali: '#64748B', menumpang: '#94A3B8',
+}
+
+const tglPendek = (iso: string) =>
+  new Date(iso).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
+
+/**
+ * Kalimat temuan — DIHITUNG, bukan ditulis, dan bukan pula dikarang AI.
+ *
+ * Karena seluruhnya turunan aritmetika dari angka yang sama yang tampil di
+ * layar, kalimat ini selalu benar dan tidak pernah perlu ditinjau siapa pun.
+ * Itu bedanya dari ringkasan yang dihasilkan model: yang ini tidak bisa salah.
+ */
+function Temuan({ data }: { data: Data }) {
+  const r = data.ringkasan
+  if (!r.totalAkun) return null
+
+  const persen = (a: number) => Math.round((a / r.totalAkun) * 100)
+  const diam   = r.totalAkun - r.aktifSetahun
+
+  const baris: React.ReactNode[] = []
+
+  baris.push(
+    <li key="sekali">
+      <strong>{persen(r.sekaliSaja)}% akun menyebut RKZ satu kali saja</strong>{' '}
+      ({angka(r.sekaliSaja)} dari {angka(r.totalAkun)}). Jaringan ini didominasi
+      perjumpaan sekali lewat, bukan komunitas yang kembali.
+    </li>,
+  )
+
+  if (diam > 0) {
+    baris.push(
+      <li key="diam">
+        <strong>{angka(diam)} akun sudah tidak menyebut lagi dalam setahun terakhir</strong>{' '}
+        — tersisa {angka(r.aktifSetahun)} yang masih aktif. Ini pertanyaan pertumbuhan,
+        bukan pertanyaan reputasi: jangkauan lama tidak otomatis bertahan.
+      </li>,
+    )
+  }
+
+  const ledakan = data.segmen.find(s => s.kunci === 'ledakan')?.jumlah ?? 0
+  if (ledakan > 0) {
+    baris.push(
+      <li key="ledakan">
+        <strong>{angka(ledakan)} akun menyebut berulang dalam rentang kurang dari dua pekan.</strong>{' '}
+        Pola itu menandai kampanye atau satu kegiatan, bukan hubungan yang berjalan —
+        periksa isinya sebelum menghitungnya sebagai dukungan.
+      </li>,
+    )
+  }
+
+  baris.push(
+    <li key="tepi">
+      {r.totalTepi > 0
+        ? <><strong>{angka(r.totalTepi)} tepi antar-akun</strong> terbaca dari takarir —
+            artinya sebagian penyebut juga menyebut satu sama lain, dan graf ini punya
+            struktur, bukan sekadar bintang berpusat RKZ.</>
+        : <>Tidak ada tepi antar-akun pada rentang ini. Para penyebut tidak saling
+            menyebut, jadi yang tergambar adalah bintang berpusat RKZ — bukan jaringan.</>}
+    </li>,
+  )
+
+  return (
+    <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>{baris}</ul>
+  )
+}
+
+/**
+ * Tabel peringkat — INILAH produk tab ini; grafnya pelengkap.
+ *
+ * Bisa diurutkan mata, disalin ke laporan, dan dibaca tanpa menafsirkan gambar.
+ * Kolom "terakhir" sengaja ada di sebelah "jumlah": akun dengan 12 sebutan yang
+ * berhenti pada 2019 dan akun dengan 4 sebutan yang masih berjalan bulan ini
+ * adalah dua hal yang sangat berbeda, dan urutan menurut jumlah saja
+ * menyembunyikannya.
+ */
+function TabelAkun({ akun, namaTopik }: {
+  akun: Akun[]; namaTopik: (k: string | null) => string
+}) {
+  if (!akun.length) return null
+  const th: React.CSSProperties = {
+    textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 800,
+    color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '.4px',
+    borderBottom: '1px solid var(--c-border)', whiteSpace: 'nowrap',
+  }
+  const td: React.CSSProperties = {
+    padding: '8px 10px', fontSize: 12.5, borderBottom: '1px solid var(--c-border)',
+    whiteSpace: 'nowrap',
+  }
+  return (
+    <div style={{ ...kartu, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: 'var(--sp-4) var(--sp-5)', borderBottom: '1px solid var(--c-border)' }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Akun yang Menyebut RKZ</div>
+        <div style={{ fontSize: 11.5, color: 'var(--c-text-muted)', marginTop: 3 }}>
+          Diurutkan menurut jumlah sebutan. Perhatikan kolom <strong>terakhir</strong> —
+          banyak menyebut pada 2019 tidak sama dengan masih menyebut bulan ini.
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+          <thead><tr>
+            <th style={th}>Akun</th>
+            <th style={{ ...th, textAlign: 'right' }}>Sebutan</th>
+            <th style={th}>Kategori</th>
+            <th style={th}>Segmen</th>
+            <th style={th}>Pertama</th>
+            <th style={th}>Terakhir</th>
+            <th style={{ ...th, textAlign: 'right' }} title="Berapa akun lain yang menyebut akun ini di takarirnya">Disebut</th>
+          </tr></thead>
+          <tbody>
+            {akun.map(a => (
+              <tr key={a.id}>
+                <td style={{ ...td, fontWeight: 600 }}>@{a.id}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 800 }}>{angka(a.jumlah)}</td>
+                <td style={{ ...td, color: 'var(--c-text-muted)' }}>{namaTopik(a.topik)}</td>
+                <td style={td}>
+                  <span style={{
+                    fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    color: 'white', background: WARNA_SEGMEN[a.segmen] ?? '#64748B',
+                  }}>{a.segmen}</span>
+                </td>
+                <td style={{ ...td, color: 'var(--c-text-faint)' }}>{tglPendek(a.pertama)}</td>
+                <td style={{ ...td, color: 'var(--c-text-faint)' }}>{tglPendek(a.terakhir)}</td>
+                <td style={{ ...td, textAlign: 'right', color: a.derajat ? 'var(--c-text)' : 'var(--c-text-faint)' }}>
+                  {a.derajat || '–'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
