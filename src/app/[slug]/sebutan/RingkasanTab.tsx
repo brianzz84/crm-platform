@@ -9,15 +9,16 @@
  * sebutan lain belum ditinjau bukan ringkasan yang optimis — ia salah, dan
  * pembacanya tidak punya cara mengetahuinya.
  *
- * Maka: selama cakupan di bawah 60%, angka-angkanya diredupkan dan diberi
- * peringatan di atas. Bukan disembunyikan — orang tetap perlu melihat bahwa
- * mekanismenya bekerja — tetapi juga tidak disajikan seolah kesimpulan.
+ * Maka: tingkat keandalannya dinyatakan di atas — Andal, Indikatif, atau Belum
+ * Memadai — dan angkanya diredupkan bertahap mengikuti tingkat itu. Bukan
+ * disembunyikan: orang tetap perlu melihat mekanismenya bekerja, tetapi juga
+ * tidak disajikan seolah kesimpulan.
  */
 
 import { useCallback, useEffect, useState } from 'react'
 import {
   NAMA_SUMBER, WARNA_SUMBER, WARNA_SENTIMEN, WARNA_RISIKO,
-  angka, tanggal, kartu,
+  angka, tanggal, kartu, tingkatDari,
 } from './tampilan'
 
 interface Hitungan { kode: string; jumlah: number }
@@ -35,11 +36,6 @@ interface Data {
 }
 
 interface Kategori { kode: string; nama: string; warna: string }
-
-/** Ambang tempat angka berhenti disebut kesimpulan. 60% bukan nilai keramat —
- *  ia sekadar titik ketika mayoritas sudah diperiksa, dan bisa digeser bila
- *  ternyata terlalu longgar. */
-const AMBANG_CAKUPAN = 60
 
 const RENTANG: { label: string; hari: number | null }[] = [
   { label: '30 hari',  hari: 30 },
@@ -79,9 +75,13 @@ export default function RingkasanTab({ slug, topik, poli }: {
   const namaPoli  = (k: string) => poli.find(p => p.kode === k)?.nama ?? k
   const warnaPoli = (k: string) => poli.find(p => p.kode === k)?.warna ?? '#94A3B8'
 
-  const cukup = (data?.persenDitinjau ?? 0) >= AMBANG_CAKUPAN
-  // Diredupkan, bukan disembunyikan — lihat catatan di kepala berkas.
-  const redup: React.CSSProperties = cukup ? {} : { opacity: .55 }
+  const tingkat = tingkatDari(data?.persenDitinjau ?? 0)
+  const cukup   = tingkat.kunci === 'andal'
+  // Diredupkan bertahap, bukan hidup-mati: keadaan "indikatif" memang setengah
+  // layak dibaca, dan menampilkannya seterang keadaan "andal" akan menyamakan
+  // dua hal yang berbeda.
+  const redup: React.CSSProperties =
+    tingkat.kunci === 'andal' ? {} : { opacity: tingkat.kunci === 'indikatif' ? .78 : .5 }
 
   return (
     <div>
@@ -110,22 +110,30 @@ export default function RingkasanTab({ slug, topik, poli }: {
             <div style={{ display: 'flex', gap: 'var(--sp-5)', flexWrap: 'wrap' }}>
               <Angka label="Sebutan pada rentang" nilai={angka(data.total)} warna="var(--c-primary)" />
               <Angka label="Sudah ditinjau" nilai={`${data.persenDitinjau}%`}
-                warna={cukup ? 'var(--c-success)' : '#B45309'} />
+                warna={tingkat.warna} />
+              <Angka label="Keandalan" nilai={tingkat.nama} warna={tingkat.warna} kecil />
               <Angka label="Belum ditinjau" nilai={angka(data.belumDitinjau)}
                 warna={data.belumDitinjau ? '#B45309' : 'var(--c-success)'} />
               <Angka label="Rentang"
                 nilai={`${tanggal(data.dari)} – ${tanggal(data.sampai)}`} warna="var(--c-text-muted)" kecil />
             </div>
 
-            {!cukup && (
-              <div style={{ marginTop: 'var(--sp-4)', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--r-md)', padding: '12px 14px', fontSize: 13, color: '#92400E', lineHeight: 1.65 }}>
-                <strong>Angka di bawah belum bisa dijadikan kesimpulan.</strong> Baru{' '}
-                {data.persenDitinjau}% sebutan pada rentang ini yang labelnya ditetapkan,
-                jadi setiap hitungan di bawah adalah <em>batas bawah</em> — bukan jumlah
-                sebenarnya. Selesaikan peninjauan di tab sebelah lebih dulu; angka ini akan
-                menyesuaikan sendiri.
-              </div>
-            )}
+            {/* Ditampilkan pada SEMUA tingkat, termasuk "Andal". Keterangan yang
+                hanya muncul saat ada masalah membuat ketiadaannya tidak berarti
+                apa-apa — pembaca tidak tahu apakah ia sedang melihat data kuat
+                atau sekadar peringatan yang lupa dipasang. */}
+            <div style={{
+              marginTop: 'var(--sp-4)', background: tingkat.latar,
+              border: `1px solid ${tingkat.garis}`, borderRadius: 'var(--r-md)',
+              padding: '12px 14px', fontSize: 13, color: tingkat.warna, lineHeight: 1.65,
+            }}>
+              <strong>Keandalan: {tingkat.nama}</strong> — {data.persenDitinjau}% sebutan pada
+              rentang ini sudah ditetapkan labelnya. {tingkat.arti}
+              {!cukup && (
+                <> Selesaikan peninjauan di tab <strong>Peninjauan</strong>; angka ini
+                  menyesuaikan sendiri.</>
+              )}
+            </div>
           </div>
 
           {/* Yang menuntut tindakan diletakkan PALING ATAS, sebelum grafik apa pun.

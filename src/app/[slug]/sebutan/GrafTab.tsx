@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { angka, kartu } from './tampilan'
+import { angka, kartu, tingkatDari } from './tampilan'
 
 interface Simpul { id: string; sebutan: number; topik: string | null }
 interface Sisi   { dari: string; ke: string; bobot: number }
@@ -152,9 +152,12 @@ export default function GrafTab({ slug, topik }: { slug: string; topik: Kategori
           diletakkan di atas gambarnya — bukan sebagai catatan kaki. Pembuangan
           spam bergantung pada label; pada cakupan rendah, akun promosi masih
           duduk di dalam graf tanpa ada yang tahu. */}
-      {data && persenLabel < 60 && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--r-md)', padding: '11px 14px', fontSize: 13, color: '#92400E', lineHeight: 1.65, marginBottom: 'var(--sp-3)' }}>
-          <strong>Baru {persenLabel}% sebutan pada rentang ini yang berlabel.</strong>{' '}
+      {/* Ambang yang SAMA dengan tab Ringkasan — dua ambang berbeda untuk hal
+          yang sama akan membuat satu tab menyebut data "cukup" sementara tab
+          sebelahnya menyebutnya "kurang". */}
+      {data && tingkatDari(persenLabel).kunci !== 'andal' && (
+        <div style={{ background: tingkatDari(persenLabel).latar, border: `1px solid ${tingkatDari(persenLabel).garis}`, borderRadius: 'var(--r-md)', padding: '11px 14px', fontSize: 13, color: tingkatDari(persenLabel).warna, lineHeight: 1.65, marginBottom: 'var(--sp-3)' }}>
+          <strong>Keandalan {tingkatDari(persenLabel).nama} — {persenLabel}% sebutan pada rentang ini berlabel.</strong>{' '}
           Pembuangan spam bergantung pada label, jadi akun promosi kemungkinan masih
           duduk di dalam graf ini tanpa tertandai. Selesaikan peninjauan lebih dulu
           sebelum menarik kesimpulan tentang siapa yang sentral.

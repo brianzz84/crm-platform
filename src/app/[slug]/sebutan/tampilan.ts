@@ -35,3 +35,37 @@ export const kartu: React.CSSProperties = {
   background: 'white', border: '1px solid var(--c-border)',
   borderRadius: 'var(--r-lg)', padding: 'var(--sp-5)', marginBottom: 'var(--sp-4)',
 }
+
+/**
+ * Tingkat keandalan laporan menurut cakupan peninjauan.
+ *
+ * Ditaruh di sini, bukan di satu tab, karena Ringkasan dan Jaringan sama-sama
+ * memakainya. Dua ambang yang berbeda untuk hal yang sama akan membuat satu tab
+ * menyebut data "cukup" sementara tab sebelahnya menyebutnya "kurang" — dan
+ * pembacanya tidak punya cara tahu mana yang benar.
+ *
+ * Menggantikan ambang biner 60%. Kelemahan versi biner bukan angkanya,
+ * melainkan bahwa ia MENUMPAHKAN KEADAAN TENGAH: 55% dan 5% sama-sama jatuh ke
+ * satu ember "belum layak", padahal yang pertama sudah cukup untuk melihat arah
+ * dan yang kedua tidak berarti apa-apa.
+ *
+ * Ambang dan penamaannya mengikuti pedoman konsultan (12 Sep 2026). Istilahnya
+ * diterjemahkan karena yang membacanya direksi, bukan analis.
+ */
+export const TINGKAT = [
+  { min: 80, kunci: 'andal', nama: 'Andal',
+    warna: 'var(--c-success)', latar: '#F0FDF4', garis: '#BBF7D0',
+    arti: 'Sebagian besar sebutan sudah ditinjau. Angka di bawah bisa dipakai '
+        + 'sebagai dasar keputusan.' },
+  { min: 50, kunci: 'indikatif', nama: 'Indikatif',
+    warna: '#B45309', latar: '#FFFBEB', garis: '#FDE68A',
+    arti: 'Cukup untuk melihat ARAH, belum cukup untuk menyebut jumlah. '
+        + 'Perbandingan antar kategori masih bisa dipercaya; angka mutlaknya belum.' },
+  { min: 0, kunci: 'kurang', nama: 'Belum Memadai',
+    warna: '#B91C1C', latar: '#FEF2F2', garis: '#FECACA',
+    arti: 'Terlalu sedikit yang ditinjau. Angka di bawah adalah batas bawah yang '
+        + 'jauh dari jumlah sebenarnya — jangan dikutip ke luar.' },
+] as const
+
+export const tingkatDari = (persen: number) =>
+  TINGKAT.find(t => persen >= t.min) ?? TINGKAT[TINGKAT.length - 1]
