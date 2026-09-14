@@ -36,6 +36,15 @@ export interface AiTurnResult {
 }
 
 export interface AiProviderClient {
+  /**
+   * Nama model yang BENAR-BENAR dipakai, bukan yang diminta.
+   *
+   * Dibuka karena tiap hasil klasifikasi perlu mencatat model apa yang
+   * menghasilkannya. Tanpa itu, membandingkan laporan dua periode akan tampak
+   * sah padahal keduanya dilabeli model yang berbeda — dan tidak ada cara
+   * mengetahuinya setelah kejadian.
+   */
+  readonly model: string
   generateJson(systemPrompt: string, messages: AiChatMessage[]): Promise<string>
   /** Satu giliran percakapan dengan tool-calling. Pemanggil yang menjalankan loop tool. */
   runConversationTurn(systemPrompt: string, messages: AiConversationMessage[], tools: AiTool[]): Promise<AiTurnResult>
@@ -44,7 +53,7 @@ export interface AiProviderClient {
 const GEMINI_DEFAULT_MODEL = 'gemini-3-flash-preview'
 
 class AnthropicProviderClient implements AiProviderClient {
-  constructor(private apiKey: string, private model: string) {}
+  constructor(private apiKey: string, public readonly model: string) {}
 
   async generateJson(systemPrompt: string, messages: AiChatMessage[]): Promise<string> {
     const client = new Anthropic({ apiKey: this.apiKey })
@@ -99,7 +108,7 @@ class AnthropicProviderClient implements AiProviderClient {
 }
 
 class GeminiProviderClient implements AiProviderClient {
-  constructor(private apiKey: string, private model: string) {}
+  constructor(private apiKey: string, public readonly model: string) {}
 
   async generateJson(systemPrompt: string, messages: AiChatMessage[]): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`

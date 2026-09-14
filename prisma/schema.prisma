@@ -661,8 +661,8 @@ model GoogleConfig {
 }
 
 model MetaConfig {
-  id              String    @id @default(uuid())
-  tenant_slug     String    @unique
+  id              String  @id @default(uuid())
+  tenant_slug     String  @unique
   phone_number_id String // Meta Phone Number ID
   access_token    String // System User permanent token
   waba_id         String? // WhatsApp Business Account ID
@@ -703,19 +703,19 @@ model MetaConfig {
   // ⚠️ Berbeda dari token lain di tabel ini, yang satu ini KEDALUWARSA:
   // 60 hari, dan harus disegarkan. Karena itu `ig_msg_expires_at` wajib diisi
   // dan dipantau — token yang mati diam-diam sudah pernah menelan sepuluh hari.
-  ig_msg_token       String?
-  ig_msg_user_id     String? // ID akun Instagram pada jalur graph.instagram.com
-  ig_msg_username    String? // ditampilkan agar salah akun cepat ketahuan
-  ig_msg_expires_at  DateTime?
+  ig_msg_token        String?
+  ig_msg_user_id      String? // ID akun Instagram pada jalur graph.instagram.com
+  ig_msg_username     String? // ditampilkan agar salah akun cepat ketahuan
+  ig_msg_expires_at   DateTime?
   ig_msg_refreshed_at DateTime?
   /// Saklar tersendiri: jalur ini masih percobaan dan harus bisa dimatikan
   /// tanpa menyentuh WhatsApp, Facebook, Insight, maupun Ads.
-  ig_msg_aktif       Boolean   @default(false)
+  ig_msg_aktif        Boolean   @default(false)
 
-  aktif           Boolean   @default(true)
-  tested_at       DateTime?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  aktif      Boolean   @default(true)
+  tested_at  DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
 
   @@map("crm_meta_configs")
 }
@@ -838,23 +838,23 @@ model CampaignRecipient {
 }
 
 model Conversation {
-  id              String             @id @default(uuid())
-  tenant_slug     String
-  person_id       String?
-  channel         Channel
-  channel_user_id String // WA number / IG user ID / FB user ID
+  id                String             @id @default(uuid())
+  tenant_slug       String
+  person_id         String?
+  channel           Channel
+  channel_user_id   String // WA number / IG user ID / FB user ID
   /// Nama tampilan dari platform (Messenger/Instagram). WhatsApp tidak
   /// menyediakannya, dan percakapan Facebook kerap tidak pernah tertaut ke
   /// Person — tanpa kolom ini Inbox hanya bisa menampilkan ID acak.
   channel_user_name String?
-  status          ConversationStatus @default(OPEN)
-  assigned_to     String?
-  last_message_at DateTime           @default(now())
-  unread_count    Int                @default(0)
-  created_at      DateTime           @default(now())
+  status            ConversationStatus @default(OPEN)
+  assigned_to       String?
+  last_message_at   DateTime           @default(now())
+  unread_count      Int                @default(0)
+  created_at        DateTime           @default(now())
 
-  person        Person?      @relation(fields: [person_id], references: [id])
-  assigned_user AppUser?     @relation("AssignedUser", fields: [assigned_to], references: [id])
+  person        Person?             @relation(fields: [person_id], references: [id])
+  assigned_user AppUser?            @relation("AssignedUser", fields: [assigned_to], references: [id])
   messages      Message[]
   ad_referrals  AdReferral[]
   labels        ConversationLabel[]
@@ -882,7 +882,7 @@ model Conversation {
 /// Wappin tidak membawa referral sama sekali, jadi lalu lintas yang lewat sana
 /// tidak akan pernah menghasilkan baris di sini.
 model AdReferral {
-  id                  String   @id @default(uuid())
+  id                  String  @id @default(uuid())
   tenant_slug         String
   conversation_id     String
   /// ID pesan dari platform yang membawa referral ini. Webhook Meta mengirim
@@ -890,26 +890,26 @@ model AdReferral {
   /// berkali-kali. Wajib ada — bukan nullable, supaya unique-nya benar-benar
   /// menggigit (Postgres menganggap tiap NULL berbeda).
   message_external_id String
-  channel             Channel  @default(WA)
+  channel             Channel @default(WA)
 
   /// Kunci join deterministik ke iklan Click-to-WhatsApp. Inilah yang membuat
   /// atribusi tidak perlu menebak lewat pencocokan probabilistik.
-  ctwa_clid           String?
+  ctwa_clid   String?
   /// ID iklan atau postingan asal.
-  source_id           String?
+  source_id   String?
   /// "ad" | "post"
-  source_type         String?
-  source_url          String?
-  headline            String?
-  body                String?
-  media_type          String?
+  source_type String?
+  source_url  String?
+  headline    String?
+  body        String?
+  media_type  String?
 
   /// Payload referral mentah. Meta menambah field tanpa pengumuman, dan yang
   /// tidak disimpan hari ini tidak bisa diambil ulang besok.
-  raw                 Json?
+  raw Json?
 
-  occurred_at         DateTime @default(now())
-  created_at          DateTime @default(now())
+  occurred_at DateTime @default(now())
+  created_at  DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversation_id], references: [id])
 
@@ -1424,9 +1424,9 @@ model SocialAccountDaily {
   /// menumpang `jangkauan`: metodologinya berbeda, dan menyatukannya akan
   /// menyambung dua deret yang tidak sebanding tanpa ada yang menyadarinya.
   /// Nol untuk Instagram — kanal itu memakai `jangkauan`.
-  tayangan_media   Int         @default(0)
-  penonton_unik    Int         @default(0)
-  diambil_pada     DateTime    @default(now())
+  tayangan_media Int      @default(0)
+  penonton_unik  Int      @default(0)
+  diambil_pada   DateTime @default(now())
 
   // TIDAK BOLEH memuat kolom nullable: Postgres menganggap tiap NULL berbeda,
   // sehingga unique constraint yang mengandungnya diam-diam berhenti mencegah
@@ -1492,9 +1492,9 @@ model SocialContentSnapshot {
   /// panjang: waktu tonton bersifat kumulatif seumur hidup konten, jadi "rerata
   /// tonton pada hari ke-7" HANYA bisa diketahui bila diukur tepat di hari
   /// ketujuh. Ditarik ulang kapan pun nanti, yang didapat selalu angka hari ini.
-  aktivitas_profil Int?   // metric `profile_activity` — Foto/Carousel
-  rerata_tonton_ms Int?   // `ig_reels_avg_watch_time` — MILIDETIK mentah
-  total_tonton_ms  Int?   // `ig_reels_video_view_total_time` — MILIDETIK mentah
+  aktivitas_profil Int? // metric `profile_activity` — Foto/Carousel
+  rerata_tonton_ms Int? // `ig_reels_avg_watch_time` — MILIDETIK mentah
+  total_tonton_ms  Int? // `ig_reels_video_view_total_time` — MILIDETIK mentah
   laju_lewat       Float? // `reels_skip_rate` — persen, bukan pecahan
 
   diambil_pada DateTime @default(now())
@@ -1608,25 +1608,25 @@ model GbpLocationDaily {
 /// melarang pemakaian "outside of your Business Profile project" tanpa tafsir
 /// yang menyelamatkan.
 model GbpReview {
-  id           String   @id @default(uuid())
+  id           String @id @default(uuid())
   tenant_slug  String
   lokasi       String
   lokasi_judul String
   review_id    String
 
-  bintang      Int
-  pengulas     String
+  bintang       Int
+  pengulas      String
   foto_pengulas String?
-  teks         String? // kosong bila pengulas hanya memberi bintang (~16% kasus)
-  terjemahan   String? // bagian setelah "(Translated by Google)", dipisah saat tarik
+  teks          String? // kosong bila pengulas hanya memberi bintang (~16% kasus)
+  terjemahan    String? // bagian setelah "(Translated by Google)", dipisah saat tarik
   /// URL thumbnail dari Google. BERUMUR PENDEK — disegarkan tiap snapshot, sama
   /// seperti `SocialContent.sampul_url`. Jangan diperlakukan sebagai tautan tetap.
-  foto         String[] @default([])
+  foto          String[] @default([])
 
-  dibuat_pada   DateTime
-  diubah_pada   DateTime
-  balasan_teks  String?
-  balasan_pada  DateTime?
+  dibuat_pada  DateTime
+  diubah_pada  DateTime
+  balasan_teks String?
+  balasan_pada DateTime?
 
   /// Milik CRM, bukan konten Google — dipakai mengangkat ulasan untuk evaluasi.
   /// Tidak pernah dikirim ke Google dan tidak ikut terhapus saat ulasan disegarkan.
@@ -1741,24 +1741,37 @@ model PercakapanPoliLibrary {
 /// pengganti pasangan kolom `topik` / `topik_usulan` yang lama, yang tidak bisa
 /// menampung lebih dari satu nilai.
 model ConversationLabel {
-  id              String   @id @default(uuid())
-  conversation_id String
+  id               String  @id @default(uuid())
+  conversation_id  String
   /// 'TOPIK' (keperluan) atau 'POLI' (bidang layanan).
-  dimensi         String
+  dimensi          String
   /// Merujuk kode di PercakapanTopikLibrary atau PercakapanPoliLibrary.
-  kode            String
+  kode             String
   /// 'AI' atau 'MANUAL' — dipakai menilai seberapa sering usulan mesin diubah.
-  sumber          String   @default("AI")
-  disetujui       Boolean  @default(false)
+  sumber           String  @default("AI")
+  /// Versi taksonomi, prompt, dan model yang MENGHASILKAN label ini.
+  ///
+  /// Nullable dengan sengaja: baris yang dibuat sebelum pencatatan versi memang
+  /// TIDAK DIKETAHUI versinya, dan mengisinya dengan tebakan lebih buruk
+  /// daripada mengakui tidak tahu.
+  ///
+  /// Ada karena definisi kategori berubah dari waktu ke waktu — uraian INFO_UMUM
+  /// sudah pernah diperbaiki. Tanpa ketiganya, membandingkan laporan dua periode
+  /// akan tampak sah padahal definisinya berbeda.
+  taxonomy_version String?
+  prompt_version   String?
+  model_version    String?
+
+  disetujui   Boolean   @default(false)
   /// Alasan singkat dari AI, hanya terisi untuk sumber 'AI'.
-  alasan          String?
+  alasan      String?
   /// SIAPA yang menyetujui, dan kapan. Ditambahkan 4 Sep 2026 atas usul konsultan:
   /// `disetujui` saja menjawab "sudah ditinjau?" tetapi tidak "oleh siapa?" —
   /// dan untuk angka yang masuk laporan direksi, pertanyaan kedua itu yang
   /// menentukan apakah jejaknya benar-benar bisa diaudit.
-  approved_by     String?
-  approved_at     DateTime?
-  created_at      DateTime @default(now())
+  approved_by String?
+  approved_at DateTime?
+  created_at  DateTime  @default(now())
 
   conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
 
@@ -1789,11 +1802,11 @@ model Sebutan {
   tenant_slug String
 
   /// YOUTUBE | IG_TAG | FB_TAG | FB_RATING | GOOGLE_ULASAN | KOMENTAR_IG | KOMENTAR_FB
-  sumber      String
+  sumber    String
   /// ID asli dari platform. Bersama tenant_slug + sumber inilah yang mencegah
   /// satu sebutan tersimpan dua kali ketika penarikan terjadwal berjalan
   /// berulang — dan itu PASTI terjadi, bukan kemungkinan.
-  sumber_id   String
+  sumber_id String
 
   penulis     String?
   username    String?
@@ -1804,7 +1817,7 @@ model Sebutan {
   /// Balasan mentah dari platform. Disimpan utuh karena bentuk API berubah tanpa
   /// pemberitahuan, dan tanpa salinan mentah kekeliruan penguraian tidak akan
   /// pernah bisa diperbaiki surut.
-  mentah      Json?
+  mentah Json?
 
   ditemukan_pada DateTime  @default(now())
   /// Terisi bila sebutan sudah tidak ada lagi di sumbernya.
@@ -1817,7 +1830,7 @@ model Sebutan {
   /// FB /tagged itu sah — keduanya mendaftar seluruh tandaan. Untuk hasil
   /// PENCARIAN YouTube tidak: peringkat berubah-ubah, jadi hilang dari hasil
   /// bukan bukti apa pun. Di sana video wajib diperiksa per ID lebih dulu.
-  hilang_pada DateTime?
+  hilang_pada    DateTime?
 
   created_at DateTime @default(now())
 
@@ -1843,10 +1856,23 @@ model SebutanLabel {
   /// TOPIK merujuk SebutanTopikLibrary; UNIT merujuk PercakapanPoliLibrary yang
   /// SUDAH ADA — poli yang sama, tidak perlu daftar kedua. SENTIMEN dan RISIKO
   /// bernilai tetap, jadi tidak berpustaka.
-  dimensi    String
-  kode       String
-  sumber     String  @default("AI")
-  alasan     String?
+  dimensi String
+  kode    String
+  sumber  String  @default("AI")
+  alasan  String?
+
+  /// Versi taksonomi, prompt, dan model yang MENGHASILKAN label ini.
+  ///
+  /// Nullable dengan sengaja: baris yang dibuat sebelum pencatatan versi memang
+  /// TIDAK DIKETAHUI versinya, dan mengisinya dengan tebakan lebih buruk
+  /// daripada mengakui tidak tahu.
+  ///
+  /// Ada karena definisi kategori berubah dari waktu ke waktu — uraian INFO_UMUM
+  /// sudah pernah diperbaiki. Tanpa ketiganya, membandingkan laporan dua periode
+  /// akan tampak sah padahal definisinya berbeda.
+  taxonomy_version String?
+  prompt_version   String?
+  model_version    String?
 
   disetujui   Boolean   @default(false)
   approved_by String?
@@ -1886,17 +1912,17 @@ model SebutanTopikLibrary {
 /// itu cocok dengan banyak hal tak berkaitan, dan derau yang dihasilkannya
 /// seluruhnya menjadi beban peninjau manusia.
 model SebutanKataKunci {
-  id          String @id @default(uuid())
-  tenant_slug String
+  id           String    @id @default(uuid())
+  tenant_slug  String
   /// Sumber yang memakai kata kunci ini — sementara baru YOUTUBE.
-  sumber      String
-  kata        String
-  aktif       Boolean @default(true)
-  urutan      Int     @default(0)
+  sumber       String
+  kata         String
+  aktif        Boolean   @default(true)
+  urutan       Int       @default(0)
   /// Kapan terakhir dipakai menarik — dipakai membagi kuota harian.
   ditarik_pada DateTime?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
 
   @@unique([tenant_slug, sumber, kata])
   @@index([tenant_slug, sumber, aktif])

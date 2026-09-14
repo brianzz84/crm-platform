@@ -16,6 +16,38 @@
  * tentu sedang mengeluh soal layanan. Uraiannya dibuat ketat justru karena itu.
  */
 
+/**
+ * Versi taksonomi ini. Dicatat pada tiap label yang dihasilkan.
+ *
+ * Mengikuti MAJOR.MINOR.PATCH sesuai pedoman konsultan (12 Sep 2026):
+ *
+ *   MAJOR — struktur berubah besar; kategori dipecah/digabung; makna berubah
+ *           sehingga perbandingan historis TIDAK lagi setara.
+ *   MINOR — definisi diperjelas dan bisa MEMENGARUHI HASIL klasifikasi; aturan
+ *           termasuk/tidak-termasuk berubah; kategori baru ditambahkan; batas
+ *           kasus abu-abu digeser.
+ *   PATCH — typo, format, kalimat diubah TANPA mengubah makna maupun batas.
+ *
+ * Naikkan angkanya di baris ini SETIAP KALI deskripsi kategori disunting. Versi
+ * yang tidak dinaikkan lebih berbahaya daripada tidak ada versi sama sekali:
+ * ia menyatakan dua definisi berbeda sebagai satu.
+ */
+/**
+ * 1.1.0 — bukan 1.0.0.
+ *
+ * Uraian INFO_UMUM pernah berbunyi "…dan keterangan umum lain", dan model
+ * membacanya sebagai izin: kategori itu terpakai TIGA KALI lebih sering
+ * daripada seharusnya. Setelah diubah menjadi "KATEGORI SISA" disertai daftar
+ * hal yang justru BUKAN INFO_UMUM, pemakaiannya normal.
+ *
+ * Konsultan menggolongkan perubahan semacam itu sebagai MINOR, bukan
+ * redaksional — dan itu tepat: batas klasifikasinya benar-benar bergeser.
+ *
+ * Label yang dibuat SEBELUM perubahan itu tidak punya versi sama sekali, dan
+ * memang tidak boleh dibandingkan setara dengan yang sesudahnya.
+ */
+export const VERSI_TAKSONOMI = '1.1.0'
+
 export interface TopikBawaan {
   kode: string; nama: string; deskripsi: string; warna: string; urutan: number
 }

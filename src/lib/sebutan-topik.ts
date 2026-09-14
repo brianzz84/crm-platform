@@ -21,6 +21,24 @@
  * ditambahkan setelah laporan terlanjur tercemar.
  */
 
+/**
+ * Versi taksonomi ini. Dicatat pada tiap label yang dihasilkan.
+ *
+ * Mengikuti MAJOR.MINOR.PATCH sesuai pedoman konsultan (12 Sep 2026):
+ *
+ *   MAJOR — struktur berubah besar; kategori dipecah/digabung; makna berubah
+ *           sehingga perbandingan historis TIDAK lagi setara.
+ *   MINOR — definisi diperjelas dan bisa MEMENGARUHI HASIL klasifikasi; aturan
+ *           termasuk/tidak-termasuk berubah; kategori baru ditambahkan; batas
+ *           kasus abu-abu digeser.
+ *   PATCH — typo, format, kalimat diubah TANPA mengubah makna maupun batas.
+ *
+ * Naikkan angkanya di baris ini SETIAP KALI deskripsi kategori disunting. Versi
+ * yang tidak dinaikkan lebih berbahaya daripada tidak ada versi sama sekali:
+ * ia menyatakan dua definisi berbeda sebagai satu.
+ */
+export const VERSI_TAKSONOMI = '1.0.0'
+
 export interface SebutanTopikBawaan {
   kode: string; nama: string; deskripsi: string; warna: string; urutan: number
 }

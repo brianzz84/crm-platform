@@ -24,7 +24,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { getAiProviderForTenant } from '@/lib/ai-provider'
-import { semaiTopik } from '@/lib/percakapan-topik'
+import { semaiTopik, VERSI_TAKSONOMI } from '@/lib/percakapan-topik'
 import { semaiPoli } from '@/lib/percakapan-poli'
 
 type Ctx = { params: { slug: string } }
@@ -35,6 +35,11 @@ const MAKS_PESAN      = 20
 /** Pemenggalan per pesan: melindungi dari satu pesan raksasa yang menghabiskan
  *  seluruh jendela dan membuat percakapan lain di batch yang sama terpotong. */
 const MAKS_HURUF_PESAN = 500
+
+/** Versi prompt di berkas ini. 1.1.0 karena aturan 6b (INFO_UMUM sebagai
+ *  KATEGORI SISA) ditambahkan setelah versi pertama — perubahan yang terbukti
+ *  menggeser hasil, bukan redaksional. */
+const VERSI_PROMPT = '1.1.0'
 
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'viewKanalPublik')
@@ -213,7 +218,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           if (!sah.has(kode)) { ditolak++; continue }    // kode karangan / salah dimensi
           await db.conversationLabel.upsert({
             where:  { conversation_id_dimensi_kode: { conversation_id: u.id, dimensi, kode } },
-            create: { conversation_id: u.id, dimensi, kode, sumber: 'AI', disetujui: false, alasan },
+            create: {
+              conversation_id: u.id, dimensi, kode, sumber: 'AI', disetujui: false, alasan,
+              taxonomy_version: VERSI_TAKSONOMI,
+              prompt_version:   VERSI_PROMPT,
+              model_version:    ai.model,
+            },
             update: {},
           })
           ada = true

@@ -206,11 +206,55 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           { success: false, error: `${kunci} hanya boleh satu nilai.` }, { status: 400 })
       }
 
+      /**
+       * ASAL LABEL DIPERTAHANKAN — dan ini bukan kerapian, ini syarat agar mutu
+       * AI bisa diukur sama sekali.
+       *
+       * Versi sebelumnya menulis SEMUA label sebagai MANUAL. Akibatnya tombol
+       * "✓ Setuju" — yang mengirim usulan AI apa adanya — ikut menandainya
+       * MANUAL, sehingga usulan AI yang diterima utuh menjadi tidak bisa
+       * dibedakan dari label yang diketik manusia dari nol.
+       *
+       * Konsekuensinya baru terlihat saat konsultan meminta AI Acceptance Rate
+       * sebagai KPI: angkanya mustahil dihitung.
+       *
+       * Sekarang asalnya ditentukan PER KODE — bertahan sebagai AI bila memang
+       * diusulkan AI, MANUAL bila ditambahkan manusia. Dari situ tiga angka
+       * lahir tanpa tabel baru: usulan yang bertahan (acceptance), yang dicabut
+       * (rejection), dan yang harus ditambahkan sendiri (recall gap).
+       *
+       * Versi taksonomi/prompt/model ikut dibawa dari usulan aslinya — label
+       * yang berasal dari AI harus tetap menunjuk ke definisi yang
+       * menghasilkannya, bukan ke definisi saat manusia menekan tombol.
+       */
+      const usulanAi = await db.sebutanLabel.findMany({
+        where:  { sebutan_id: id, dimensi, sumber: 'AI' },
+        select: {
+          kode: true, alasan: true,
+          taxonomy_version: true, prompt_version: true, model_version: true,
+        },
+      })
+      const dariAi = new Map<string, {
+        alasan: string | null
+        taxonomy_version: string | null
+        prompt_version: string | null
+        model_version: string | null
+      }>(usulanAi.map((u: {
+        kode: string; alasan: string | null
+        taxonomy_version: string | null; prompt_version: string | null; model_version: string | null
+      }) => [u.kode, u]))
+
       await db.sebutanLabel.deleteMany({ where: { sebutan_id: id, dimensi } })
       for (const k of kode) {
+        const asal = dariAi.get(k)
         await db.sebutanLabel.create({
           data: {
-            sebutan_id: id, dimensi, kode: k, sumber: 'MANUAL',
+            sebutan_id: id, dimensi, kode: k,
+            sumber: asal ? 'AI' : 'MANUAL',
+            alasan: asal?.alasan ?? null,
+            taxonomy_version: asal?.taxonomy_version ?? null,
+            prompt_version:   asal?.prompt_version ?? null,
+            model_version:    asal?.model_version ?? null,
             disetujui: true, approved_by: olehSiapa, approved_at: kapan,
           },
         })

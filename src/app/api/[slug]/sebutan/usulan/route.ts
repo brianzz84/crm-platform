@@ -28,7 +28,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
 import { getAiProviderForTenant } from '@/lib/ai-provider'
-import { semaiSebutanTopik, SENTIMEN, RISIKO } from '@/lib/sebutan-topik'
+import { semaiSebutanTopik, SENTIMEN, RISIKO, VERSI_TAKSONOMI } from '@/lib/sebutan-topik'
 import { semaiPoli } from '@/lib/percakapan-poli'
 
 type Ctx = { params: { slug: string } }
@@ -45,6 +45,16 @@ const MAKS_HURUF = 900
  *  Ditegakkan DI SINI juga, bukan hanya di sana: usulan AI masuk basis data
  *  lewat jalur ini dan tidak melewati PATCH sama sekali. */
 const DIMENSI_TUNGGAL = new Set(['SENTIMEN', 'RISIKO'])
+
+/**
+ * Versi prompt di berkas ini. Naikkan tiap kali `systemPrompt` disunting dengan
+ * cara yang bisa mengubah hasil — bukan hanya saat kategorinya berubah.
+ *
+ * Taksonomi dan prompt dicatat TERPISAH karena keduanya bisa berubah sendiri:
+ * memperjelas satu aturan di prompt tanpa menyentuh daftar kategori tetap
+ * menggeser hasil, dan sebaliknya.
+ */
+const VERSI_PROMPT = '1.0.0'
 
 interface Usul {
   id?: string
@@ -284,7 +294,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           if (!sah[dimensi].has(k)) { ditolak++; continue }  // karangan / salah dimensi
           await db.sebutanLabel.upsert({
             where:  { sebutan_id_dimensi_kode: { sebutan_id: u.id, dimensi, kode: k } },
-            create: { sebutan_id: u.id, dimensi, kode: k, sumber: 'AI', disetujui: false, alasan },
+            create: {
+              sebutan_id: u.id, dimensi, kode: k, sumber: 'AI', disetujui: false, alasan,
+              taxonomy_version: VERSI_TAKSONOMI,
+              prompt_version:   VERSI_PROMPT,
+              model_version:    ai.model,
+            },
             update: {},
           })
           ada = true
