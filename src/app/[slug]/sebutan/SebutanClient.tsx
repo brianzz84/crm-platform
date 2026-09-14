@@ -40,9 +40,31 @@ interface Baris {
   risiko: string[];   risikoUsulan: string[]
 }
 
-/** Batas keras putaran usulan AI. 40 x 30 = 1.200 sebutan — jauh di atas
- *  tunggakan 608 yang terukur, tetapi tetap berhingga. */
-const MAKS_PUTARAN = 40
+/**
+ * Batas keras putaran usulan AI.
+ *
+ * Dinaikkan dari 40 ke 110 setelah tunggakan sebenarnya terukur: 2.531 sebutan
+ * dari lima sumber, bukan 608 dari satu sumber seperti dugaan awal. 40 putaran
+ * hanya menjangkau 1.200, sehingga tunggakan tidak akan pernah habis dalam satu
+ * tekan berapa kali pun dijalankan berturut-turut.
+ */
+const MAKS_PUTARAN = 110
+
+/**
+ * Jeda antar putaran, milidetik.
+ *
+ * Gemini membatasi panggilan per menit. Menembakkan puluhan panggilan beruntun
+ * tanpa jeda menabrak batas itu hampir pasti — dan sebelum ada jeda ini, satu
+ * tabrakan menghentikan seluruh lari.
+ */
+const JEDA_PUTARAN_MS = 1200
+
+/** Penundaan sebelum mencoba ulang putaran yang gagal SEMENTARA. Menaik, karena
+ *  batas laju yang ditembus perlu waktu memulih — mencoba lagi seketika hanya
+ *  menabrak dinding yang sama. */
+const TUNGGU_ULANG_MS = [4_000, 10_000, 25_000]
+
+const jeda = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const tombol = (utama: boolean, sibuk: boolean): React.CSSProperties => ({
   padding: '8px 16px', borderRadius: 'var(--r-md)', fontFamily: 'inherit',
@@ -195,37 +217,55 @@ export default function SebutanClient({ slug }: { slug: string }) {
       while (putaran < MAKS_PUTARAN) {
         if (hentikan.current) { alasanBerhenti = 'dihentikan'; break }
 
-        const res  = await fetch(`/api/${slug}/sebutan/usulan`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          // Pengaman 1 dan 2 — lihat catatan di atas.
-          body: JSON.stringify({ ulangi: ulangi && putaran === 0, lewati }),
-        })
-        const json = await res.json()
-        if (!json.success) {
+        // Satu putaran, dengan coba-ulang untuk kegagalan SEMENTARA. Batas laju
+        // Gemini tidak boleh menghentikan seluruh tunggakan — itu yang terjadi
+        // sebelumnya, dan pelabelan berhenti di 600 dari 2.531.
+        let json: Record<string, unknown> | null = null
+        for (let coba = 0; coba <= TUNGGU_ULANG_MS.length; coba++) {
+          const res = await fetch(`/api/${slug}/sebutan/usulan`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            // Pengaman 1 dan 2 — lihat catatan di atas.
+            body: JSON.stringify({ ulangi: ulangi && putaran === 0, lewati }),
+          })
+          json = await res.json()
+          if (json?.success) break
+          if (!json?.sementara || coba === TUNGGU_ULANG_MS.length || hentikan.current) break
+          const tunggu = TUNGGU_ULANG_MS[coba]
+          setKabar(`⏳ Penyedia AI sedang membatasi laju — menunggu ${Math.round(tunggu / 1000)} detik `
+                 + `lalu melanjutkan. ${angka(berlabel)} sebutan sudah mendapat usulan.`)
+          await jeda(tunggu)
+        }
+
+        if (!json?.success) {
           // Kegagalan di tengah TIDAK membatalkan yang sudah tersimpan — tiap
           // batch berdiri sendiri. Jadi angkanya tetap dilaporkan di bawah.
-          setGalat(json.error ?? 'Usulan gagal.')
+          setGalat(String(json?.error ?? 'Usulan gagal.'))
           alasanBerhenti = 'galat'
           break
         }
         putaran++
 
-        tanpaTeks = json.tanpaTeks ?? 0
-        if (json.diperiksa === 0) { alasanBerhenti = 'selesai'; break }
+        const n = (k: string) => Number(json?.[k] ?? 0)
+        tanpaTeks = n('tanpaTeks')
+        if (n('diperiksa') === 0) { alasanBerhenti = 'selesai'; break }
 
-        diperiksa += json.diperiksa
-        berlabel  += json.berlabel
-        ragu      += json.ragu ?? 0
-        ditolak   += json.ditolak ?? 0
+        diperiksa += n('diperiksa')
+        berlabel  += n('berlabel')
+        ragu      += n('ragu')
+        ditolak   += n('ditolak')
 
         // Pengaman 2: langkahi yang tidak terlabeli pada putaran ini.
-        lewati += json.diperiksa - json.berlabel
+        lewati += n('diperiksa') - n('berlabel')
 
         // Pengaman 3.
-        nolBerturut = json.berlabel === 0 ? nolBerturut + 1 : 0
+        nolBerturut = n('berlabel') === 0 ? nolBerturut + 1 : 0
         if (nolBerturut >= 3) { alasanBerhenti = 'mandek'; break }
 
         setKabar(`⏳ ${angka(diperiksa)} sebutan diperiksa, ${angka(berlabel)} mendapat usulan… (putaran ${putaran})`)
+
+        // Jeda sebelum putaran berikutnya — mencegah tabrakan batas laju, bukan
+        // menyembuhkannya setelah terjadi.
+        await jeda(JEDA_PUTARAN_MS)
       }
       if (!alasanBerhenti) alasanBerhenti = 'batas'
 
@@ -243,7 +283,12 @@ export default function SebutanClient({ slug }: { slug: string }) {
           mandek: 'Berhenti: tiga putaran berturut-turut tanpa satu pun usulan. '
                 + 'Sisanya kemungkinan besar terlalu kabur untuk dinilai dari teksnya.',
           batas: `Berhenti di batas ${MAKS_PUTARAN} putaran — tekan lagi untuk melanjutkan.`,
-          galat: 'Berhenti karena galat di atas; yang sudah tersimpan tetap aman.',
+          // Dibedakan dari 'galat' biasa: pemakainya perlu tahu bahwa yang
+          // menghentikan adalah penyedia AI, bukan datanya — dan bahwa menekan
+          // lagi beberapa menit kemudian kemungkinan besar berhasil.
+          galat: 'Berhenti karena galat di atas; yang sudah tersimpan tetap aman. '
+               + 'Bila galatnya soal batas laju AI, tunggu beberapa menit lalu tekan lagi — '
+               + 'putaran akan melanjutkan dari sisa yang belum berlabel.',
         }
         setKabar([
           `${angka(diperiksa)} sebutan diperiksa`,

@@ -309,7 +309,21 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       ragu: sebutan.length - berlabel,
     })
   } catch (e) {
+    const pesan = e instanceof Error ? e.message : 'Server error'
+    // Galat SEMENTARA dibedakan dari galat menetap, dan pembedaan ini yang
+    // menentukan apakah pelabelan bisa menyelesaikan tunggakan.
+    //
+    // `ai-provider` melempar `Gemini API error: 429 …` pada batas laju. Putaran
+    // pelabelan menembak puluhan panggilan beruntun, jadi menabrak batas per-menit
+    // hampir pasti terjadi — dan sebelum ini, SATU hiccup menghentikan seluruh
+    // lari. Terbukti di produksi: 600 dari 2.531 sebutan berlabel lalu berhenti.
+    //
+    // Kunci AI yang belum diisi TIDAK masuk golongan ini: mengulangnya tidak akan
+    // pernah menolong, dan menunggu 20 detik untuk itu hanya membuang waktu orang.
+    const sementara = /\b(429|500|502|503|504)\b|RESOURCE_EXHAUSTED|quota|rate limit|overload|timeout|fetch failed|ECONNRESET/i
+      .test(pesan)
     return NextResponse.json(
-      { success: false, error: e instanceof Error ? e.message : 'Server error' }, { status: 500 })
+      { success: false, error: pesan, sementara },
+      { status: sementara ? 503 : 500 })
   }
 }
