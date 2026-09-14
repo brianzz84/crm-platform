@@ -14,6 +14,11 @@ const PUBLIC_PATHS = [
   '/api/health',     // Railway health check
   '/kegiatan',       // public check-in page
   '/api/kegiatan',   // public check-in API
+  // Halaman status penghapusan data. WAJIB terbuka: alamatnya dikembalikan ke
+  // Meta dan ditampilkan kepada orang yang baru saja mencabut aplikasi — ia
+  // tidak punya, dan tidak seharusnya punya, akun di CRM ini. Dialihkan ke
+  // layar login, halaman itu berubah dari pernyataan privasi menjadi dinding.
+  '/hapus-data',
 ]
 
 export async function middleware(req: NextRequest) {
