@@ -74,13 +74,24 @@ export default function ThreadsPanel({ slug }: { slug: string }) {
             menguji apakah pencarian itu benar-benar boleh dipakai.
           </p>
         </div>
-        <a href={`/api/${slug}/threads/oauth/start`}
-          style={{
-            padding: '9px 18px', borderRadius: 'var(--r-md)', background: 'var(--c-primary)',
-            color: 'white', textDecoration: 'none', fontSize: 13, fontWeight: 700, flexShrink: 0,
-          }}>
-          Hubungkan Threads
-        </a>
+        <div style={{ display: 'grid', gap: 6, flexShrink: 0, justifyItems: 'end' }}>
+          <a href={`/api/${slug}/threads/oauth/start`}
+            style={{
+              padding: '9px 18px', borderRadius: 'var(--r-md)', background: 'var(--c-primary)',
+              color: 'white', textDecoration: 'none', fontSize: 13, fontWeight: 700,
+            }}>
+            Hubungkan Threads
+          </a>
+          {/* Cadangan bila layar izin menolak karena threads_keyword_search
+              belum aktif di dasbor. Penyambungan tetap selesai dengan izin
+              dasar, lalu probe memanggil pencarian apa adanya — galat dari
+              endpointnya sendiri jauh lebih berguna daripada layar izin yang
+              menolak tanpa keterangan. */}
+          <a href={`/api/${slug}/threads/oauth/start?dasar=1`}
+            style={{ fontSize: 11.5, color: 'var(--c-secondary)', textDecoration: 'none' }}>
+            Layar izin ditolak? Hubungkan dengan izin dasar saja →
+          </a>
+        </div>
       </div>
 
       {kabar && (

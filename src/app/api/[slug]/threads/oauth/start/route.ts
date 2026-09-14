@@ -12,18 +12,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { requireTenantPermission } from '@/lib/auth'
-import { alamatAplikasi } from '@/lib/google-oauth'
-import { urlOtorisasiThreads } from '@/lib/threads-api'
+import {
+  urlOtorisasiThreads, alamatCallbackThreads,
+  COOKIE_STATE_THREADS, SCOPE_THREADS, SCOPE_THREADS_DASAR,
+} from '@/lib/threads-api'
 
 type Ctx = { params: { slug: string } }
-
-export const COOKIE_STATE_THREADS = 'threads_oauth_state'
-
-/** Satu alamat untuk seluruh tenant — Threads menuntut redirect URI terdaftar
- *  secara literal, jadi slug tidak boleh ada di dalam path. */
-export function alamatCallbackThreads(): string {
-  return `${alamatAplikasi()}/api/threads/oauth/callback`
-}
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { error } = await requireTenantPermission(req, params.slug, 'configSystem')
@@ -37,8 +31,16 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     }, { status: 500 })
   }
 
+  // `?dasar=1` meminta izin dasar saja. Dipakai bila layar izin menolak karena
+  // `threads_keyword_search` belum aktif di dasbor — lihat catatan pada
+  // SCOPE_THREADS_DASAR. Penyambungan yang gagal di depan tidak membuktikan
+  // apa pun; yang berguna adalah galat dari endpointnya sendiri.
+  const dasarSaja = req.nextUrl.searchParams.get('dasar') === '1'
   const nonce  = randomBytes(24).toString('hex')
-  const tujuan = urlOtorisasiThreads(appId, alamatCallbackThreads(), nonce)
+  const tujuan = urlOtorisasiThreads(
+    appId, alamatCallbackThreads(), nonce,
+    dasarSaja ? SCOPE_THREADS_DASAR : SCOPE_THREADS,
+  )
 
   const res = new NextResponse(null, { status: 307, headers: { Location: tujuan } })
   res.cookies.set(COOKIE_STATE_THREADS, `${nonce}:${params.slug}`, {

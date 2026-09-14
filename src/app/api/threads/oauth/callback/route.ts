@@ -10,8 +10,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
-import { tukarKodeThreads, identitasThreads } from '@/lib/threads-api'
-import { COOKIE_STATE_THREADS, alamatCallbackThreads } from '@/app/api/[slug]/threads/oauth/start/route'
+import {
+  tukarKodeThreads, identitasThreads,
+  COOKIE_STATE_THREADS, alamatCallbackThreads,
+} from '@/lib/threads-api'
 
 function kembali(origin: string, slug: string | null, galat?: string) {
   const tujuan = slug

@@ -26,6 +26,24 @@
  * antara keduanya, jadi tidak ada yang dijanjikan sebelum dicoba.
  */
 
+import { alamatAplikasi } from './google-oauth'
+
+/**
+ * Nama cookie state dan alamat callback.
+ *
+ * Ditaruh DI SINI, bukan di berkas rute, karena berkas rute Next.js hanya boleh
+ * mengekspor penangan HTTP — ekspor lain ditolak saat pembuatan tipe. Jalur
+ * Instagram menaruhnya di rute dan lolos hanya karena tipenya sudah terlanjur
+ * dibuat sebelum aturan itu berlaku; jangan ditiru.
+ */
+export const COOKIE_STATE_THREADS = 'threads_oauth_state'
+
+/** Satu alamat untuk seluruh tenant — Threads menuntut redirect URI terdaftar
+ *  secara literal, jadi slug tidak boleh ada di dalam path. */
+export function alamatCallbackThreads(): string {
+  return `${alamatAplikasi()}/api/threads/oauth/callback`
+}
+
 const OAUTH_AUTHORIZE = 'https://threads.net/oauth/authorize'
 const OAUTH_TOKEN     = 'https://graph.threads.net/oauth/access_token'
 const GRAPH           = 'https://graph.threads.net'
@@ -47,6 +65,22 @@ export const SCOPE_THREADS = [
   'threads_basic',
   'threads_keyword_search',
 ].join(',')
+
+/**
+ * Izin DASAR saja — jalur cadangan.
+ *
+ * Dasbor Meta (14 Sep 2026) menunjukkan `threads_basic` berstatus "Siap untuk
+ * pengujian", sementara `threads_keyword_search` kosong dan satu-satunya
+ * tindakannya "Tambahkan ke Tinjauan Aplikasi". Bila izin yang belum aktif ikut
+ * diminta, LAYAR IZINNYA SENDIRI bisa ditolak — dan penyambungan gagal sebelum
+ * sempat membuktikan apa pun.
+ *
+ * Dengan cadangan ini, penyambungan tetap bisa diselesaikan memakai izin dasar,
+ * lalu probe memanggil `keyword_search` apa adanya. Galat yang muncul di situ
+ * jauh lebih berguna daripada layar izin yang menolak tanpa keterangan: ia
+ * datang dari endpointnya sendiri, bukan dari pemeriksaan di depan.
+ */
+export const SCOPE_THREADS_DASAR = 'threads_basic'
 
 export type JsonThreads = Record<string, unknown> & {
   error?: { message?: string; type?: string; code?: number } | string
@@ -74,12 +108,14 @@ export function pesanGalatThreads(r: HasilThreads): string {
 }
 
 /** URL yang dibuka admin untuk memberi izin. */
-export function urlOtorisasiThreads(appId: string, redirectUri: string, state: string): string {
+export function urlOtorisasiThreads(
+  appId: string, redirectUri: string, state: string, scope = SCOPE_THREADS,
+): string {
   const q = new URLSearchParams({
     client_id:     appId,
     redirect_uri:  redirectUri,
     response_type: 'code',
-    scope:         SCOPE_THREADS,
+    scope,
     state,
   })
   return `${OAUTH_AUTHORIZE}?${q}`
