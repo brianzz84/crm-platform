@@ -7,6 +7,7 @@ import { getTenantDb } from '@/lib/tenant'
 import MetaConfigForm from './MetaConfigForm'
 import MetaSocialDiagnostik from './MetaSocialDiagnostik'
 import InstagramMessagingPanel from './InstagramMessagingPanel'
+import ThreadsPanel from './ThreadsPanel'
 
 export const metadata: Metadata = { title: 'Integrasi Meta Cloud API' }
 
@@ -105,6 +106,7 @@ export default async function MetaConfigPage({ params }: { params: { slug: strin
       <MetaSocialDiagnostik slug={params.slug} />
 
       <InstagramMessagingPanel slug={params.slug} />
+      <ThreadsPanel slug={params.slug} />
 
       {/* Panel snapshot dipindah ke Pengaturan → Penarikan Data. Jadwalnya kini
           mengatur Meta DAN Google, sehingga menaruhnya di halaman yang namanya

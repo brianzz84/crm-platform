@@ -712,6 +712,19 @@ model MetaConfig {
   /// tanpa menyentuh WhatsApp, Facebook, Insight, maupun Ads.
   ig_msg_aktif        Boolean   @default(false)
 
+  // ── Threads ──
+  /// Jalur KETIGA, terpisah penuh dari Instagram dan Facebook: host sendiri,
+  /// kredensial aplikasi sendiri, token sendiri. Token Instagram Login tidak
+  /// berlaku di sana dan sebaliknya, jadi menumpangkannya ke kolom ig_msg_*
+  /// akan membuat dua jalur saling menimpa diam-diam.
+  ///
+  /// `threads_expires_at` eksplisit karena token ini MATI dalam 60 hari.
+  threads_token        String?
+  threads_user_id      String?
+  threads_username     String? // ditampilkan agar salah akun cepat ketahuan
+  threads_expires_at   DateTime?
+  threads_refreshed_at DateTime?
+
   aktif      Boolean   @default(true)
   tested_at  DateTime?
   created_at DateTime  @default(now())
