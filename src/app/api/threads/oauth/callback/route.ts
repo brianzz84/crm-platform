@@ -10,16 +10,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireTenantPermission } from '@/lib/auth'
 import { getTenantDb } from '@/lib/tenant'
+import { alamatAplikasi } from '@/lib/google-oauth'
 import {
   tukarKodeThreads, identitasThreads,
   COOKIE_STATE_THREADS, alamatCallbackThreads,
 } from '@/lib/threads-api'
 
 function kembali(origin: string, slug: string | null, galat?: string) {
-  const tujuan = slug
-    ? `${origin}/${slug}/pengaturan/meta${galat ? `?threads_error=${encodeURIComponent(galat)}` : '?threads=ok'}`
-    : `${origin}/`
-  return NextResponse.redirect(tujuan)
+  // Alamat PUBLIK, bukan origin permintaan: di balik proxy Railway `origin`
+  // bernilai 0.0.0.0:3000, sehingga admin mendarat di halaman mati padahal
+  // penyambungan sudah berhasil.
+  //
+  // Jebakan ini sudah tercatat dan sudah pernah terjadi dua kali — pada OAuth
+  // Google, lalu pada Instagram. Versi pertama berkas ini mengulanginya untuk
+  // ketiga kalinya, dan baru ketahuan saat endpointnya diuji langsung.
+  const url = new URL(slug ? `/${slug}/pengaturan/meta` : '/', alamatAplikasi(origin))
+  if (galat) url.searchParams.set('threads_error', galat)
+  else if (slug) url.searchParams.set('threads', 'ok')
+  return NextResponse.redirect(url.toString())
 }
 
 export async function GET(req: NextRequest) {
